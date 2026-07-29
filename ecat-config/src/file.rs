@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::{ConfigError, ConfigSource};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -27,6 +28,6 @@ impl ConfigSource for FileSource {
         };
 
         let map = value.as_object().cloned().unwrap_or_default();
-        Ok(map.into_iter().map(|(k, v)| (k, v)).collect())
+        Ok(map.into_iter().collect())
     }
 }

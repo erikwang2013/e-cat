@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 fn main() {
     tonic_build::configure()
         .compile_protos(

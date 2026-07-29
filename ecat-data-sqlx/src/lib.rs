@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{RdbmsClient, RdbmsError, Row};
 use sqlx::any::AnyRow;
@@ -60,7 +61,7 @@ impl RdbmsClient for SqlxClient {
                             .or_else(|_| {
                                 row.try_get::<f64, _>(col.as_str())
                                     .ok()
-                                    .and_then(|f| serde_json::Number::from_f64(f))
+                                    .and_then(serde_json::Number::from_f64)
                                     .map(serde_json::Value::Number)
                                     .ok_or(())
                             })

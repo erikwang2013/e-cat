@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use std::future::Future;
 use std::pin::Pin;
 use tower::{Layer, Service};
@@ -35,6 +36,6 @@ where
         let span = tracing::info_span!("request");
         let _guard = span.enter();
         let fut = self.inner.call(req);
-        Box::pin(async move { fut.await })
+        Box::pin(fut)
     }
 }

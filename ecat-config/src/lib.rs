@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod env;
 mod file;
 
@@ -19,13 +20,14 @@ pub enum ConfigError {
     Other(String),
 }
 
+#[derive(Default)]
 pub struct Config {
     data: HashMap<String, serde_json::Value>,
 }
 
 impl Config {
     pub fn new() -> Self {
-        Self { data: HashMap::new() }
+        Self::default()
     }
 
     pub async fn load(&mut self, source: &dyn ConfigSource) -> Result<(), ConfigError> {
@@ -36,5 +38,51 @@ impl Config {
 
     pub fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
         self.data.get(key).and_then(|v| T::deserialize(v).ok())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_new_is_empty() {
+        let c = Config::new();
+        assert!(c.get::<serde_json::Value>("any").is_none());
+    }
+
+    #[test]
+    fn config_default_is_empty() {
+        let c = Config::default();
+        assert!(c.get::<serde_json::Value>("any").is_none());
+    }
+
+    #[tokio::test]
+    async fn config_load_from_source() {
+        struct TestSource;
+        #[async_trait::async_trait]
+        impl ConfigSource for TestSource {
+            async fn load(&self) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
+                let mut m = HashMap::new();
+                m.insert("key".into(), serde_json::Value::String("val".into()));
+                Ok(m)
+            }
+        }
+
+        let mut c = Config::new();
+        c.load(&TestSource).await.unwrap();
+        assert_eq!(c.get::<String>("key"), Some("val".into()));
+    }
+
+    #[test]
+    fn config_get_typed() {
+        let mut c = Config::new();
+        // Manually insert to test typed retrieval
+        c.data.insert("num".into(), serde_json::Value::Number(42.into()));
+        c.data.insert("s".into(), serde_json::Value::String("hello".into()));
+
+        assert_eq!(c.get::<i32>("num"), Some(42));
+        assert_eq!(c.get::<String>("s"), Some("hello".into()));
+        assert!(c.get::<i32>("s").is_none()); // type mismatch
     }
 }

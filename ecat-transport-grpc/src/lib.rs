@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use ecat_transport::Server as TransportServer;
 use tonic::service::Routes;
 use tonic::transport::Server as TonicServer;

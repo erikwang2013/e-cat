@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::{Registry, RegistryError, Registration, ServiceInfo};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -59,5 +60,61 @@ impl Registry for MemoryRegistry {
         })?;
         let names: Vec<String> = services.values().map(|s| s.name.clone()).collect();
         Ok(names)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_service(name: &str) -> ServiceInfo {
+        ServiceInfo::new(name, "1.0.0").with_endpoint("http://localhost:8080")
+    }
+
+    #[tokio::test]
+    async fn register_and_discover() {
+        let reg = MemoryRegistry::new();
+        let r = reg.register(test_service("auth")).await.unwrap();
+        assert!(!r.id.is_empty());
+
+        let found = reg.discover("auth").await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "auth");
+    }
+
+    #[tokio::test]
+    async fn deregister_removes_service() {
+        let reg = MemoryRegistry::new();
+        let r = reg.register(test_service("auth")).await.unwrap();
+        reg.deregister(&r.id).await.unwrap();
+        assert!(reg.discover("auth").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn deregister_not_found() {
+        let reg = MemoryRegistry::new();
+        assert!(reg.deregister("nope").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn list_services_returns_names() {
+        let reg = MemoryRegistry::new();
+        reg.register(test_service("auth")).await.unwrap();
+        reg.register(test_service("gw")).await.unwrap();
+
+        let names = reg.list_services().await.unwrap();
+        assert!(names.contains(&"auth".to_string()));
+        assert!(names.contains(&"gw".to_string()));
+    }
+
+    #[tokio::test]
+    async fn discover_filters_by_name() {
+        let reg = MemoryRegistry::new();
+        reg.register(test_service("auth")).await.unwrap();
+        reg.register(test_service("gw")).await.unwrap();
+
+        let found = reg.discover("gw").await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "gw");
     }
 }

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 pub async fn wait_for_shutdown() {
     let ctrl_c = tokio::signal::ctrl_c();
 

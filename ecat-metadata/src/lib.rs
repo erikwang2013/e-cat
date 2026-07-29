@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use std::collections::HashMap;
 
 pub const TRACE_ID: &str = "x-ecat-trace-id";

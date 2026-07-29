@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use std::future::Future;
 use std::pin::Pin;
 use tower::{Layer, Service};
@@ -39,7 +40,7 @@ where
             match tokio::task::spawn(fut).await {
                 Ok(Ok(response)) => Ok(response),
                 Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-                Err(_) => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "task panicked")) as Box<dyn std::error::Error + Send + Sync>),
+                Err(_) => Err(Box::new(std::io::Error::other("task panicked")) as Box<dyn std::error::Error + Send + Sync>),
             }
         })
     }

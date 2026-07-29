@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::Router;
 use ecat_transport::Server as TransportServer;
 use tokio::net::TcpListener;
@@ -24,7 +25,7 @@ impl HttpServer {
 #[async_trait::async_trait]
 impl TransportServer for HttpServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let router = self.router.clone().unwrap_or_else(Router::new);
+        let router = self.router.clone().unwrap_or_default();
         let listener = TcpListener::bind(&self.addr).await?;
         axum::serve(listener, router).await?;
         Ok(())

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod hook;
 mod signal;
 
@@ -94,5 +95,61 @@ impl AppBuilder {
             servers: self.servers,
             lifecycle_hooks: self.lifecycle_hooks,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ecat_transport::Server;
+
+    struct TestServer;
+    #[async_trait::async_trait]
+    impl Server for TestServer {
+        async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+        async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn builder_defaults() {
+        let app = App::builder().build().unwrap();
+        assert_eq!(app.name, "ecat-app");
+        assert_eq!(app.version, "0.1.0");
+    }
+
+    #[tokio::test]
+    async fn builder_custom_name_version() {
+        let app = App::builder()
+            .name("myapp")
+            .version("2.0.0")
+            .build()
+            .unwrap();
+        assert_eq!(app.name, "myapp");
+        assert_eq!(app.version, "2.0.0");
+    }
+
+    #[tokio::test]
+    async fn builder_with_server() {
+        let app = App::builder().server(TestServer).build().unwrap();
+        assert_eq!(app.servers.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn builder_with_lifecycle_hooks() {
+        #[derive(Default)]
+        struct TestHook;
+        #[async_trait::async_trait]
+        impl LifecycleHook for TestHook {}
+
+        let app = App::builder()
+            .on_start(TestHook)
+            .on_stop(TestHook)
+            .build()
+            .unwrap();
+        assert_eq!(app.lifecycle_hooks.len(), 2);
     }
 }

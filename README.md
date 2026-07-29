@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz -->
 # e-cat
 
 [English](README.en.md) | 简体中文
