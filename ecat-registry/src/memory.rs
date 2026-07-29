@@ -45,9 +45,7 @@ impl Registry for MemoryRegistry {
     }
 
     async fn discover(&self, name: &str) -> Result<Vec<ServiceInfo>, RegistryError> {
-        let services = self.services.read().map_err(|e| {
-            RegistryError::Other(format!("lock poisoned: {}", e))
-        })?;
+        let services = self.services.read().await;
         let results: Vec<ServiceInfo> = services
             .values()
             .filter(|s| s.name == name)
@@ -57,9 +55,7 @@ impl Registry for MemoryRegistry {
     }
 
     async fn list_services(&self) -> Result<Vec<String>, RegistryError> {
-        let services = self.services.read().map_err(|e| {
-            RegistryError::Other(format!("lock poisoned: {}", e))
-        })?;
+        let services = self.services.read().await;
         let names: Vec<String> = services.values().map(|s| s.name.clone()).collect();
         Ok(names)
     }
