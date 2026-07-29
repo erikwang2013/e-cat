@@ -4,7 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ecat-protos = { path = "../ecat-protos" }
-prost.workspace = true
 http = "1"
 tonic.workspace = true
