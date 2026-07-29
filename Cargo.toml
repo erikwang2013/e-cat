@@ -5,6 +5,7 @@ members = [
     "ecat-metadata",
     "ecat-encoding",
     "ecat-logging",
+    "ecat-transport",
 ]
 resolver = "2"
 
