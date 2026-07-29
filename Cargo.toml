@@ -12,6 +12,8 @@ members = [
     "ecat-registry",
     "ecat-config",
     "ecat-metrics",
+    "ecat-data",
+    "ecat-data-sqlx",
     "ecat",
 ]
 resolver = "2"
