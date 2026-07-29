@@ -8,6 +8,7 @@ members = [
     "ecat-transport",
     "ecat-transport-http",
     "ecat-transport-grpc",
+    "ecat-middleware",
 ]
 resolver = "2"
 
@@ -25,4 +26,5 @@ opentelemetry = "0.26"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 async-trait = "0.1"
+http = "1"
 thiserror = "2"

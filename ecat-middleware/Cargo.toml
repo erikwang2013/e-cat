@@ -1,0 +1,11 @@
+[package]
+name = "ecat-middleware"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tower.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+http.workspace = true
