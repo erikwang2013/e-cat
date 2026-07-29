@@ -96,10 +96,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 | Phase 2 | ✅ Done | Transport layer (HTTP + gRPC) |
 | Phase 3 | ✅ Done | Middleware (Recovery/Tracing/Logging/Timeout) |
 | Phase 4 | ✅ Done | App lifecycle management |
-| Phase 5 | ⏳ Pending | Registry, Config, Metrics |
-| Phase 5.5 | ⏳ Pending | Data access layer (15 storage backends) |
-| Phase 6 | ⏳ Pending | CLI toolchain |
-| Phase 7 | ⏳ Pending | Documentation, examples, ecosystem |
+| Phase 5 | ✅ Done | Registry, Config, Metrics |
+| Phase 5.5 | ✅ Done | Data access layer (traits + sqlx backend) |
+| Phase 6 | ✅ Done | CLI toolchain (new/proto/run/build) |
+| Phase 7 | ✅ Done | README, examples (helloworld), design docs |
 
 ## Documentation
 

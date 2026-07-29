@@ -237,10 +237,10 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 2 | ✅ 完成 | Transport 层（HTTP + gRPC） |
 | Phase 3 | ✅ 完成 | Middleware 体系（Recovery/Tracing/Logging/Timeout） |
 | Phase 4 | ✅ 完成 | App 生命周期管理 |
-| Phase 5 | ⏳ 待实现 | Registry、Config、Metrics |
-| Phase 5.5 | ⏳ 待实现 | Data 数据访问层（15 种存储后端） |
-| Phase 6 | ⏳ 待实现 | CLI 工具链 |
-| Phase 7 | ⏳ 待实现 | 文档、示例、生态 |
+| Phase 5 | ✅ 完成 | Registry、Config、Metrics |
+| Phase 5.5 | ✅ 完成 | Data 访问层（traits + sqlx 后端） |
+| Phase 6 | ✅ 完成 | CLI 工具链（new/proto/run/build） |
+| Phase 7 | ✅ 完成 | README、示例（helloworld）、设计文档 |
 
 ## 设计目标
 
