@@ -856,6 +856,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "helloworld"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "ecat",
+ "ecat-logging",
+ "ecat-middleware",
+ "ecat-transport-grpc",
+ "ecat-transport-http",
+ "serde",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

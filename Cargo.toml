@@ -16,6 +16,7 @@ members = [
     "ecat-data-sqlx",
     "ecat",
     "ecat-cli",
+    "examples/helloworld",
 ]
 resolver = "2"
 
