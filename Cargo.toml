@@ -22,7 +22,7 @@ resolver = "2"
 
 [workspace.package]
 name = "e-cat"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2026"
 license = "Apache-2.0"
 
