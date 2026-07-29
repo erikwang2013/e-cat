@@ -5,7 +5,6 @@ mod proto;
 pub enum Encoding {
     Json,
     Protobuf,
-    Form,
 }
 
 pub trait Codec: Send + Sync {
@@ -54,7 +53,6 @@ pub fn codec_for(encoding: Encoding) -> CodecBox {
     match encoding {
         Encoding::Json => CodecBox::Json(json::JsonCodec),
         Encoding::Protobuf => CodecBox::Proto(proto::ProtoCodec),
-        Encoding::Form => CodecBox::Json(json::JsonCodec),
     }
 }
 
