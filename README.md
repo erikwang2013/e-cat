@@ -9,60 +9,67 @@
 ## 设计架构
 
 ```
-┌──────────────────────────────────────────────────┐
-│                  ecat-cli                        │  ← CLI 工具链
-│        (new | proto | run | build)               │
-├──────────────────────────────────────────────────┤
-│              ecat (App 生命周期)                   │  ← 应用编排层
-│    AppBuilder → App { http_srv, grpc_srv, ... }  │
-├──────────────┬──────────────┬────────────────────┤
-│  transport   │  middleware  │     registry       │  ← 核心组件层
-│  ─────────   │  ─────────   │     ────────       │
-│  HTTP/gRPC   │  recovery    │     etcd/consul    │
-│  encoding    │  tracing     │     dns/memory     │
-│              │  auth/...    │                    │
-├──────────────┼──────────────┼────────────────────┤
-│   config     │   errors     │     metadata       │  ← 基础设施层
-├──────────────┴──────────────┴────────────────────┤
-│                    data                          │  ← 数据访问层
-│  ─────────────────────────────────────           │
-│  rdbms:    SQLite / PostgreSQL / MySQL / TiDB    │
-│  cache:    Redis / Memcached                     │
-│  olap:     ClickHouse                            │
-│  search:   OpenSearch / Elasticsearch             │
-│  graph:    Neo4j / NebulaGraph / ArangoDB        │
-│  tsdb:     InfluxDB / IoTDB / QuestDB            │
-├──────────────────────────────────────────────────┤
-│              ecat-protos                         │  ← IDL 定义层
-│    (共享 protobuf 定义: errors, metadata, ...)    │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                         ecat-cli                             │
+│              (new │ proto │ run │ build)                     │
+├──────────────────────────────────────────────────────────────┤
+│                     ecat (应用生命周期)                         │
+│      AppBuilder → App { name, servers, hooks, ... }         │
+├────────────────────┬────────────────────┬────────────────────┤
+│     transport      │    middleware      │     registry       │
+│     ─────────      │    ──────────      │     ────────       │
+│     HTTP (axum)    │    RecoveryLayer   │     etcd           │
+│     gRPC (tonic)   │    TracingLayer    │     consul         │
+│     encoding       │    LoggingLayer    │     dns            │
+│                    │    TimeoutLayer    │     memory         │
+├────────────────────┼────────────────────┼────────────────────┤
+│     config         │     errors         │     metadata       │
+│     ──────         │     ──────         │     ────────       │
+│     file / env     │     ErrorCode      │     key-value      │
+│     remote source  │     Error          │     HTTP/gRPC      │
+├────────────────────┴────────────────────┴────────────────────┤
+│                         data 层                               │
+│     ────────────────────────────────────────────────          │
+│     rdbms:   SQLite / PostgreSQL / MySQL / TiDB              │
+│     cache:   Redis / Memcached                               │
+│     olap:    ClickHouse                                      │
+│     search:  OpenSearch / Elasticsearch                      │
+│     graph:   Neo4j / NebulaGraph / ArangoDB                  │
+│     tsdb:    InfluxDB / Apache IoTDB / QuestDB               │
+├──────────────────────────────────────────────────────────────┤
+│                       ecat-protos                             │
+│     (共享 .proto 定义: errors, metadata, ...)                 │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### 请求处理流程
 
 ```
-客户端
+客户端请求
   │
-  ├─ HTTP/1.1 :8000 ──→ axum::Router
-  │                        │
-  └─ gRPC  :9000  ──→ tonic::Server
-                           │
-                    ┌──────┴──────┐
-                    │  Middleware  │  ← tower::Layer 链
-                    │  1. Recovery │     捕获 panic
-                    │  2. Tracing  │     注入 trace_id
-                    │  3. Logging  │     请求日志
-                    │  4. Auth     │     认证/鉴权
-                    │  5. Metrics  │     指标采集
-                    └──────┬──────┘
-                           │
-                    ┌──────┴──────┐
-                    │   Handler   │  ← 用户业务逻辑
-                    └──────┬──────┘
-                           │
-                    ┌──────┴──────┐
-                    │   Response  │  ← 编码 (JSON/Protobuf)
-                    └─────────────┘
+  ├─ HTTP :8000 ────→ axum::Router ──┐
+  │                                   │
+  └─ gRPC :9000 ────→ tonic::Server ─┤
+                                      │
+                              ┌───────┴───────┐
+                              │   Middleware   │
+                              │   ──────────   │
+                              │ 1. Recovery    │  捕获 panic
+                              │ 2. Tracing     │  注入 trace_id
+                              │ 3. Logging     │  请求日志
+                              │ 4. Auth        │  认证鉴权
+                              │ 5. Metrics     │  指标采集
+                              └───────┬───────┘
+                                      │
+                              ┌───────┴───────┐
+                              │    Handler     │  用户业务逻辑
+                              │ (tower::Service)│
+                              └───────┬───────┘
+                                      │
+                              ┌───────┴───────┐
+                              │   Response     │  编码序列化
+                              │ JSON/Protobuf  │
+                              └───────────────┘
 ```
 
 ## 功能

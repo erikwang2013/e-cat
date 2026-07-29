@@ -9,33 +9,37 @@ It provides an API-first development experience, pluggable component architectur
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                  ecat-cli                        │  ← CLI Toolchain
-│        (new | proto | run | build)               │
-├──────────────────────────────────────────────────┤
-│              ecat (App Lifecycle)                 │  ← Orchestration
-│    AppBuilder → App { http_srv, grpc_srv, ... }  │
-├──────────────┬──────────────┬────────────────────┤
-│  transport   │  middleware  │     registry       │  ← Core Components
-│  ─────────   │  ─────────   │     ────────       │
-│  HTTP/gRPC   │  recovery    │     etcd/consul    │
-│  encoding    │  tracing     │     dns/memory     │
-│              │  auth/...    │                    │
-├──────────────┼──────────────┼────────────────────┤
-│   config     │   errors     │     metadata       │  ← Infrastructure
-├──────────────┴──────────────┴────────────────────┤
-│                    data                          │  ← Data Access
-│  ─────────────────────────────────────           │
-│  rdbms:    SQLite / PostgreSQL / MySQL / TiDB    │
-│  cache:    Redis / Memcached                     │
-│  olap:     ClickHouse                            │
-│  search:   OpenSearch / Elasticsearch             │
-│  graph:    Neo4j / NebulaGraph / ArangoDB        │
-│  tsdb:     InfluxDB / IoTDB / QuestDB            │
-├──────────────────────────────────────────────────┤
-│              ecat-protos                         │  ← IDL Definitions
-│    (shared protobuf: errors, metadata, ...)      │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                         ecat-cli                             │
+│              (new │ proto │ run │ build)                     │
+├──────────────────────────────────────────────────────────────┤
+│                     ecat (App Lifecycle)                     │
+│      AppBuilder → App { name, servers, hooks, ... }         │
+├────────────────────┬────────────────────┬────────────────────┤
+│     transport      │    middleware      │     registry       │
+│     ─────────      │    ──────────      │     ────────       │
+│     HTTP (axum)    │    RecoveryLayer   │     etcd           │
+│     gRPC (tonic)   │    TracingLayer    │     consul         │
+│     encoding       │    LoggingLayer    │     dns            │
+│                    │    TimeoutLayer    │     memory         │
+├────────────────────┼────────────────────┼────────────────────┤
+│     config         │     errors         │     metadata       │
+│     ──────         │     ──────         │     ────────       │
+│     file / env     │     ErrorCode      │     key-value      │
+│     remote source  │     Error          │     HTTP/gRPC      │
+├────────────────────┴────────────────────┴────────────────────┤
+│                         data layer                            │
+│     ────────────────────────────────────────────────          │
+│     rdbms:   SQLite / PostgreSQL / MySQL / TiDB              │
+│     cache:   Redis / Memcached                               │
+│     olap:    ClickHouse                                      │
+│     search:  OpenSearch / Elasticsearch                      │
+│     graph:   Neo4j / NebulaGraph / ArangoDB                  │
+│     tsdb:    InfluxDB / Apache IoTDB / QuestDB               │
+├──────────────────────────────────────────────────────────────┤
+│                       ecat-protos                             │
+│     (shared .proto definitions: errors, metadata, ...)       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
