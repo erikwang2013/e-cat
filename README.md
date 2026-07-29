@@ -110,6 +110,28 @@
 | RDBMS | **sqlx** |
 | CLI | **clap** |
 
+## 支持的数据库
+
+| 类别 | 数据库 | Crate | Rust 驱动 |
+|------|--------|-------|-----------|
+| RDBMS | SQLite | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | MySQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | TiDB | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| 缓存 | Redis | `ecat-data-redis` | [redis-rs](https://crates.io/crates/redis) |
+| 缓存 | Memcached | `ecat-data-memcached` | [memcache](https://crates.io/crates/memcache) |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | [clickhouse-rs](https://crates.io/crates/clickhouse-rs) |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | [opensearch](https://crates.io/crates/opensearch) |
+| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | [elasticsearch](https://crates.io/crates/elasticsearch) |
+| 图 | Neo4j | `ecat-data-neo4j` | [neo4rs](https://crates.io/crates/neo4rs) |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | nebula-client |
+| 图 | ArangoDB | `ecat-data-arangodb` | [arangors](https://crates.io/crates/arangors) |
+| 时序 | InfluxDB | `ecat-data-influxdb` | [influxdb2](https://crates.io/crates/influxdb2) |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | iotdb-client-rs |
+| 时序 | QuestDB | `ecat-data-questdb` | questdb-rs (ILP) |
+
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。
+
 ## 项目结构
 
 ```

@@ -67,6 +67,28 @@ It provides an API-first development experience, pluggable component architectur
 | RDBMS | **sqlx** |
 | CLI | **clap** |
 
+## Supported Databases
+
+| Category | Database | Crate | Rust Driver |
+|----------|----------|-------|-------------|
+| RDBMS | SQLite | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | MySQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| RDBMS | TiDB | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
+| Cache | Redis | `ecat-data-redis` | [redis-rs](https://crates.io/crates/redis) |
+| Cache | Memcached | `ecat-data-memcached` | [memcache](https://crates.io/crates/memcache) |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | [clickhouse-rs](https://crates.io/crates/clickhouse-rs) |
+| Search | OpenSearch | `ecat-data-opensearch` | [opensearch](https://crates.io/crates/opensearch) |
+| Search | Elasticsearch | `ecat-data-elasticsearch` | [elasticsearch](https://crates.io/crates/elasticsearch) |
+| Graph | Neo4j | `ecat-data-neo4j` | [neo4rs](https://crates.io/crates/neo4rs) |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | nebula-client |
+| Graph | ArangoDB | `ecat-data-arangodb` | [arangors](https://crates.io/crates/arangors) |
+| TSDB | InfluxDB | `ecat-data-influxdb` | [influxdb2](https://crates.io/crates/influxdb2) |
+| TSDB | Apache IoTDB | `ecat-data-iotdb` | iotdb-client-rs |
+| TSDB | QuestDB | `ecat-data-questdb` | questdb-rs (ILP) |
+
+> All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`). Import the corresponding contrib crate as needed.
+
 ## Quick Start
 
 ```rust
