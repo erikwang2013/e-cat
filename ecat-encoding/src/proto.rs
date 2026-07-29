@@ -1,5 +1,6 @@
 use super::{Codec, CodecError};
 
+#[derive(Debug)]
 pub struct ProtoCodec;
 
 impl Codec for ProtoCodec {

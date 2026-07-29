@@ -21,6 +21,7 @@ pub enum CodecError {
     Decode(String),
 }
 
+#[derive(Debug)]
 pub enum CodecBox {
     Json(json::JsonCodec),
     Proto(proto::ProtoCodec),
@@ -56,10 +57,151 @@ pub fn codec_for(encoding: Encoding) -> CodecBox {
     }
 }
 
-pub fn codec_from_content_type(ct: &str) -> CodecBox {
+pub fn codec_from_content_type(ct: &str) -> Result<CodecBox, CodecError> {
     match ct {
-        "application/json" => CodecBox::Json(json::JsonCodec),
-        "application/protobuf" | "application/x-protobuf" => CodecBox::Proto(proto::ProtoCodec),
-        _ => CodecBox::Json(json::JsonCodec),
+        "application/json" => Ok(CodecBox::Json(json::JsonCodec)),
+        "application/protobuf" | "application/x-protobuf" => Ok(CodecBox::Proto(proto::ProtoCodec)),
+        other => Err(CodecError::Decode(format!(
+            "unsupported content type: {other}"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct TestPayload {
+        name: String,
+        count: u32,
+    }
+
+    // --- JsonCodec ---
+
+    #[test]
+    fn json_codec_encode_decode_roundtrip() {
+        let codec = json::JsonCodec;
+        let payload = TestPayload {
+            name: "test".into(),
+            count: 42,
+        };
+        let encoded = codec.encode(&payload).unwrap();
+        let decoded: TestPayload = codec.decode(&encoded).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn json_codec_content_type() {
+        assert_eq!(json::JsonCodec.content_type(), "application/json");
+    }
+
+    #[test]
+    fn json_codec_decode_invalid_data() {
+        let result: Result<TestPayload, _> = json::JsonCodec.decode(b"not json");
+        assert!(result.is_err());
+    }
+
+    // --- ProtoCodec ---
+
+    #[test]
+    fn proto_codec_encode_returns_error() {
+        let payload = TestPayload {
+            name: "test".into(),
+            count: 1,
+        };
+        let result = proto::ProtoCodec.encode(&payload);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn proto_codec_content_type() {
+        assert_eq!(proto::ProtoCodec.content_type(), "application/protobuf");
+    }
+
+    // --- CodecBox ---
+
+    #[test]
+    fn codec_box_json_roundtrip() {
+        let codec = CodecBox::Json(json::JsonCodec);
+        let payload = TestPayload {
+            name: "boxed".into(),
+            count: 7,
+        };
+        let encoded = codec.encode(&payload).unwrap();
+        let decoded: TestPayload = codec.decode(&encoded).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn codec_box_json_content_type() {
+        let codec = CodecBox::Json(json::JsonCodec);
+        assert_eq!(codec.content_type(), "application/json");
+    }
+
+    #[test]
+    fn codec_box_proto_returns_errors() {
+        let codec = CodecBox::Proto(proto::ProtoCodec);
+        let payload = TestPayload {
+            name: "p".into(),
+            count: 1,
+        };
+        assert!(codec.encode(&payload).is_err());
+        assert!(codec.decode::<TestPayload>(b"data").is_err());
+    }
+
+    // --- codec_for ---
+
+    #[test]
+    fn codec_for_json() {
+        let codec = codec_for(Encoding::Json);
+        assert_eq!(codec.content_type(), "application/json");
+    }
+
+    #[test]
+    fn codec_for_protobuf() {
+        let codec = codec_for(Encoding::Protobuf);
+        assert_eq!(codec.content_type(), "application/protobuf");
+    }
+
+    // --- codec_from_content_type ---
+
+    #[test]
+    fn codec_from_ct_json() {
+        let codec = codec_from_content_type("application/json").unwrap();
+        assert_eq!(codec.content_type(), "application/json");
+    }
+
+    #[test]
+    fn codec_from_ct_protobuf() {
+        let codec = codec_from_content_type("application/protobuf").unwrap();
+        assert_eq!(codec.content_type(), "application/protobuf");
+    }
+
+    #[test]
+    fn codec_from_ct_x_protobuf() {
+        let codec = codec_from_content_type("application/x-protobuf").unwrap();
+        assert_eq!(codec.content_type(), "application/protobuf");
+    }
+
+    #[test]
+    fn codec_from_ct_unknown_returns_error() {
+        let result = codec_from_content_type("application/msgpack");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            CodecError::Decode(msg) => assert!(msg.contains("msgpack")),
+            _ => panic!("expected Decode error"),
+        }
+    }
+
+    // --- Encoding ---
+
+    #[test]
+    fn encoding_variants() {
+        assert_eq!(Encoding::Json, Encoding::Json);
+        assert_eq!(Encoding::Protobuf, Encoding::Protobuf);
+        assert_ne!(Encoding::Json, Encoding::Protobuf);
     }
 }

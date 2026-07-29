@@ -1,5 +1,6 @@
 use super::{Codec, CodecError};
 
+#[derive(Debug)]
 pub struct JsonCodec;
 
 impl Codec for JsonCodec {

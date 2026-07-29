@@ -67,3 +67,98 @@ impl IntoIterator for Metadata {
         self.inner.into_iter()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_is_empty() {
+        let m = Metadata::new();
+        assert!(m.get("anything").is_none());
+        assert!(m.trace_id().is_none());
+    }
+
+    #[test]
+    fn set_and_get() {
+        let mut m = Metadata::new();
+        m.set("key1", "val1");
+        m.set("key2".to_string(), "val2".to_string());
+        assert_eq!(m.get("key1"), Some("val1"));
+        assert_eq!(m.get("key2"), Some("val2"));
+        assert_eq!(m.get("missing"), None);
+    }
+
+    #[test]
+    fn set_overwrites() {
+        let mut m = Metadata::new();
+        m.set("key", "old");
+        m.set("key", "new");
+        assert_eq!(m.get("key"), Some("new"));
+    }
+
+    #[test]
+    fn trace_id_returns_value() {
+        let mut m = Metadata::new();
+        assert!(m.trace_id().is_none());
+        m.set(TRACE_ID, "abc-123");
+        assert_eq!(m.trace_id(), Some("abc-123"));
+    }
+
+    #[test]
+    fn from_http_header_map() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("x-custom", "custom-val".parse().unwrap());
+
+        let m = Metadata::from(&headers);
+        assert_eq!(m.get("content-type"), Some("application/json"));
+        assert_eq!(m.get("x-custom"), Some("custom-val"));
+    }
+
+    #[test]
+    fn from_http_header_map_skips_non_utf8() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("valid", "ok".parse().unwrap());
+        headers.insert("binary", http::HeaderValue::from_bytes(b"\xff\xfe").unwrap());
+
+        let m = Metadata::from(&headers);
+        assert_eq!(m.get("valid"), Some("ok"));
+        assert!(m.get("binary").is_none());
+    }
+
+    #[test]
+    fn from_tonic_metadata_map_ascii() {
+        let mut map = tonic::metadata::MetadataMap::new();
+        map.insert("grpc-key", "grpc-val".parse().unwrap());
+
+        let m = Metadata::from(&map);
+        assert_eq!(m.get("grpc-key"), Some("grpc-val"));
+    }
+
+    #[test]
+    fn from_tonic_metadata_map_binary_skipped() {
+        let mut map = tonic::metadata::MetadataMap::new();
+        map.insert_bin(
+            "bin-key-bin",
+            tonic::metadata::MetadataValue::from_bytes(b"\x00\x01\x02"),
+        );
+
+        let m = Metadata::from(&map);
+        assert!(m.get("bin-key-bin").is_none());
+    }
+
+    #[test]
+    fn into_iter_yields_all_pairs() {
+        let mut m = Metadata::new();
+        m.set("a", "1");
+        m.set("b", "2");
+
+        let mut pairs: Vec<(String, String)> = m.into_iter().collect();
+        pairs.sort();
+        assert_eq!(pairs, vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string()),
+        ]);
+    }
+}
