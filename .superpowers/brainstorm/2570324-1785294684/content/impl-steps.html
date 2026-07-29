@@ -1,0 +1,138 @@
+<h2>实现步骤</h2>
+<p class="subtitle">第三部分：分阶段实现计划（共 7 个阶段）</p>
+
+<div class="section">
+  <h3>Phase 1：项目骨架</h3>
+  <div class="mockup">
+    <div class="mockup-header">Cargo Workspace 搭建 + 基础工具链</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>创建 workspace Cargo.toml，配置 members</li>
+        <li>搭建 <code>ecat-protos</code> crate —— 定义 errors.proto、metadata.proto</li>
+        <li>搭建 <code>ecat-errors</code> crate —— 基于 protobuf 的错误码体系</li>
+        <li>搭建 <code>ecat-metadata</code> crate —— 统一的元数据 key-value 传递</li>
+        <li>搭建 <code>ecat-encoding</code> crate —— JSON + Protobuf 序列化</li>
+        <li>搭建 <code>ecat-logging</code> crate —— tracing 集成 + 日志接口</li>
+        <li>CI 配置（GitHub Actions）：build + test + clippy + fmt</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 2：Transport 层</h3>
+  <div class="mockup">
+    <div class="mockup-header">HTTP + gRPC 双协议支持</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>搭建 <code>ecat-transport</code> crate —— 定义 Transport trait 和 Server trait</li>
+        <li>搭建 <code>ecat-transport-http</code> crate —— axum 集成，HTTP Server</li>
+        <li>搭建 <code>ecat-transport-grpc</code> crate —— tonic 集成，gRPC Server</li>
+        <li>实现 HTTP/gRPC 的双向元数据传递（header ↔ metadata）</li>
+        <li>实现优雅停机（graceful shutdown）支持</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 3：Middleware 体系</h3>
+  <div class="mockup">
+    <div class="mockup-header">tower::Layer 中间件实现</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>搭建 <code>ecat-middleware</code> crate —— 定义 Middleware trait（tower::Layer）</li>
+        <li>内置 recovery 中间件（catch panic）</li>
+        <li>内置 tracing 中间件（注入 trace_id / span_id）</li>
+        <li>内置 logging 中间件（请求日志）</li>
+        <li>内置 metrics 中间件（Prometheus 采集）</li>
+        <li>内置 timeout 中间件</li>
+        <li>中间件链组合器（tower::ServiceBuilder）</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 4：App 生命周期</h3>
+  <div class="mockup">
+    <div class="mockup-header">应用编排 + 信号处理</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>搭建 <code>ecat</code> 核心 crate</li>
+        <li>实现 AppBuilder → App 生命周期管理</li>
+        <li>实现多 Server 并发启动（HTTP + gRPC 同时运行）</li>
+        <li>实现 OS 信号处理（SIGTERM/SIGINT graceful shutdown）</li>
+        <li>实现 LifecycleHook（on_start / on_stop）</li>
+        <li>典型使用示例:</li>
+      </ul>
+      <pre style="font-size:12px;background:var(--bg-primary);padding:12px">
+let app = App::builder()
+    .name("my-service")
+    .http_server(http_srv)
+    .grpc_server(grpc_srv)
+    .with_registry(etcd_registry)
+    .on_start(|| async { tracing::info!("started") })
+    .build()?;
+
+app.run().await?;  // blocks until SIGTERM
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 5：Registry & Config</h3>
+  <div class="mockup">
+    <div class="mockup-header">服务注册发现 + 配置管理</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>搭建 <code>ecat-registry</code> crate —— Registry trait + 内存实现</li>
+        <li>搭建 <code>ecat-registry-etcd</code> contrib crate</li>
+        <li>搭建 <code>ecat-config</code> crate —— ConfigSource trait</li>
+        <li>内置 file/env 配置源</li>
+        <li>实现配置热加载（watch 机制）</li>
+        <li>搭建 <code>ecat-metrics</code> crate —— Prometheus 集成</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 6：CLI 工具</h3>
+  <div class="mockup">
+    <div class="mockup-header">开发者工具链</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>搭建 <code>ecat-cli</code> crate（使用 clap）</li>
+        <li><code>ecat new &lt;name&gt;</code> —— 脚手架生成项目</li>
+        <li><code>ecat proto add &lt;file&gt;</code> —— 添加 proto 文件</li>
+        <li><code>ecat proto client &lt;file&gt;</code> —— 生成客户端代码</li>
+        <li><code>ecat proto server &lt;file&gt;</code> —— 生成服务端代码</li>
+        <li><code>ecat run</code> —— 开发模式运行（带热重载）</li>
+        <li><code>ecat build</code> —— 生产构建</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 7：生态 & 文档</h3>
+  <div class="mockup">
+    <div class="mockup-header">文档 + 示例 + contrib 生态</div>
+    <div class="mockup-body">
+      <ul style="line-height:1.8">
+        <li>参考文档（mdBook）—— 快速开始、核心概念、API 参考</li>
+        <li>示例项目（examples/helloworld）</li>
+        <li>项目模板（ecat-layout 仓库）</li>
+        <li>更多 contrib crate：registry-consul、config-nacos、middleware-auth</li>
+        <li>性能基准测试（benchmarks/）</li>
+        <li>发布到 crates.io</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;color:var(--text-secondary)">
+  以上 7 个阶段。确认后我将把这些内容整理成设计文档提交。
+</p>
