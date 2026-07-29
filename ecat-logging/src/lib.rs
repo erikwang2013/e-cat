@@ -1,7 +1,7 @@
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-pub fn init(service_name: &str) {
+pub fn init(_service_name: &str) {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
         .with_level(true)
