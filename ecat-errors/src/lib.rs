@@ -31,6 +31,10 @@ impl Error {
         }
     }
 
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self
