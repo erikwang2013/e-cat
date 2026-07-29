@@ -31,7 +31,9 @@ impl Registry for MemoryRegistry {
             RegistryError::Other(format!("lock poisoned: {}", e))
         })?;
         services.insert(id.clone(), service.clone());
-        Ok(Registration { id, service })
+        Ok(Registration::new(id, service, Arc::new(MemoryRegistry {
+            services: Arc::clone(&self.services),
+        })))
     }
 
     async fn deregister(&self, id: &str) -> Result<(), RegistryError> {

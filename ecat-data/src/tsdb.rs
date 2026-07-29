@@ -3,11 +3,45 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
+pub enum FieldValue {
+    Float(f64),
+    Int(i64),
+    String(String),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone)]
 pub struct DataPoint {
     pub measurement: String,
     pub tags: HashMap<String, String>,
-    pub fields: HashMap<String, f64>,
+    pub fields: HashMap<String, FieldValue>,
     pub timestamp: Option<i64>,
+}
+
+impl DataPoint {
+    pub fn new(measurement: impl Into<String>) -> Self {
+        Self {
+            measurement: measurement.into(),
+            tags: HashMap::new(),
+            fields: HashMap::new(),
+            timestamp: None,
+        }
+    }
+
+    pub fn with_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.tags.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn with_field(mut self, key: impl Into<String>, value: FieldValue) -> Self {
+        self.fields.insert(key.into(), value);
+        self
+    }
+
+    pub fn with_timestamp(mut self, ts: i64) -> Self {
+        self.timestamp = Some(ts);
+        self
+    }
 }
 
 #[async_trait]

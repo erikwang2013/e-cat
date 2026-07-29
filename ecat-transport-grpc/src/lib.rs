@@ -1,15 +1,20 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use ecat_transport::Server as TransportServer;
 use tonic::service::Routes;
-use tonic::transport::Server as TonicServer;
 
 pub struct GrpcServer {
     addr: String,
+    routes: Option<Routes>,
 }
 
 impl GrpcServer {
     pub fn new(addr: impl Into<String>) -> Self {
-        Self { addr: addr.into() }
+        Self { addr: addr.into(), routes: None }
+    }
+
+    pub fn routes(mut self, routes: Routes) -> Self {
+        self.routes = Some(routes);
+        self
     }
 }
 
@@ -17,9 +22,11 @@ impl GrpcServer {
 impl TransportServer for GrpcServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let addr = self.addr.parse()?;
-        let mut server = TonicServer::builder();
-        let router = server.add_routes(Routes::default());
-        router.serve(addr).await?;
+        let routes = self.routes.clone().unwrap_or_default();
+        tonic::transport::Server::builder()
+            .add_routes(routes)
+            .serve(addr)
+            .await?;
         Ok(())
     }
 

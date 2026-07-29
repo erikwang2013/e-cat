@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use clap::{Parser, Subcommand};
+use std::process::{self, Command};
 
 #[derive(Parser)]
 #[command(name = "ecat")]
@@ -86,17 +87,32 @@ fn main() {
         },
         Commands::Run => {
             println!("Starting development server...");
-            println!("  cargo run");
-            println!("  watching for changes...");
-            println!("Server running at http://localhost:8000");
+            let status = Command::new("cargo")
+                .arg("run")
+                .status()
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to start: {}", e);
+                    process::exit(1);
+                });
+            if !status.success() {
+                process::exit(status.code().unwrap_or(1));
+            }
         }
         Commands::Build { release } => {
+            let mut cmd = Command::new("cargo");
+            cmd.arg("build");
             if release {
                 println!("Building in release mode...");
-                println!("Running: cargo build --release");
+                cmd.arg("--release");
             } else {
                 println!("Building...");
-                println!("Running: cargo build");
+            }
+            let status = cmd.status().unwrap_or_else(|e| {
+                eprintln!("Build failed: {}", e);
+                process::exit(1);
+            });
+            if !status.success() {
+                process::exit(status.code().unwrap_or(1));
             }
             println!("Build complete!");
         }

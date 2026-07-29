@@ -5,6 +5,7 @@ pub use memory::MemoryRegistry;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceInfo {
@@ -33,11 +34,23 @@ impl ServiceInfo {
 pub struct Registration {
     pub id: String,
     pub service: ServiceInfo,
+    registry: Option<std::sync::Arc<dyn Registry>>,
+}
+
+impl Registration {
+    pub(crate) fn new(id: String, service: ServiceInfo, registry: Arc<dyn Registry>) -> Self {
+        Self { id, service, registry: Some(registry) }
+    }
 }
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        // auto-deregister on drop — handled by the registry implementation
+        if let Some(reg) = self.registry.take() {
+            let id = self.id.clone();
+            tokio::spawn(async move {
+                let _ = reg.deregister(&id).await;
+            });
+        }
     }
 }
 

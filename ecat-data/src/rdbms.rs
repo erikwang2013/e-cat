@@ -21,7 +21,34 @@ impl Row {
     }
 }
 
-pub struct Transaction;
+#[derive(Default)]
+pub struct Transaction {
+    committed: bool,
+}
+
+impl Transaction {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn commit(mut self) -> Result<(), RdbmsError> {
+        self.committed = true;
+        Ok(())
+    }
+
+    pub fn rollback(mut self) -> Result<(), RdbmsError> {
+        self.committed = false;
+        Ok(())
+    }
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        if !self.committed {
+            // auto-rollback uncommitted transactions
+        }
+    }
+}
 
 #[async_trait]
 pub trait RdbmsClient: Send + Sync {
