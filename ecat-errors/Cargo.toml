@@ -1,0 +1,12 @@
+[package]
+name = "ecat-errors"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ecat-protos = { path = "../ecat-protos" }
+prost.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+http = "1"
+tonic.workspace = true
