@@ -1,0 +1,9 @@
+[package]
+name = "ecat-logging"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+opentelemetry.workspace = true
