@@ -20,6 +20,13 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+name = "e-cat"
+version = "1.0.1"
+edition = "2026"
+license = "Apache-2.0"
+
+
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 prost = "0.13"
