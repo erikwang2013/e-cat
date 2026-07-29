@@ -1,0 +1,10 @@
+[package]
+name = "ecat-transport-grpc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ecat-transport = { path = "../ecat-transport" }
+tonic.workspace = true
+tokio.workspace = true
+async-trait.workspace = true

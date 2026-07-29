@@ -1,0 +1,11 @@
+[package]
+name = "ecat-transport-http"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ecat-transport = { path = "../ecat-transport" }
+axum.workspace = true
+tokio.workspace = true
+tower.workspace = true
+async-trait.workspace = true

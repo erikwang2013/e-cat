@@ -6,6 +6,8 @@ members = [
     "ecat-encoding",
     "ecat-logging",
     "ecat-transport",
+    "ecat-transport-http",
+    "ecat-transport-grpc",
 ]
 resolver = "2"
 
