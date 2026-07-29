@@ -1,0 +1,116 @@
+<h2>数据流与 Crate 依赖关系</h2>
+<p class="subtitle">第二部分：组件交互与数据流</p>
+
+<div class="section">
+  <h3>请求处理流程</h3>
+  <div class="mockup">
+    <div class="mockup-header">一次请求的完整路径</div>
+    <div class="mockup-body">
+      <pre style="font-size:12px;line-height:1.9;background:var(--bg-primary);padding:16px">
+客户端
+  │
+  ├─ HTTP/1.1 :8000 ──→ axum::Router
+  │                        │
+  └─ gRPC  :9000  ──→ tonic::Server
+                           │
+                    ┌──────┴──────┐
+                    │  Middleware  │  ← tower::Layer 链
+                    │  ─────────   │
+                    │  1. Recovery │     捕获 panic
+                    │  2. Tracing  │     注入 trace_id
+                    │  3. Logging  │     请求日志
+                    │  4. Auth     │     认证/鉴权
+                    │  5. Metrics  │     指标采集
+                    └──────┬──────┘
+                           │
+                    ┌──────┴──────┐
+                    │   Handler   │  ← 用户业务逻辑
+                    │  (tower::   │
+                    │   Service)  │
+                    └──────┬──────┘
+                           │
+                    ┌──────┴──────┐
+                    │   Response  │  ← 编码/序列化
+                    │  JSON/Protobuf
+                    └─────────────┘
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Crate 依赖图</h3>
+  <div class="mockup">
+    <div class="mockup-header">依赖关系（箭头 = 依赖方向）</div>
+    <div class="mockup-body">
+      <pre style="font-size:11px;line-height:1.9;background:var(--bg-primary);padding:16px">
+                        ecat-app
+                       (AppBuilder)
+                      /     |      \
+                     /      |       \
+            ecat-transport  ecat-middleware  ecat-registry
+            (tower::Service (tower::Layer     (Registry trait)
+             + axum/tonic)   + 内置 layer)       |
+               /    \              |          /      \
+              /      \             |         /        \
+    ecat-transport-http  ecat-transport-grpc  ecat-registry-etcd ...
+         (axum)              (tonic)
+
+    所有 crate 依赖：
+    ├── ecat-errors    (protobuf 错误码定义)
+    ├── ecat-metadata  (元数据传递)
+    ├── ecat-config    (配置源接口)
+    ├── ecat-logging   (tracing 集成)
+    ├── ecat-encoding  (JSON + Protobuf)
+    ├── ecat-metrics   (Prometheus)
+    └── ecat-protos    (.proto 共享定义)
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键 Trait 设计</h3>
+  <div class="mockup">
+    <div class="mockup-header">核心接口定义</div>
+    <div class="mockup-body">
+      <pre style="font-size:12px;line-height:1.6;background:var(--bg-primary);padding:16px">
+// App 生命周期
+pub struct App {
+    http_server: Option&lt;HttpServer&gt;,
+    grpc_server: Option&lt;GrpcServer&gt;,
+    registry:    Option&lt;Box&lt;dyn Registry&gt;&gt;,
+    lifecycle:   Vec&lt;Box&lt;dyn LifecycleHook&gt;&gt;,
+}
+impl App { pub async fn run(&mut self) -> Result&lt;()&gt;; }
+impl App { pub async fn stop(&mut self) -> Result&lt;()&gt;; }
+
+// 注册发现
+#[async_trait]
+pub trait Registry: Send + Sync {
+    async fn register(&self, service: &ServiceInfo) -> Result&lt;Registration&gt;;
+    async fn discover(&self, name: &str) -> Result&lt;Vec&lt;ServiceInfo&gt;&gt;;
+    async fn watch(&self, name: &str) -> Result&lt;WatchStream&gt;;
+}
+
+// 配置源
+#[async_trait]
+pub trait ConfigSource: Send + Sync {
+    async fn load(&self) -> Result&lt;HashMap&lt;String, Value&gt;&gt;;
+    async fn watch(&self) -> Result&lt;WatchStream&gt;;
+}
+
+// 生命周期钩子
+#[async_trait]
+pub trait LifecycleHook: Send + Sync {
+    async fn on_start(&self) -> Result&lt;()&gt;;
+    async fn on_stop(&self) -> Result&lt;()&gt;;
+}
+      </pre>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;color:var(--text-secondary)">
+  确认数据流设计和核心 trait 接口？没问题的话接下来展示实现步骤。
+</p>

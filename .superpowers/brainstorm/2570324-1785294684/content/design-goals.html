@@ -1,0 +1,120 @@
+<h2>e-cat 设计目标与架构原理</h2>
+<p class="subtitle">第一部分：设计目标</p>
+
+<div class="section">
+  <h3>设计目标</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600;width:140px">1. Kratos 对齐</td>
+      <td style="padding:12px">保持 Kratos 的微服务理念 —— API-first、可插拔、统一抽象。让熟悉 Kratos 的开发者可以无缝上手</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600">2. Rust 惯用</td>
+      <td style="padding:12px">不强行复制 Go 模式。使用 tower::Service、trait 泛型、零成本抽象。尊重 Rust 生态现有标准，不做「Go in Rust」</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600">3. 类型安全</td>
+      <td style="padding:12px">利用 Rust 类型系统，在编译期捕获错误。Protobuf 定义的错误码、请求/响应类型全部强类型化</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600">4. 可插拔</td>
+      <td style="padding:12px">Registry、Config、Logging、Encoding 全部通过 trait 抽象。默认提供生产可用实现，允许替换</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600">5. 工具链完备</td>
+      <td style="padding:12px">CLI 工具支持项目脚手架、proto 代码生成、运行开发服务。对标 kratos new / proto / run</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color)">
+      <td style="padding:12px;font-weight:600">6. 性能优先</td>
+      <td style="padding:12px">利用 Rust 的零成本抽象，在提供 Kratos 级开发体验的同时，实现 Go 无法企及的吞吐和延迟</td>
+    </tr>
+    <tr>
+      <td style="padding:12px;font-weight:600">7. 可观测</td>
+      <td style="padding:12px">tracing + OpenTelemetry + Prometheus 开箱即用。每个请求都有 trace_id，每个中间件都埋点</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>核心原则</h3>
+  <div class="mockup">
+    <div class="mockup-header">Kratos 概念 → Rust 实现映射</div>
+    <div class="mockup-body">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="border-bottom:1px solid var(--border-color);background:var(--bg-secondary)">
+          <th style="padding:10px;text-align:left">Kratos (Go)</th>
+          <th style="padding:10px;text-align:left">e-cat (Rust)</th>
+          <th style="padding:10px;text-align:left">设计理由</th>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>kratos.New()</code></td>
+          <td style="padding:8px"><code>ecat::App::builder()</code></td>
+          <td style="padding:8px">Builder 模式更 Rust 化</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>http.Handler</code></td>
+          <td style="padding:8px"><code>tower::Service</code></td>
+          <td style="padding:8px">复用 Rust 生态标准</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>http.Server</code></td>
+          <td style="padding:8px"><code>axum::Router</code></td>
+          <td style="padding:8px">社区最主流的 HTTP 框架</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>grpc.Server</code></td>
+          <td style="padding:8px"><code>tonic::transport::Server</code></td>
+          <td style="padding:8px">最成熟的 gRPC 实现</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>proto generate</code></td>
+          <td style="padding:8px"><code>prost + tonic-build</code></td>
+          <td style="padding:8px">Rust 社区标准 protobuf</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border-color)">
+          <td style="padding:8px"><code>registry.Discovery</code></td>
+          <td style="padding:8px"><code>Registry trait</code></td>
+          <td style="padding:8px">可插拔注册发现</td>
+        </tr>
+        <tr>
+          <td style="padding:8px"><code>config.Source</code></td>
+          <td style="padding:8px"><code>ConfigSource trait</code></td>
+          <td style="padding:8px">多源配置加载</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>整体架构分层</h3>
+  <div class="mockup">
+    <div class="mockup-header">e-cat 架构层次</div>
+    <div class="mockup-body">
+      <pre style="font-size:13px;line-height:1.8;background:var(--bg-primary);padding:16px">
+┌──────────────────────────────────────────────────┐
+│                  ecat-cli                        │  ← CLI 工具链
+│        (new | proto | run | build)               │
+├──────────────────────────────────────────────────┤
+│              ecat (App 生命周期)                   │  ← 应用编排层
+│    AppBuilder → App { http_srv, grpc_srv, ... }  │
+├──────────────┬──────────────┬────────────────────┤
+│  transport   │  middleware  │     registry       │  ← 核心组件层
+│  ─────────   │  ─────────   │     ────────       │
+│  HTTP/gRPC   │  recovery    │     etcd/consul    │
+│  ecoding     │  tracing     │     dns/memory     │
+│              │  auth/...    │                    │
+├──────────────┼──────────────┼────────────────────┤
+│   config     │   errors     │     metadata       │  ← 基础设施层
+├──────────────┴──────────────┴────────────────────┤
+│              ecat-protos                         │  ← IDL 定义
+│    (共享 protobuf 定义: errors, metadata, ...)    │
+└──────────────────────────────────────────────────┘
+      </pre>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:24px;color:var(--text-secondary)">
+  看看设计目标和架构分层是否合理？有什么想调整的吗？
+</p>

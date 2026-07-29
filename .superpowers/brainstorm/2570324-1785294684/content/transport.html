@@ -1,0 +1,120 @@
+<h2>Transport 层设计：HTTP/gRPC 统一中间件</h2>
+<p class="subtitle">这是 e-cat 最核心的架构决策 — 如何让两套协议共享同一套中间件链</p>
+
+<div class="section">
+  <h3>方案 A：Trait 抽象 + 协议适配器</h3>
+  <div class="mockup">
+    <div class="mockup-header">统一 Service 接口 + 协议适配器（对标 Kratos）</div>
+    <div class="mockup-body">
+      <pre style="font-size:12px;line-height:1.6">
+// 核心 trait —— 所有传输协议的统一接口
+#[async_trait]
+pub trait Service: Send + Sync {
+    async fn call(&self, ctx: Context, input: Request) -> Result<Response, Error>;
+}
+
+// 中间件就是 Service 的包装器
+#[async_trait]
+pub trait Middleware: Send + Sync {
+    async fn call(&self, ctx: Context, input: Request, next: BoxService) -> Result<Response, Error>;
+}
+
+// HTTP Server → 将 http::Request 转为 e-cat Request，调用 Service
+// gRPC Server → 将 tonic::Request 转为 e-cat Request，调用 Service
+//
+// 请求流：
+//  HTTP Request  ──→ [解码] ──→ ecat::Request ──→ [MW1 → MW2 → Handler]
+//  gRPC Request ──→ [解码] ──→ ecat::Request ──→ [MW1 → MW2 → Handler]
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>完美对应 Kratos 设计</li><li>中间件对 HTTP/gRPC 完全透明</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>多了抽象层开销</li><li>需要维护与 axum/tonic 的适配器</li></ul></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>方案 B：直接使用 Axum/Tonic 原生机制 + 共享组件</h3>
+  <div class="mockup">
+    <div class="mockup-header">无统一抽象，共享底层组件</div>
+    <div class="mockup-body">
+      <pre style="font-size:12px;line-height:1.6">
+// 不提供统一 Service trait，而是：
+// 1. 共享的 Context（metadata、trace_id 等）
+// 2. 共享的类型（ecat::Request、ecat::Response、ecat::Error）
+// 3. 各自用原生中间件机制：
+
+// HTTP:  axum::middleware::from_fn()
+// gRPC:  tonic::service::layer()
+
+// 用户写两次 middleware，但共享逻辑提取到工具函数
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>零抽象开销，直接使用框架能力</li><li>维护成本低</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>违背 Kratos 统一抽象理念</li><li>HTTP/gRPC 各自写中间件</li></ul></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>方案 C：Tower-based Service（推荐）</h3>
+  <div class="mockup">
+    <div class="mockup-header">复用 Tower Service Trait + 自定义 Layer</div>
+    <div class="mockup-body">
+      <pre style="font-size:12px;line-height:1.6">
+// Rust 生态已有的标准抽象 —— tower::Service
+// axum 和 tonic 都基于 tower 构建！
+
+use tower::{Service, Layer};
+use std::future::Future;
+
+// e-cat Request = tonic::Request 或 http::Request
+// Layer trait = 中间件工厂，生成 Service 包装
+
+// HTTP Middleware
+let http_layer = tower::ServiceBuilder::new()
+    .layer(RecoveryLayer::new())
+    .layer(TracingLayer::new())
+    .layer(AuthLayer::new());
+
+// gRPC Middleware —— 完全相同的 layer 链！
+let grpc_layer = tower::ServiceBuilder::new()
+    .layer(RecoveryLayer::new())
+    .layer(TracingLayer::new())
+    .layer(AuthLayer::new());
+
+// e-cat 的角色：提供标准 Layer 实现，不重新发明 trait
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>复用 Rust 生态标准 trait</li><li>axum/tonic 原生兼容，零适配器</li><li>保持中间件共享能力</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>与 Kratos 的设计不完全一致</li></ul></div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="A" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Trait 抽象 + 适配器</h3>
+      <p>完全对标 Kratos 设计，自定义 Service trait</p>
+    </div>
+  </div>
+  <div class="option" data-choice="B" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>原生机制 + 共享组件</h3>
+      <p>直接用 axum/tonic，只共享底层类型</p>
+    </div>
+  </div>
+  <div class="option" data-choice="C" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Tower-based Service（推荐）</h3>
+      <p>复用 tower::Service，生态原生兼容</p>
+    </div>
+  </div>
+</div>

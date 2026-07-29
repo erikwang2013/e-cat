@@ -1,0 +1,117 @@
+<h2>e-cat 整体架构设计（初稿）</h2>
+<p class="subtitle">对标 Kratos v3，Rust 实现。选择你倾向的架构方案</p>
+
+<div class="section">
+  <h3>方案 A：单一 Crate + Feature Flags</h3>
+  <div class="mockup">
+    <div class="mockup-header">单仓库单 Crate 模式</div>
+    <div class="mockup-body">
+      <pre style="font-size:13px;line-height:1.6">
+e-cat/
+├── src/
+│   ├── app.rs          # 应用生命周期（kratos.New / app.Run）
+│   ├── transport/
+│   │   ├── mod.rs
+│   │   ├── http.rs     # axum 集成
+│   │   └── grpc.rs     # tonic 集成
+│   ├── middleware/      # 中间件抽象层
+│   ├── registry/        # 服务注册发现接口
+│   ├── config/          # 配置多源加载
+│   ├── logging/         # tracing 集成
+│   ├── encoding/        # 序列化/反序列化
+│   ├── errors/          # 错误码体系
+│   ├── metadata/        # 元数据传输
+│   └── metrics/         # Prometheus 指标
+├── Cargo.toml           # feature flags 控制依赖
+└── e-cat-cli/           # 独立的 CLI 工具 crate
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>简单直观，开发初期快</li><li>一个版本号管理所有</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>编译慢，改一行编译整个 crate</li><li>feature flag 组合爆炸</li><li>难以独立演进各模块</li></ul></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>方案 B：Cargo Workspace 多 Crate</h3>
+  <div class="mockup">
+    <div class="mockup-header">Workspace 多 Crate 模式（推荐）</div>
+    <div class="mockup-body">
+      <pre style="font-size:13px;line-height:1.6">
+e-cat/                          # workspace root
+├── Cargo.toml                  # [workspace] members
+├── ecat/                       # 核心 crate：应用生命周期
+├── ecat-transport/             # HTTP + gRPC 传输抽象
+├── ecat-transport-http/        # axum 实现
+├── ecat-transport-grpc/        # tonic 实现
+├── ecat-middleware/            # 通用中间件
+├── ecat-registry/              # 服务注册/发现接口
+├── ecat-registry-etcd/         # etcd 注册实现（contrib）
+├── ecat-config/                # 配置管理
+├── ecat-config-file/           # 文件配置源
+├── ecat-logging/               # tracing 集成
+├── ecat-encoding/              # 编码（JSON/Protobuf）
+├── ecat-errors/                # 错误码定义
+├── ecat-metadata/              # 元数据传递
+├── ecat-metrics/               # Prometheus 集成
+├── ecat-protos/                # Protobuf 定义
+├── ecat-cli/                   # CLI 工具
+└── examples/                   # 示例项目
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>模块独立编译，增量编译快</li><li>版本独立，用户按需引入</li><li>类似 Kratos contrib 生态</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>初始结构复杂</li><li>跨 crate 类型共享需要设计 trait</li></ul></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>方案 C：混合模式 — 核心单 Crate + Contrib 多 Crate</h3>
+  <div class="mockup">
+    <div class="mockup-header">核心紧凑 + 扩展独立</div>
+    <div class="mockup-body">
+      <pre style="font-size:13px;line-height:1.6">
+e-cat/
+├── ecat/                    # 核心：app/transport/middleware/errors/config/logging
+├── ecat-contrib/
+│   ├── registry-etcd/       # etcd 注册
+│   ├── registry-consul/     # consul 注册
+│   ├── config-remote/       # 远程配置源
+│   └── middleware-auth/     # 认证中间件
+├── ecat-protos/             # proto 定义
+├── ecat-cli/                # CLI 工具
+└── examples/
+      </pre>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>优点</h4><ul><li>核心 API 在一个 crate 中，类型共享方便</li><li>扩展生态保持独立</li></ul></div>
+    <div class="cons"><h4>缺点</h4><ul><li>核心 crate 可能膨胀</li><li>边界不如纯多 crate 清晰</li></ul></div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="A" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>单一 Crate + Feature Flags</h3>
+      <p>快速起步，后期迁移成本高</p>
+    </div>
+  </div>
+  <div class="option" data-choice="B" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Cargo Workspace 多 Crate</h3>
+      <p>独立模块，增量编译，推荐</p>
+    </div>
+  </div>
+  <div class="option" data-choice="C" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合模式</h3>
+      <p>核心集中 + 扩展独立</p>
+    </div>
+  </div>
+</div>
