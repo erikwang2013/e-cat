@@ -1,0 +1,11 @@
+[package]
+name = "ecat-security"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+security-rust = "1.0"
+tracing = "0.1"
+tower = { version = "0.5", features = ["util"] }
+http = "1"

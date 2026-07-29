@@ -565,6 +565,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-security"
+version = "0.1.0"
+dependencies = [
+ "http",
+ "security-rust",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
 name = "ecat-transport"
 version = "0.1.0"
 dependencies = [
@@ -1735,6 +1745,16 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "security-rust"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65999385099ea7718f7aba9995270b82877d2132309c17278bc7338e93d9a7da"
+dependencies = [
+ "regex",
+ "thiserror 2.0.19",
+]
 
 [[package]]
 name = "serde"

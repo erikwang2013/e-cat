@@ -16,13 +16,14 @@ members = [
     "ecat-data-sqlx",
     "ecat",
     "ecat-cli",
+    "ecat-security",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
 name = "e-cat"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2026"
 license = "Apache-2.0"
 

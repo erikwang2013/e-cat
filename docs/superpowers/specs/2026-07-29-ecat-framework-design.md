@@ -107,6 +107,7 @@ e-cat/                          # workspace root
 ├── ecat-data-iotdb/            # Apache IoTDB 客户端（contrib）
 ├── ecat-data-questdb/          # QuestDB 客户端（contrib）
 ├── ecat-protos/                # Protobuf 定义
+├── ecat-security/              # 攻击检测（security-rust 27 检测器）
 ├── ecat-cli/                   # CLI 工具
 └── examples/                   # 示例项目
 ```
@@ -128,6 +129,7 @@ e-cat/                          # workspace root
                     │  3. Logging  │     请求日志
                     │  4. Auth     │     认证/鉴权
                     │  5. Metrics  │     指标采集
+                    │  6. Security │     攻击检测
                     └──────┬──────┘
                            │
                     ┌──────┴──────┐
@@ -205,13 +207,14 @@ pub trait LifecycleHook: Send + Sync {
 
 ```rust
 // e-cat 提供标准 tower::Layer 实现，不做自定义 middleware trait
-// 内置 layer：RecoveryLayer、TracingLayer、LoggingLayer、MetricsLayer、TimeoutLayer
+// 内置 layer：RecoveryLayer、TracingLayer、LoggingLayer、MetricsLayer、TimeoutLayer、SecurityLayer
 
 let layer = tower::ServiceBuilder::new()
     .layer(RecoveryLayer)
     .layer(TracingLayer)
     .layer(LoggingLayer)
-    .layer(TimeoutLayer::new(Duration::from_secs(30)));
+    .layer(TimeoutLayer::new(Duration::from_secs(30)))
+    .layer(SecurityLayer::new());
 ```
 
 ### 3.6 典型使用示例
