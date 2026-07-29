@@ -20,4 +20,8 @@ where
     async fn on_start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         (self)().await
     }
+
+    async fn on_stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        (self)().await
+    }
 }

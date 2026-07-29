@@ -157,15 +157,16 @@ e-cat/                          # workspace root
 
 ```rust
 pub struct App {
-    http_server: Option<HttpServer>,
-    grpc_server: Option<GrpcServer>,
-    registry:    Option<Box<dyn Registry>>,
-    lifecycle:   Vec<Box<dyn LifecycleHook>>,
+    name: String,
+    version: String,
+    servers: Vec<Arc<dyn Server>>,
+    start_hooks: Vec<Box<dyn LifecycleHook>>,
+    stop_hooks: Vec<Box<dyn LifecycleHook>>,
 }
 
 impl App {
-    pub async fn run(&mut self) -> Result<()>;
-    pub async fn stop(&mut self) -> Result<()>;
+    pub fn builder() -> AppBuilder;
+    pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 ```
 
@@ -195,8 +196,8 @@ pub trait ConfigSource: Send + Sync {
 ```rust
 #[async_trait]
 pub trait LifecycleHook: Send + Sync {
-    async fn on_start(&self) -> Result<()>;
-    async fn on_stop(&self) -> Result<()>;
+    async fn on_start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn on_stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 ```
 
@@ -207,11 +208,10 @@ pub trait LifecycleHook: Send + Sync {
 // 内置 layer：RecoveryLayer、TracingLayer、LoggingLayer、MetricsLayer、TimeoutLayer
 
 let layer = tower::ServiceBuilder::new()
-    .layer(RecoveryLayer::new())
-    .layer(TracingLayer::new())
-    .layer(LoggingLayer::new())
-    .layer(AuthLayer::new())
-    .layer(MetricsLayer::new());
+    .layer(RecoveryLayer)
+    .layer(TracingLayer)
+    .layer(LoggingLayer)
+    .layer(TimeoutLayer::new(Duration::from_secs(30)));
 ```
 
 ### 3.6 典型使用示例
@@ -227,11 +227,16 @@ async fn main() -> Result<()> {
     let app = App::builder()
         .name("my-service")
         .version("v1.0.0")
-        .http_server(http_srv)
-        .grpc_server(grpc_srv)
-        .with_registry(etcd_registry)
-        .on_start(|| async { tracing::info!("service started") })
-        .on_stop(|| async { tracing::info!("service stopped") })
+        .server(http_srv)
+        .server(grpc_srv)
+        .on_start(|| async {
+            tracing::info!("service started");
+            Ok(())
+        })
+        .on_stop(|| async {
+            tracing::info!("service stopped");
+            Ok(())
+        })
         .build()?;
 
     app.run().await?;  // blocks until SIGTERM

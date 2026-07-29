@@ -48,7 +48,9 @@ impl Drop for Registration {
         if let Some(reg) = self.registry.take() {
             let id = self.id.clone();
             tokio::spawn(async move {
-                let _ = reg.deregister(&id).await;
+                if let Err(e) = reg.deregister(&id).await {
+                    tracing::warn!(service_id = %id, error = %e, "auto-deregister on drop failed");
+                }
             });
         }
     }

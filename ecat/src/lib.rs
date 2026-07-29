@@ -12,7 +12,8 @@ pub struct App {
     name: String,
     version: String,
     servers: Vec<Arc<dyn Server>>,
-    lifecycle_hooks: Vec<Box<dyn LifecycleHook>>,
+    start_hooks: Vec<Box<dyn LifecycleHook>>,
+    stop_hooks: Vec<Box<dyn LifecycleHook>>,
 }
 
 impl App {
@@ -25,7 +26,7 @@ impl App {
 
         tracing::info!(name = self.name, version = self.version, "starting application");
 
-        for hook in &self.lifecycle_hooks {
+        for hook in &self.start_hooks {
             hook.on_start().await?;
         }
 
@@ -41,7 +42,7 @@ impl App {
         wait_for_shutdown().await;
 
         tracing::info!("shutting down");
-        for hook in &self.lifecycle_hooks {
+        for hook in &self.stop_hooks {
             hook.on_stop().await?;
         }
         for server in &self.servers {
@@ -59,7 +60,8 @@ pub struct AppBuilder {
     name: Option<String>,
     version: Option<String>,
     servers: Vec<Arc<dyn Server>>,
-    lifecycle_hooks: Vec<Box<dyn LifecycleHook>>,
+    start_hooks: Vec<Box<dyn LifecycleHook>>,
+    stop_hooks: Vec<Box<dyn LifecycleHook>>,
 }
 
 impl AppBuilder {
@@ -79,12 +81,12 @@ impl AppBuilder {
     }
 
     pub fn on_start(mut self, hook: impl LifecycleHook + 'static) -> Self {
-        self.lifecycle_hooks.push(Box::new(hook));
+        self.start_hooks.push(Box::new(hook));
         self
     }
 
     pub fn on_stop(mut self, hook: impl LifecycleHook + 'static) -> Self {
-        self.lifecycle_hooks.push(Box::new(hook));
+        self.stop_hooks.push(Box::new(hook));
         self
     }
 
@@ -93,7 +95,8 @@ impl AppBuilder {
             name: self.name.unwrap_or_else(|| "ecat-app".into()),
             version: self.version.unwrap_or_else(|| "0.1.0".into()),
             servers: self.servers,
-            lifecycle_hooks: self.lifecycle_hooks,
+            start_hooks: self.start_hooks,
+            stop_hooks: self.stop_hooks,
         })
     }
 }
@@ -150,6 +153,7 @@ mod tests {
             .on_stop(TestHook)
             .build()
             .unwrap();
-        assert_eq!(app.lifecycle_hooks.len(), 2);
+        assert_eq!(app.start_hooks.len(), 1);
+        assert_eq!(app.stop_hooks.len(), 1);
     }
 }

@@ -11,8 +11,10 @@ pub fn registry() -> &'static Registry {
 pub fn metrics_text() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
-    encoder.encode(&registry().gather(), &mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    if encoder.encode(&registry().gather(), &mut buffer).is_err() {
+        return String::from("# metrics encoding failed\n");
+    }
+    String::from_utf8(buffer).unwrap_or_else(|_| String::from("# metrics: invalid utf-8\n"))
 }
 
 #[cfg(test)]

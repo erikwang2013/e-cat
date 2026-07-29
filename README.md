@@ -19,10 +19,10 @@
 ├────────────────────┬────────────────────┬────────────────────┤
 │     transport      │    middleware      │     registry       │
 │     ─────────      │    ──────────      │     ────────       │
-│     HTTP (axum)    │    RecoveryLayer   │     etcd           │
-│     gRPC (tonic)   │    TracingLayer    │     consul         │
-│     encoding       │    LoggingLayer    │     dns            │
-│                    │    TimeoutLayer    │     memory         │
+│     HTTP (axum)    │    RecoveryLayer   │     memory         │
+│     gRPC (tonic)   │    TracingLayer    │                    │
+│     encoding       │    LoggingLayer    │                    │
+│                    │    TimeoutLayer    │                    │
 ├────────────────────┼────────────────────┼────────────────────┤
 │     config         │     errors         │     metadata       │
 │     ──────         │     ──────         │     ────────       │
@@ -79,7 +79,7 @@
 - **双协议支持**：HTTP（axum）和 gRPC（tonic）共用同一套 tower::Layer 中间件
 - **可插拔架构**：Registry、Config、Logging、Encoding 全部通过 trait 抽象，默认提供生产可用实现
 - **中间件体系**：内置 Recovery、Tracing、Logging、Timeout；通过 tower::ServiceBuilder 组合
-- **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 优雅停机
+- **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
 - **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
 - **可观测性**：tracing + opentelemetry + Prometheus 开箱即用
 - **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存、OLAP、搜索引擎、图数据库、时序数据库

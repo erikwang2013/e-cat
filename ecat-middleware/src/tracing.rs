@@ -2,6 +2,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use tower::{Layer, Service};
+use tracing::Instrument;
 
 #[derive(Clone)]
 pub struct TracingLayer;
@@ -34,8 +35,7 @@ where
 
     fn call(&mut self, req: Req) -> Self::Future {
         let span = tracing::info_span!("request");
-        let _guard = span.enter();
         let fut = self.inner.call(req);
-        Box::pin(fut)
+        Box::pin(fut.instrument(span))
     }
 }

@@ -2,6 +2,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use tower::{Layer, Service};
+use tracing::Instrument;
 
 #[derive(Clone)]
 pub struct RecoveryLayer;
@@ -35,9 +36,10 @@ where
     }
 
     fn call(&mut self, req: Req) -> Self::Future {
+        let span = tracing::Span::current();
         let fut = self.inner.call(req);
         Box::pin(async move {
-            match tokio::task::spawn(fut).await {
+            match tokio::task::spawn(fut.instrument(span)).await {
                 Ok(Ok(response)) => Ok(response),
                 Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
                 Err(_) => Err(Box::new(std::io::Error::other("task panicked")) as Box<dyn std::error::Error + Send + Sync>),

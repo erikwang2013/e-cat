@@ -51,19 +51,29 @@ impl RdbmsClient for SqlxClient {
                 let values: Vec<serde_json::Value> = columns
                     .iter()
                     .map(|col| {
-                        // Try string first, then i64, then f64, then fallback to Null
-                        row.try_get::<String, _>(col.as_str())
-                            .map(serde_json::Value::String)
-                            .or_else(|_| {
-                                row.try_get::<i64, _>(col.as_str())
-                                    .map(|n| serde_json::Value::Number(n.into()))
-                            })
+                        // Try i64 first, then f64, then String, then fallback to Null
+                        row.try_get::<i64, _>(col.as_str())
+                            .map(|n| serde_json::Value::Number(n.into()))
                             .or_else(|_| {
                                 row.try_get::<f64, _>(col.as_str())
                                     .ok()
-                                    .and_then(serde_json::Number::from_f64)
-                                    .map(serde_json::Value::Number)
+                                    .and_then(|n| {
+                                        if n.is_finite() {
+                                            serde_json::Number::from_f64(n)
+                                                .map(serde_json::Value::Number)
+                                        } else if n.is_nan() {
+                                            Some(serde_json::Value::String("NaN".into()))
+                                        } else if n > 0.0 {
+                                            Some(serde_json::Value::String("Infinity".into()))
+                                        } else {
+                                            Some(serde_json::Value::String("-Infinity".into()))
+                                        }
+                                    })
                                     .ok_or(())
+                            })
+                            .or_else(|_| {
+                                row.try_get::<String, _>(col.as_str())
+                                    .map(serde_json::Value::String)
                             })
                             .unwrap_or(serde_json::Value::Null)
                     })
