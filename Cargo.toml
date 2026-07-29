@@ -9,6 +9,7 @@ members = [
     "ecat-transport-http",
     "ecat-transport-grpc",
     "ecat-middleware",
+    "ecat",
 ]
 resolver = "2"
 

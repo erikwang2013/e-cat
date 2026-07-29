@@ -1,0 +1,14 @@
+[package]
+name = "ecat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ecat-transport = { path = "../ecat-transport" }
+ecat-transport-http = { path = "../ecat-transport-http" }
+ecat-transport-grpc = { path = "../ecat-transport-grpc" }
+ecat-logging = { path = "../ecat-logging" }
+ecat-errors = { path = "../ecat-errors" }
+tokio.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
