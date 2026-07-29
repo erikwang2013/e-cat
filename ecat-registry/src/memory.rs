@@ -2,7 +2,8 @@
 use crate::{Registry, RegistryError, Registration, ServiceInfo};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub struct MemoryRegistry {
@@ -27,9 +28,7 @@ impl MemoryRegistry {
 impl Registry for MemoryRegistry {
     async fn register(&self, service: ServiceInfo) -> Result<Registration, RegistryError> {
         let id = Uuid::new_v4().to_string();
-        let mut services = self.services.write().map_err(|e| {
-            RegistryError::Other(format!("lock poisoned: {}", e))
-        })?;
+        let mut services = self.services.write().await;
         services.insert(id.clone(), service.clone());
         Ok(Registration::new(id, service, Arc::new(MemoryRegistry {
             services: Arc::clone(&self.services),
@@ -37,9 +36,7 @@ impl Registry for MemoryRegistry {
     }
 
     async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
-        let mut services = self.services.write().map_err(|e| {
-            RegistryError::Other(format!("lock poisoned: {}", e))
-        })?;
+        let mut services = self.services.write().await;
         services.remove(id).ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
         Ok(())
     }

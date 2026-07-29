@@ -251,13 +251,15 @@ cargo test → 60 passed, 0 failed
 
 ## 六、修改建议汇总
 
-### 建议修复（本轮）
+### 建议修复（本轮 — 已全部修复 ✅）
 
-| # | 文件 | 问题 | 优先级 |
-|---|------|------|--------|
-| 1 | `ecat-metrics/src/lib.rs:14-15` | `metrics_text()` unwrap → 返回 Result 或降级 | 中 |
-| 2 | `ecat-registry/src/lib.rs:51` | Drop 中加 `tracing::warn!` 记录 deregister 失败 | 低 |
-| 3 | `ecat-data-sqlx/src/lib.rs:57-61` | f64 NaN/Inf 值加特殊处理 | 低 |
+| # | 文件 | 问题 | 优先级 | 状态 |
+|---|------|------|--------|------|
+| 1 | `ecat-metrics/src/lib.rs:14-15` | `metrics_text()` unwrap → 降级处理 | 中 | ✅ 已修复 |
+| 2 | `ecat-registry/src/lib.rs:51` | Drop 中加 `tracing::warn!` 记录 deregister 失败 | 低 | ✅ 已修复 |
+| 3 | `ecat-data-sqlx/src/lib.rs:57-61` | f64 NaN/Inf 值加特殊处理 | 低 | ✅ 已修复 |
+| 4 | `ecat-middleware/src/recovery.rs:40` | `tokio::task::spawn` 丢失 span → `fut.instrument(span)` | 低 | ✅ 已修复 |
+| 5 | `ecat-registry/src/memory.rs` | 同步 RwLock → `tokio::sync::RwLock` | 低 | ✅ 已修复 |
 
 ### 已知限制（不阻塞）
 
@@ -265,28 +267,24 @@ cargo test → 60 passed, 0 failed
 |---|------|------|
 | K1 | `ecat-transport-http` / `ecat-transport-grpc` | start() 阻塞 / stop() 空操作（需 graceful shutdown） |
 | K2 | `ecat-data-sqlx` | `transaction()` 返回未实现错误 |
-| K3 | `ecat-registry/memory.rs` | 同步 RwLock → tokio::sync::RwLock |
-| K4 | `ecat-middleware` | 4 个 Service 无单元测试 |
-| K5 | `ecat-config/file.rs` | 无 watch 机制 |
-| K6 | `ecat-encoding/proto.rs` | ProtoCodec 占位实现 |
-| K7 | `ecat-cli` | 大部分命令为 mock 输出 |
+| K3 | `ecat-middleware` | 4 个 Service 无单元测试 |
+| K4 | `ecat-config/file.rs` | 无 watch 机制 |
+| K5 | `ecat-encoding/proto.rs` | ProtoCodec 占位实现 |
+| K6 | `ecat-cli` | 大部分命令为 mock 输出 |
 
 ---
 
 ## 七、总结
 
-第三轮审查在 R2 全部修复的基础上进行。整体代码质量良好：编译零错误零警告，60 个测试全部通过，无 unsafe 代码。
-
-本轮新发现 1 个中等严重度问题（`metrics_text()` 生产环境可能 panic）和 3 个低严重度问题（span 上下文、Drop 静默错误、f64 特殊值）。除 metrics panic 外，其余均不阻塞当前开发进度。
+第三轮审查在 R2 全部修复的基础上进行。本轮发现 5 个问题已全部修复。
 
 与 R2 的对比：
 - R2 发现 2 个高 + 1 个中严重度运行时 Bug → 已全部修复 ✅
-- R3 发现 1 个中 + 3 个低严重度健壮性问题 → 建议有条件时修复
+- R3 发现 1 个中 + 4 个低严重度健壮性问题 → 已全部修复 ✅
 - 测试数量保持 60 个
 
 ### 后续优先建议
 
-1. 修复 `metrics_text()` 的 unwrap panic 风险
-2. 为 `ecat-data-sqlx` 添加 SQLite 集成测试
-3. 为 `ecat-middleware` 添加单元测试（验证 span/超时/恢复行为）
-4. 实现 HTTP/gRPC server graceful shutdown
+1. 为 `ecat-data-sqlx` 添加 SQLite 集成测试
+2. 为 `ecat-middleware` 添加单元测试（验证 span/超时/恢复行为）
+3. 实现 HTTP/gRPC server graceful shutdown
