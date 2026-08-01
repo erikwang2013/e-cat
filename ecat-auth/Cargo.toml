@@ -1,0 +1,13 @@
+[package]
+name = "ecat-auth"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tower.workspace = true
+http.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+jsonwebtoken = "9"
+axum = "0.8"

@@ -38,7 +38,7 @@ pub struct Registration {
 }
 
 impl Registration {
-    pub(crate) fn new(id: String, service: ServiceInfo, registry: Arc<dyn Registry>) -> Self {
+    pub fn new(id: String, service: ServiceInfo, registry: Arc<dyn Registry>) -> Self {
         Self {
             id,
             service,

@@ -17,12 +17,17 @@ members = [
     "ecat",
     "ecat-cli",
     "ecat-security",
+    "ecat-health",
+    "ecat-circuit-breaker",
+    "ecat-auth",
+    "ecat-client",
+    "ecat-registry-consul",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.8"
+version = "2.0.0"
 edition = "2024"
 license = "Apache-2.0"
 

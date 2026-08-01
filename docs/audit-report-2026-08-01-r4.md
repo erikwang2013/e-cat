@@ -60,3 +60,5 @@
 | `ecat-config/Cargo.toml` | serde_yaml → yaml_serde |
 | `ecat-config/src/file.rs` | serde_yaml → yaml_serde |
 | `Cargo.toml` | 移除 orphaned opentelemetry workspace 依赖 |
+| `README.md` | 更新版本号、修正可观测性描述、添加生态规划链接 |
+| `docs/ecosystem-plan.md` | 新增生态规划文档（三期 15 个 crate） |

@@ -1,0 +1,9 @@
+[package]
+name = "ecat-circuit-breaker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tower.workspace = true
+tokio.workspace = true
+tracing.workspace = true

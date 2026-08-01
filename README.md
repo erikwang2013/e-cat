@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v1.0.3）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v1.0.8）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -83,8 +83,8 @@
 - **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security；通过 tower::ServiceBuilder 组合
 - **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
 - **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
-- **可观测性**：tracing + opentelemetry + Prometheus 开箱即用
-- **攻击检测**：SecurityLayer 自动检测并阻断 SQL 注入、XSS、SSRF 等 27 种攻击模式，支持 Tower 中间件集成
+- **可观测性**：tracing + Prometheus 开箱即用
+- **攻击检测**：SecurityLayer 自动检测 SQL 注入、XSS、SSRF 等攻击模式，阻断高危请求
 - **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存、OLAP、搜索引擎、图数据库、时序数据库
 
 ### Kratos 概念映射
@@ -108,7 +108,7 @@
 | gRPC | **tonic** |
 | Protobuf | **prost + tonic-build** |
 | 中间件 | **tower::Service / Layer** |
-| 日志/追踪 | **tracing + opentelemetry-rust** |
+| 日志/追踪 | **tracing** |
 | 指标 | **prometheus** |
 | 序列化 | **serde + prost** |
 | 攻击检测 | **security-rust** |
@@ -117,25 +117,25 @@
 
 ## 支持的数据库
 
-| 类别 | 数据库 | Crate | Rust 驱动 |
-|------|--------|-------|-----------|
-| RDBMS | SQLite | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | MySQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | TiDB | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| 缓存 | Redis | `ecat-data-redis` | [redis-rs](https://crates.io/crates/redis) |
-| 缓存 | Memcached | `ecat-data-memcached` | [memcache](https://crates.io/crates/memcache) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | [clickhouse-rs](https://crates.io/crates/clickhouse-rs) |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | [opensearch](https://crates.io/crates/opensearch) |
-| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | [elasticsearch](https://crates.io/crates/elasticsearch) |
-| 图 | Neo4j | `ecat-data-neo4j` | [neo4rs](https://crates.io/crates/neo4rs) |
-| 图 | NebulaGraph | `ecat-data-nebulagraph` | nebula-client |
-| 图 | ArangoDB | `ecat-data-arangodb` | [arangors](https://crates.io/crates/arangors) |
-| 时序 | InfluxDB | `ecat-data-influxdb` | [influxdb2](https://crates.io/crates/influxdb2) |
-| 时序 | Apache IoTDB | `ecat-data-iotdb` | iotdb-client-rs |
-| 时序 | QuestDB | `ecat-data-questdb` | questdb-rs (ILP) |
+| 类别 | 数据库 | Crate | 状态 |
+|------|--------|-------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 已实现 |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
+| 缓存 | Redis | `ecat-data-redis` | 📋 二期规划 |
+| 缓存 | Memcached | `ecat-data-memcached` | 📋 规划中 |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | 📋 规划中 |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | 📋 二期规划 |
+| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | 📋 规划中 |
+| 图 | Neo4j | `ecat-data-neo4j` | 📋 规划中 |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | 📋 规划中 |
+| 图 | ArangoDB | `ecat-data-arangodb` | 📋 规划中 |
+| 时序 | InfluxDB | `ecat-data-influxdb` | 📋 二期规划 |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | 📋 规划中 |
+| 时序 | QuestDB | `ecat-data-questdb` | 📋 规划中 |
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。标注"规划中"的 crate 尚未实现。
 
 ## 项目结构
 
@@ -271,6 +271,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 6 | ✅ 完成 | CLI 工具链（new/proto/run/build） |
 | Phase 7 | ✅ 完成 | README、示例（helloworld）、设计文档 |
 | Phase 8 | ✅ 完成 | 攻击检测集成（security-rust, ecat-security） |
+| Phase 9 | 📋 计划 | 生态建设一期（client/circuit-breaker/auth/health/registry-consul） |
+| Phase 10 | 📋 计划 | 生态建设二期（redis/opensearch/mq/events/config-remote） |
+| Phase 11 | 📋 计划 | 生态建设三期（testing/deploy/bench/openapi） |
 
 ## 设计目标
 
@@ -282,7 +285,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 | 4 | **可插拔** | Registry、Config、Logging、Encoding 全部通过 trait 抽象 |
 | 5 | **工具链完备** | CLI 支持项目脚手架、proto 代码生成、开发运行 |
 | 6 | **性能优先** | 零成本抽象 + 异步运行时 |
-| 7 | **可观测** | tracing + OpenTelemetry + Prometheus 开箱即用 |
+| 7 | **可观测** | tracing + Prometheus 开箱即用 |
+| 8 | **生态完备** | 客户端、熔断、认证、健康检查、注册中心后端 |
 
 ## 技术说明
 
@@ -302,6 +306,7 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 
 - [设计规范](docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
 - [实现计划](docs/superpowers/plans/2026-07-29-ecat-framework.md)
+- [生态规划](docs/ecosystem-plan.md)
 
 ## 许可证
 
