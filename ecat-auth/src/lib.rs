@@ -434,7 +434,10 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
     let mut extra = HashMap::new();
     if let Some(obj) = body.as_object() {
         for (k, v) in obj {
-            if !matches!(k.as_str(), "active" | "sub" | "role" | "client_id" | "exp" | "iat") {
+            if !matches!(
+                k.as_str(),
+                "active" | "sub" | "role" | "client_id" | "exp" | "iat"
+            ) {
                 extra.insert(k.clone(), v.clone());
             }
         }

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -7,7 +8,42 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tower::{Layer, Service};
 
-/// Token-bucket rate limiter shared across clones.
+#[async_trait]
+pub trait RateLimitStore: Send + Sync {
+    async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String>;
+}
+
+pub struct MemoryStore {
+    buckets: Mutex<HashMap<String, (u32, Instant)>>,
+}
+
+impl MemoryStore {
+    pub fn new() -> Self {
+        Self { buckets: Mutex::new(HashMap::new()) }
+    }
+}
+
+impl Default for MemoryStore {
+    fn default() -> Self { Self::new() }
+}
+
+#[async_trait]
+impl RateLimitStore for MemoryStore {
+    async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String> {
+        let mut buckets = self.buckets.lock().await;
+        let entry = buckets.entry(key.to_string()).or_insert((0, Instant::now()));
+        if entry.1.elapsed() > Duration::from_secs(window_secs) {
+            *entry = (1, Instant::now());
+            return Ok(());
+        }
+        if entry.0 >= max {
+            return Err("rate limit exceeded".into());
+        }
+        entry.0 += 1;
+        Ok(())
+    }
+}
+
 struct RateLimiter {
     buckets: Mutex<HashMap<String, (u32, Instant)>>,
     max_requests: u32,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use ecat_transport::Server as TransportServer;
+use ecat_transport::{Server as TransportServer, TlsConfig};
 use std::sync::Mutex;
 use tokio::sync::watch;
 use tonic::service::Routes;
@@ -8,6 +8,7 @@ pub struct GrpcServer {
     addr: String,
     routes: Option<Routes>,
     shutdown_tx: Mutex<Option<watch::Sender<()>>>,
+    tls_config: Option<TlsConfig>,
 }
 
 impl GrpcServer {
@@ -16,11 +17,17 @@ impl GrpcServer {
             addr: addr.into(),
             routes: None,
             shutdown_tx: Mutex::new(None),
+            tls_config: None,
         }
     }
 
     pub fn routes(mut self, routes: Routes) -> Self {
         self.routes = Some(routes);
+        self
+    }
+
+    pub fn tls(mut self, config: TlsConfig) -> Self {
+        self.tls_config = Some(config);
         self
     }
 }

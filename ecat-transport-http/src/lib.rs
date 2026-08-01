@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::Router;
-use ecat_transport::Server as TransportServer;
+use ecat_transport::{Server as TransportServer, TlsConfig};
 use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -9,6 +9,7 @@ pub struct HttpServer {
     addr: String,
     router: Option<Router>,
     shutdown_tx: Mutex<Option<watch::Sender<()>>>,
+    tls_config: Option<TlsConfig>,
 }
 
 impl HttpServer {
@@ -17,11 +18,17 @@ impl HttpServer {
             addr: addr.into(),
             router: None,
             shutdown_tx: Mutex::new(None),
+            tls_config: None,
         }
     }
 
     pub fn router(mut self, router: Router) -> Self {
         self.router = Some(router);
+        self
+    }
+
+    pub fn tls(mut self, config: TlsConfig) -> Self {
+        self.tls_config = Some(config);
         self
     }
 }

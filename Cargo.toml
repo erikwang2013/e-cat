@@ -36,12 +36,16 @@ members = [
     "ecat-data-influxdb",
     "ecat-transport-ws",
     "ecat-versioning",
+    "ecat-graphql",
+    "ecat-data-elasticsearch",
+    "ecat-data-clickhouse",
+    "ecat-data-memcached",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.1.3"
+version = "2.1.4"
 edition = "2024"
 license = "Apache-2.0"
 

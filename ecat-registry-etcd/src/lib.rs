@@ -110,19 +110,14 @@ impl Registry for EtcdRegistry {
     }
 }
 
-async fn create_lease(
-    client: &reqwest::Client,
-    base_url: &str,
-    ttl: u64,
-) -> Result<i64, String> {
+async fn create_lease(client: &reqwest::Client, base_url: &str, ttl: u64) -> Result<i64, String> {
     let resp = client
         .post(format!("{base_url}/v3/lease/grant"))
         .json(&serde_json::json!({"TTL": ttl.to_string()}))
         .send()
         .await
         .map_err(|e| format!("etcd lease: {e}"))?;
-    let body: serde_json::Value =
-        resp.json().await.map_err(|e| format!("etcd parse: {e}"))?;
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("etcd parse: {e}"))?;
     body.get("ID")
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok())
@@ -204,8 +199,7 @@ mod tests {
 
     #[test]
     fn etcd_registry_constructs() {
-        let _reg =
-            EtcdRegistry::new(vec!["http://localhost:2379".into()], "ecat").lease_ttl(60);
+        let _reg = EtcdRegistry::new(vec!["http://localhost:2379".into()], "ecat").lease_ttl(60);
     }
 
     #[test]

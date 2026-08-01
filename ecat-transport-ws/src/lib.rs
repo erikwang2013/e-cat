@@ -7,7 +7,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 pub type WsHandler = Arc<
-    dyn Fn(WebSocket) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+    dyn Fn(WebSocket) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        + Send
+        + Sync,
 >;
 
 pub struct WsServer {

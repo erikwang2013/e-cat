@@ -72,7 +72,12 @@ fn extract_version(headers: &HeaderMap) -> Option<String> {
         .and_then(|s| {
             s.split(';')
                 .find(|p| p.trim().starts_with("version="))
-                .map(|p| p.trim().trim_start_matches("version=").trim_matches('"').to_string())
+                .map(|p| {
+                    p.trim()
+                        .trim_start_matches("version=")
+                        .trim_matches('"')
+                        .to_string()
+                })
         })
 }
 

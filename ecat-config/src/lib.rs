@@ -1,7 +1,9 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod encrypted;
 mod env;
 mod file;
 
+pub use encrypted::EncryptedSource;
 pub use env::EnvSource;
 pub use file::FileSource;
 

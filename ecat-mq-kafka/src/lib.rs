@@ -37,10 +37,7 @@ impl MessageQueue for KafkaMq {
 
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn MessageStream>, MqError> {
         let (tx, rx) = mpsc::channel::<Vec<u8>>(1024);
-        self.topics
-            .lock()
-            .await
-            .insert(topic.to_string(), tx);
+        self.topics.lock().await.insert(topic.to_string(), tx);
         Ok(Box::new(KafkaStream { rx }))
     }
 }

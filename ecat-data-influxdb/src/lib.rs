@@ -66,7 +66,11 @@ impl TsdbClient for InfluxClient {
             .client
             .post(&self.write_url)
             .header("Authorization", format!("Token {}", self.token))
-            .query(&[("org", &self.org), ("bucket", &self.bucket), ("precision", &"ns".to_string())])
+            .query(&[
+                ("org", &self.org),
+                ("bucket", &self.bucket),
+                ("precision", &"ns".to_string()),
+            ])
             .body(lines)
             .send()
             .await
@@ -103,8 +107,7 @@ mod tests {
 
     #[test]
     fn client_constructs() {
-        let _client =
-            InfluxClient::new("http://localhost:8086", "myorg", "mybucket", "mytoken");
+        let _client = InfluxClient::new("http://localhost:8086", "myorg", "mybucket", "mytoken");
     }
 
     #[test]

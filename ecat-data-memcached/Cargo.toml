@@ -1,0 +1,9 @@
+[package]
+name = "ecat-data-memcached"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecat-data = { path = "../ecat-data" }
+tokio.workspace = true
+async-trait.workspace = true

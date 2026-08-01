@@ -6,7 +6,7 @@ mod timeout;
 mod tracing;
 
 pub use logging::LoggingLayer;
-pub use ratelimit::RateLimitLayer;
+pub use ratelimit::{MemoryStore, RateLimitLayer, RateLimitStore};
 pub use recovery::RecoveryLayer;
 pub use timeout::TimeoutLayer;
 pub use tracing::TracingLayer;

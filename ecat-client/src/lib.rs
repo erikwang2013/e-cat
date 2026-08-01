@@ -271,9 +271,7 @@ impl GrpcClientBuilder {
             resolver: self
                 .resolver
                 .ok_or_else(|| "resolver is required".to_string())?,
-            balancer: self
-                .balancer
-                .unwrap_or_else(|| Arc::new(RoundRobin::new())),
+            balancer: self.balancer.unwrap_or_else(|| Arc::new(RoundRobin::new())),
         })
     }
 }
