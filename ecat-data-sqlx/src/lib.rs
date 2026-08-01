@@ -47,10 +47,10 @@ impl RdbmsClient for SqlxClient {
                 .collect(),
         );
 
+        let cols = std::sync::Arc::clone(&columns);
         let result = rows
             .iter()
             .map(|row| {
-                let cols = std::sync::Arc::clone(&columns);
                 let values: Vec<serde_json::Value> = cols
                     .iter()
                     .map(|col| {
@@ -98,10 +98,11 @@ impl RdbmsClient for SqlxClient {
     }
 
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
-        self.pool
+        let tx = self
+            .pool
             .begin()
             .await
-            .map(|_tx| ecat_data::Transaction::new())
-            .map_err(|e| RdbmsError::Database(e.to_string()))
+            .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        Ok(ecat_data::Transaction::with_inner(Box::new(tx)))
     }
 }

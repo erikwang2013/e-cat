@@ -1,7 +1,21 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! Protobuf codec.
+//!
+//! The `Codec` trait methods (`encode`/`decode`) use serde bounds and always
+//! return an error. Use `ProtoCodec::encode_message()` and
+//! `ProtoCodec::decode_message()` for protobuf serialization — they accept
+//! `prost::Message` types when the `prost-codec` feature is enabled.
+//!
+//! ```ignore
+//! let codec = ProtoCodec;
+//! let bytes = codec.encode_message(&my_proto_msg)?;
+//! let msg: MyProto = codec.decode_message(&bytes)?;
+//! ```
 use super::{Codec, CodecError};
 
 #[derive(Debug)]
+/// Protobuf codec. Implements `Codec` for serde-compat, but the primary
+/// API is `encode_message()` / `decode_message()` with `prost::Message`.
 pub struct ProtoCodec;
 
 impl ProtoCodec {

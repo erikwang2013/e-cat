@@ -79,19 +79,19 @@ fn main() {
             let cargo_toml = format!(
                 r#"[package]
 name = "{}"
-version.workspace = true
-edition.workspace = true
+version = "0.1.0"
+edition = "2024"
 
 [dependencies]
-ecat = {{ path = "../ecat" }}
-ecat-transport-http = {{ path = "../ecat-transport-http" }}
-ecat-middleware = {{ path = "../ecat-middleware" }}
-ecat-logging = {{ path = "../ecat-logging" }}
-tokio.workspace = true
-tracing.workspace = true
-axum.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+ecat = "1.0"
+ecat-transport-http = "1.0"
+ecat-middleware = "1.0"
+ecat-logging = "1.0"
+tokio = {{ version = "1", features = ["full"] }}
+tracing = "0.1"
+axum = "0.8"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
 "#,
                 name
             );

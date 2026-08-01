@@ -2,8 +2,9 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tower::{Layer, Service};
 
 /// Token-bucket rate limiter shared across clones.
@@ -22,9 +23,15 @@ impl RateLimiter {
         }
     }
 
-    fn allow(&self, key: &str) -> bool {
-        let mut buckets = self.buckets.lock().unwrap();
+    async fn allow(&self, key: &str) -> bool {
+        let mut buckets = self.buckets.lock().await;
         let now = Instant::now();
+
+        // Periodic cleanup: remove expired entries every ~100 accesses
+        if buckets.len() > 100 {
+            buckets.retain(|_, (_, ts)| now.duration_since(*ts) <= self.window * 2);
+        }
+
         let entry = buckets.entry(key.to_string()).or_insert((0, now));
         if now.duration_since(entry.1) > self.window {
             *entry = (1, now);
@@ -86,17 +93,13 @@ where
     }
 
     fn call(&mut self, req: Req) -> Self::Future {
-        // Use a fixed key for all requests; callers can customize via extension
-        if !self.limiter.allow("global") {
-            return Box::pin(async {
-                Err(Box::new(std::io::Error::other(
-                    "rate limit exceeded",
-                ))
-                    as Box<dyn std::error::Error + Send + Sync>)
-            });
-        }
+        let limiter = Arc::clone(&self.limiter);
         let fut = self.inner.call(req);
         Box::pin(async move {
+            if !limiter.allow("global").await {
+                return Err(Box::new(std::io::Error::other("rate limit exceeded"))
+                    as Box<dyn std::error::Error + Send + Sync>);
+            }
             fut.await
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         })
@@ -107,27 +110,27 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn rate_limiter_allows_within_limit() {
+    #[tokio::test]
+    async fn rate_limiter_allows_within_limit() {
         let rl = RateLimiter::new(5, Duration::from_secs(1));
         for _ in 0..5 {
-            assert!(rl.allow("test"));
+            assert!(rl.allow("test").await);
         }
     }
 
-    #[test]
-    fn rate_limiter_blocks_over_limit() {
+    #[tokio::test]
+    async fn rate_limiter_blocks_over_limit() {
         let rl = RateLimiter::new(2, Duration::from_secs(60));
-        assert!(rl.allow("test"));
-        assert!(rl.allow("test"));
-        assert!(!rl.allow("test"));
+        assert!(rl.allow("test").await);
+        assert!(rl.allow("test").await);
+        assert!(!rl.allow("test").await);
     }
 
-    #[test]
-    fn rate_limiter_separate_keys() {
+    #[tokio::test]
+    async fn rate_limiter_separate_keys() {
         let rl = RateLimiter::new(1, Duration::from_secs(60));
-        assert!(rl.allow("a"));
-        assert!(rl.allow("b")); // different key, not blocked
+        assert!(rl.allow("a").await);
+        assert!(rl.allow("b").await);
     }
 
     #[test]

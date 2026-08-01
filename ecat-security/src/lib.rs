@@ -51,6 +51,15 @@ impl SecurityScanner {
         }
         results
     }
+
+    /// Scan request body bytes. Converts to string for analysis.
+    pub fn scan_body(&self, body: &[u8]) -> Vec<DetectionResult> {
+        if let Ok(s) = std::str::from_utf8(body) {
+            self.scanner.scan(s)
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 impl Default for SecurityScanner {
