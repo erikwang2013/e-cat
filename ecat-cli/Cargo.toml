@@ -2,6 +2,8 @@
 name = "ecat-cli"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Command-line interface for e-cat"
 
 [[bin]]
 name = "ecat"

@@ -2,6 +2,8 @@
 name = "ecat-data"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Unified data access traits (RDBMS, Cache, Graph, Search, TSDB)"
 
 [dependencies]
 tracing.workspace = true

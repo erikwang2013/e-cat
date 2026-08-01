@@ -2,6 +2,8 @@
 name = "ecat-data-elasticsearch"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Elasticsearch search engine client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }

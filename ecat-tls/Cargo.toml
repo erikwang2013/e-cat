@@ -2,6 +2,7 @@
 name = "ecat-tls"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 description = "TLS config and certificate generation for e-cat data backends"
 
 [dependencies]

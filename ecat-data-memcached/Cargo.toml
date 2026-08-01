@@ -2,6 +2,8 @@
 name = "ecat-data-memcached"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Memcached-compatible in-memory cache client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }

@@ -2,6 +2,8 @@
 name = "ecat-logging"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Structured logging via tracing for e-cat"
 
 [dependencies]
 tracing.workspace = true

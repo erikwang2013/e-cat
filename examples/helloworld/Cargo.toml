@@ -2,6 +2,8 @@
 name = "helloworld"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Hello World example for the e-cat framework"
 
 [dependencies]
 ecat = { path = "../../ecat" }

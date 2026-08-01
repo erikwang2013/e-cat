@@ -2,6 +2,8 @@
 name = "ecat-data-nebulagraph"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "NebulaGraph graph database client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }

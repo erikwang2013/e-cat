@@ -2,6 +2,8 @@
 name = "ecat-registry-etcd"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "etcd service registry backend for e-cat"
 
 [dependencies]
 ecat-registry = { path = "../ecat-registry" }

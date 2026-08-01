@@ -2,6 +2,8 @@
 name = "ecat-transport-grpc"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "gRPC transport implementation for e-cat"
 
 [dependencies]
 ecat-transport = { path = "../ecat-transport" }

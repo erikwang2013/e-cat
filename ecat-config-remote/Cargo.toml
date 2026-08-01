@@ -2,6 +2,8 @@
 name = "ecat-config-remote"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Remote configuration source for e-cat"
 
 [dependencies]
 ecat-config = { path = "../ecat-config" }

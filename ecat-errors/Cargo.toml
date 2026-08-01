@@ -2,6 +2,8 @@
 name = "ecat-errors"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Unified error types for e-cat services"
 
 [dependencies]
 ecat-protos = { path = "../ecat-protos" }

@@ -2,6 +2,8 @@
 name = "ecat-transport-http"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "HTTP/Axum transport implementation for e-cat"
 
 [dependencies]
 ecat-transport = { path = "../ecat-transport" }
