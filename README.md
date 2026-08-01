@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v1.0.8）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.0.2）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -33,11 +33,9 @@
 │                         data 层                               │
 │     ────────────────────────────────────────────────          │
 │     rdbms:   SQLite / PostgreSQL / MySQL / TiDB              │
-│     cache:   Redis / Memcached                               │
-│     olap:    ClickHouse                                      │
-│     search:  OpenSearch / Elasticsearch                      │
-│     graph:   Neo4j / NebulaGraph / ArangoDB                  │
-│     tsdb:    InfluxDB / Apache IoTDB / QuestDB               │
+│     cache:   Redis ✓                                         │
+│     config:  remote (Consul KV)                              │
+│     registry: consul                                         │
 ├──────────────────────────────────────────────────────────────┤
 │                       ecat-protos                             │
 │     (共享 .proto 定义: errors, metadata, ...)                 │
@@ -83,9 +81,12 @@
 - **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security；通过 tower::ServiceBuilder 组合
 - **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
 - **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
-- **可观测性**：tracing + Prometheus 开箱即用
+- **可观测性**：tracing + Prometheus + Health 端点（/health、/ready）
 - **攻击检测**：SecurityLayer 自动检测 SQL 注入、XSS、SSRF 等攻击模式，阻断高危请求
-- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存、OLAP、搜索引擎、图数据库、时序数据库
+- **服务间通信**：HttpClient 集成服务发现与负载均衡，CircuitBreaker 熔断保护
+- **认证鉴权**：JWT / API Key 认证中间件，Claims 传递至请求上下文
+- **消息与事件**：MessageQueue trait + EventBus 本地/远程 Pub/Sub
+- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、Redis 缓存，统一 trait 抽象
 
 ### Kratos 概念映射
 
@@ -113,6 +114,9 @@
 | 序列化 | **serde + prost** |
 | 攻击检测 | **security-rust** |
 | RDBMS | **sqlx** |
+| Redis | **redis-rs** |
+| JWT | **jsonwebtoken** |
+| HTTP Client | **reqwest** |
 | CLI | **clap** |
 
 ## 支持的数据库
@@ -123,7 +127,7 @@
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
-| 缓存 | Redis | `ecat-data-redis` | 📋 二期规划 |
+| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
 | 缓存 | Memcached | `ecat-data-memcached` | 📋 规划中 |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | 📋 规划中 |
 | 搜索 | OpenSearch | `ecat-data-opensearch` | 📋 二期规划 |
@@ -157,7 +161,20 @@ e-cat/
 ├── ecat-data/                  # 数据访问 trait
 ├── ecat-security/              # 攻击检测（security-rust）
 ├── ecat-cli/                   # CLI 工具
-├── docs/                       # 设计文档与实现计划
+├── ecat-health/                # 健康检查（/health /ready）
+├── ecat-auth/                  # 认证中间件（JWT / API Key）
+├── ecat-client/                # 服务间 HTTP 客户端
+├── ecat-circuit-breaker/       # 熔断器（Tower Layer）
+├── ecat-registry-consul/       # Consul 服务注册
+├── ecat-config-remote/         # Consul KV 远程配置
+├── ecat-data-redis/            # Redis 缓存实现
+├── ecat-mq/                    # 消息队列抽象
+├── ecat-events/                # 事件总线（本地 + 远程）
+├── ecat-testing/               # 集成测试工具
+├── ecat-openapi/               # OpenAPI spec 生成
+├── ecat-bench/                 # 性能基准
+├── ecat-deploy/                # Docker / K8s 部署模板
+├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
 ```
 
@@ -271,9 +288,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 6 | ✅ 完成 | CLI 工具链（new/proto/run/build） |
 | Phase 7 | ✅ 完成 | README、示例（helloworld）、设计文档 |
 | Phase 8 | ✅ 完成 | 攻击检测集成（security-rust, ecat-security） |
-| Phase 9 | 📋 计划 | 生态建设一期（client/circuit-breaker/auth/health/registry-consul） |
-| Phase 10 | 📋 计划 | 生态建设二期（redis/opensearch/mq/events/config-remote） |
-| Phase 11 | 📋 计划 | 生态建设三期（testing/deploy/bench/openapi） |
+| Phase 9 | ✅ 完成 | 生态一期（health / client / circuit-breaker / auth / registry-consul） |
+| Phase 10 | ✅ 完成 | 生态二期（redis / mq / events / config-remote） |
+| Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
 
 ## 设计目标
 

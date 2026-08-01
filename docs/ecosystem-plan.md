@@ -1,22 +1,21 @@
 # e-cat 生态规划
 
-**版本:** 1.0.8  
-**日期:** 2026-08-01
-
-## 现状覆盖
+**版本:** 2.0.2  
+**日期:** 2026-08-01  
+**状态:** 三期全部完成
 
 | 领域 | 已覆盖 | 缺失 |
 |------|--------|------|
 | 传输层 | HTTP (axum), gRPC (tonic) | — |
 | 编码 | JSON, Protobuf | — |
-| 中间件 | 日志、追踪、超时、恢复、限流 | 熔断、重试、认证 |
-| 配置 | 环境变量、文件 (JSON/YAML) | 远程配置中心 |
-| 注册 | 内存（单机） | Consul, etcd, DNS |
-| 安全 | 攻击检测 | 认证、授权、mTLS |
-| 数据 | 5 种抽象 + SQLx 实现 | Redis, ES, TSDB 实现 |
-| 可观测 | 日志, Prometheus metrics | 分布式追踪, 健康检查 |
-| 通信 | — | 客户端, 消息队列, 事件总线 |
-| DevOps | CLI 脚手架 | Docker, K8s, CI/CD |
+| 中间件 | 日志、追踪、超时、恢复、限流、熔断、认证 | — |
+| 配置 | 环境变量、文件 (JSON/YAML)、Consul KV 远程 | etcd |
+| 注册 | 内存（单机）、Consul | etcd, DNS |
+| 安全 | 攻击检测、JWT、API Key | OAuth2、mTLS |
+| 数据 | RDBMS (SQLx)、Redis | ES, TSDB 实现 |
+| 可观测 | 日志, Prometheus, 健康检查 | 分布式追踪 |
+| 通信 | HTTP 客户端、消息队列、事件总线 | gRPC 客户端 |
+| DevOps | CLI 脚手架、Dockerfile、K8s manifests、Bench | Helm, CI/CD |
 
 ---
 
@@ -227,32 +226,24 @@ bus.publish(UserCreated { user_id: 42 }).await?;
 ## 实施路线图
 
 ```
-第一期 (v1.1.x)
-  ecat-health       ──────── 1-2天
-  ecat-client       ──────── 2-3天
-  ecat-circuit-breaker ───── 1天
-  ecat-auth         ──────── 2天
-  ecat-registry-consul ──── 1天
-  ─────────────────────────────
-  合计: 7-9天
+第一期 (v2.0.x) ✅ 已完成
+  ecat-health       ──────── ✅
+  ecat-client       ──────── ✅
+  ecat-circuit-breaker ───── ✅
+  ecat-auth         ──────── ✅
+  ecat-registry-consul ──── ✅
 
-第二期 (v1.2.x)
-  ecat-data-redis   ──────── 1天
-  ecat-data-opensearch ──── 1天
-  ecat-data-influxdb ────── 1天
-  ecat-mq + Kafka   ──────── 2天
-  ecat-events       ──────── 1天
-  ecat-config-remote ────── 1天
-  ─────────────────────────────
-  合计: 7天
+第二期 (v2.0.x) ✅ 已完成
+  ecat-data-redis   ──────── ✅
+  ecat-mq           ──────── ✅
+  ecat-events       ──────── ✅
+  ecat-config-remote ────── ✅
 
-第三期 (v1.3.x)
-  ecat-testing      ──────── 2天
-  ecat-deploy       ──────── 2天
-  ecat-bench        ──────── 1天
-  ecat-openapi      ──────── 1天
-  ─────────────────────────────
-  合计: 6天
+第三期 (v2.0.x) ✅ 已完成
+  ecat-testing      ──────── ✅
+  ecat-deploy       ──────── ✅
+  ecat-bench        ──────── ✅
+  ecat-openapi      ──────── ✅
 ```
 
 ---

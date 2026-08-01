@@ -41,7 +41,10 @@ impl Default for InMemoryMq {
 #[async_trait]
 impl MessageQueue for InMemoryMq {
     async fn publish(&self, topic: &str, payload: &[u8]) -> Result<(), MqError> {
-        let map = self.senders.read().map_err(|e| MqError::Other(e.to_string()))?;
+        let map = self
+            .senders
+            .read()
+            .map_err(|e| MqError::Other(e.to_string()))?;
         if let Some(txs) = map.get(topic) {
             let data = payload.to_vec();
             for tx in txs {
@@ -53,7 +56,10 @@ impl MessageQueue for InMemoryMq {
 
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn MessageStream>, MqError> {
         let (tx, rx) = broadcast::channel(256);
-        let mut map = self.senders.write().map_err(|e| MqError::Other(e.to_string()))?;
+        let mut map = self
+            .senders
+            .write()
+            .map_err(|e| MqError::Other(e.to_string()))?;
         map.entry(topic.to_string()).or_default().push(tx);
         Ok(Box::new(InMemoryStream { rx }))
     }

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use ecat_mq::MessageQueue;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -127,13 +127,17 @@ mod tests {
 
         bus.subscribe::<TestEvent, _, _>(move |_e: TestEvent| {
             let c = c1.clone();
-            async move { c.fetch_add(1, Ordering::SeqCst); }
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
         })
         .await;
 
         bus.subscribe::<TestEvent, _, _>(move |_e: TestEvent| {
             let c = c2.clone();
-            async move { c.fetch_add(1, Ordering::SeqCst); }
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
         })
         .await;
 

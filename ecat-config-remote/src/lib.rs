@@ -81,15 +81,18 @@ struct ConsulKvEntry {
 
 impl ConsulKvEntry {
     fn decoded_value(&self) -> Option<String> {
-        self.value.as_ref().and_then(|v| base64_decode(v).ok().and_then(|bytes| String::from_utf8(bytes).ok()))
+        self.value.as_ref().and_then(|v| {
+            base64_decode(v)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+        })
     }
 }
 
 fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    let chars: Vec<char> =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-            .chars()
-            .collect();
+    let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        .chars()
+        .collect();
     let mut table = std::collections::HashMap::new();
     for (i, &c) in chars.iter().enumerate() {
         table.insert(c, i as u8);
@@ -126,8 +129,7 @@ mod tests {
 
     #[test]
     fn consul_source_constructs() {
-        let _src =
-            ConsulConfigSource::new("http://consul:8500", "app/config").token("secret");
+        let _src = ConsulConfigSource::new("http://consul:8500", "app/config").token("secret");
     }
 
     #[test]
