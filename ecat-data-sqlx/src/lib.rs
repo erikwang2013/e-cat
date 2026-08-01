@@ -97,6 +97,120 @@ impl RdbmsClient for SqlxClient {
         Ok(result)
     }
 
+    async fn execute_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<u64, RdbmsError> {
+        let mut q = sqlx::query(sql);
+        for p in params {
+            q = match p {
+                serde_json::Value::String(s) => q.bind(s.as_str()),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        q.bind(i)
+                    } else if let Some(f) = n.as_f64() {
+                        q.bind(f)
+                    } else {
+                        q.bind(n.to_string())
+                    }
+                }
+                serde_json::Value::Bool(b) => q.bind(*b),
+                serde_json::Value::Null => q.bind(None::<String>),
+                _ => q.bind(p.to_string()),
+            };
+        }
+        q.execute(&self.pool)
+            .await
+            .map(|r| r.rows_affected())
+            .map_err(|e| RdbmsError::Database(e.to_string()))
+    }
+
+    async fn query_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        let mut q = sqlx::query(sql);
+        for p in params {
+            q = match p {
+                serde_json::Value::String(s) => q.bind(s.as_str()),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        q.bind(i)
+                    } else if let Some(f) = n.as_f64() {
+                        q.bind(f)
+                    } else {
+                        q.bind(n.to_string())
+                    }
+                }
+                serde_json::Value::Bool(b) => q.bind(*b),
+                serde_json::Value::Null => q.bind(None::<String>),
+                _ => q.bind(p.to_string()),
+            };
+        }
+        let rows: Vec<sqlx::any::AnyRow> = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| RdbmsError::Database(e.to_string()))?;
+
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let columns: std::sync::Arc<Vec<String>> = std::sync::Arc::new(
+            rows[0]
+                .columns()
+                .iter()
+                .map(|c| c.name().to_string())
+                .collect(),
+        );
+        let cols = std::sync::Arc::clone(&columns);
+        let result = rows
+            .iter()
+            .map(|row| {
+                let values: Vec<serde_json::Value> = cols
+                    .iter()
+                    .map(|col| {
+                        row.try_get::<bool, _>(col.as_str())
+                            .map(serde_json::Value::Bool)
+                            .or_else(|_| {
+                                row.try_get::<i64, _>(col.as_str())
+                                    .map(|n| serde_json::Value::Number(n.into()))
+                            })
+                            .or_else(|_| {
+                                row.try_get::<i32, _>(col.as_str())
+                                    .map(|n| serde_json::Value::Number((n as i64).into()))
+                            })
+                            .or_else(|_| {
+                                row.try_get::<f64, _>(col.as_str())
+                                    .ok()
+                                    .and_then(|n| {
+                                        if n.is_finite() {
+                                            serde_json::Number::from_f64(n)
+                                                .map(serde_json::Value::Number)
+                                        } else if n.is_nan() {
+                                            Some(serde_json::Value::String("NaN".into()))
+                                        } else if n > 0.0 {
+                                            Some(serde_json::Value::String("Infinity".into()))
+                                        } else {
+                                            Some(serde_json::Value::String("-Infinity".into()))
+                                        }
+                                    })
+                                    .ok_or(())
+                            })
+                            .or_else(|_| {
+                                row.try_get::<String, _>(col.as_str())
+                                    .map(serde_json::Value::String)
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                    })
+                    .collect();
+                Row::new((*cols).clone(), values)
+            })
+            .collect();
+        Ok(result)
+    }
+
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
         let tx = self
             .pool

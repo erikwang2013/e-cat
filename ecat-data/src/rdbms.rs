@@ -10,6 +10,11 @@ pub struct Row {
 impl Row {
     /// Create a new Row with the given columns and values.
     pub fn new(columns: Vec<String>, values: Vec<serde_json::Value>) -> Self {
+        debug_assert_eq!(
+            columns.len(),
+            values.len(),
+            "columns and values must have the same length"
+        );
         Self { columns, values }
     }
 
@@ -54,7 +59,7 @@ impl Transaction {
 impl Drop for Transaction {
     fn drop(&mut self) {
         if !self.committed {
-            // auto-rollback: inner handle is dropped, which rolls back in most backends
+            tracing::warn!("transaction dropped without commit — rolling back");
         }
     }
 }

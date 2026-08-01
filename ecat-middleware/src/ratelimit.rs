@@ -48,13 +48,21 @@ impl RateLimiter {
 #[derive(Clone)]
 pub struct RateLimitLayer {
     limiter: Arc<RateLimiter>,
+    key_fn: Arc<dyn Fn(&str) -> String + Send + Sync>,
 }
 
 impl RateLimitLayer {
     pub fn new(max_requests: u32, window: Duration) -> Self {
         Self {
             limiter: Arc::new(RateLimiter::new(max_requests, window)),
+            key_fn: Arc::new(|_| "global".into()),
         }
+    }
+
+    /// Set a custom key extraction function (e.g. per-client-IP, per-route).
+    pub fn with_key_fn(mut self, f: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        self.key_fn = Arc::new(f);
+        self
     }
 }
 
@@ -64,6 +72,7 @@ impl<S> Layer<S> for RateLimitLayer {
         RateLimitService {
             inner,
             limiter: Arc::clone(&self.limiter),
+            key_fn: Arc::clone(&self.key_fn),
         }
     }
 }
@@ -72,6 +81,7 @@ impl<S> Layer<S> for RateLimitLayer {
 pub struct RateLimitService<S> {
     inner: S,
     limiter: Arc<RateLimiter>,
+    key_fn: Arc<dyn Fn(&str) -> String + Send + Sync>,
 }
 
 impl<S, Req> Service<Req> for RateLimitService<S>
@@ -94,9 +104,11 @@ where
 
     fn call(&mut self, req: Req) -> Self::Future {
         let limiter = Arc::clone(&self.limiter);
+        let key_fn = Arc::clone(&self.key_fn);
+        let key = key_fn(""); // default uses empty string; custom fn can ignore it
         let fut = self.inner.call(req);
         Box::pin(async move {
-            if !limiter.allow("global").await {
+            if !limiter.allow(&key).await {
                 return Err(Box::new(std::io::Error::other("rate limit exceeded"))
                     as Box<dyn std::error::Error + Send + Sync>);
             }
@@ -136,5 +148,11 @@ mod tests {
     #[test]
     fn layer_constructs() {
         let _layer = RateLimitLayer::new(10, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn layer_with_custom_key() {
+        let _layer =
+            RateLimitLayer::new(5, Duration::from_secs(1)).with_key_fn(|_ip| "custom-key".into());
     }
 }
