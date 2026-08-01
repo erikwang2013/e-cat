@@ -136,62 +136,19 @@ fn prefix_end(prefix: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
+use base64::Engine;
+
 fn b64(s: &str) -> String {
-    base64_encode(s.as_bytes())
+    base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
 }
 
 fn decode_b64_str(s: &str) -> Result<String, String> {
-    let bytes = base64_decode(s)?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| format!("base64: {e}"))?;
     String::from_utf8(bytes).map_err(|e| format!("utf8: {e}"))
 }
 
-fn base64_encode(data: &[u8]) -> String {
-    let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::new();
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        result.push(chars.as_bytes()[(n >> 18) as usize] as char);
-        result.push(chars.as_bytes()[((n >> 12) & 0x3f) as usize] as char);
-        result.push(if chunk.len() > 1 {
-            chars.as_bytes()[((n >> 6) & 0x3f) as usize] as char
-        } else {
-            '='
-        });
-        result.push(if chunk.len() > 2 {
-            chars.as_bytes()[(n & 0x3f) as usize] as char
-        } else {
-            '='
-        });
-    }
-    result
-}
-
-fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
-    let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut table = std::collections::HashMap::new();
-    for (i, c) in chars.chars().enumerate() {
-        table.insert(c, i as u8);
-    }
-    let s = s.trim_end_matches('=');
-    let bytes: Vec<u8> = s.chars().filter_map(|c| table.get(&c).copied()).collect();
-    let mut result = Vec::new();
-    for chunk in bytes.chunks(4) {
-        if chunk.len() < 2 {
-            break;
-        }
-        result.push((chunk[0] << 2) | (chunk[1] >> 4));
-        if chunk.len() >= 3 {
-            result.push((chunk[1] << 4) | (chunk[2] >> 2));
-        }
-        if chunk.len() >= 4 {
-            result.push((chunk[2] << 6) | chunk[3]);
-        }
-    }
-    Ok(result)
-}
 
 #[cfg(test)]
 mod tests {

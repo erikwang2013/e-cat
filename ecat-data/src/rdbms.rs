@@ -83,23 +83,26 @@ pub trait RdbmsClient: Send + Sync {
     /// Query rows with raw SQL. Prefer `query_with` for user-supplied values.
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError>;
     /// Execute a parameterized SQL statement to prevent injection.
+    /// Backends that cannot bind parameters return an error.
     async fn execute_with(
         &self,
-        sql: &str,
-        params: &[serde_json::Value],
+        _sql: &str,
+        _params: &[serde_json::Value],
     ) -> Result<u64, RdbmsError> {
-        // Default: fall back to raw execute (overridden by sqlx backend)
-        let _ = params;
-        self.execute(sql).await
+        Err(RdbmsError::Database(
+            "parameterized execute not supported by this backend".into(),
+        ))
     }
     /// Query with parameterized SQL to prevent injection.
+    /// Backends that cannot bind parameters return an error.
     async fn query_with(
         &self,
-        sql: &str,
-        params: &[serde_json::Value],
+        _sql: &str,
+        _params: &[serde_json::Value],
     ) -> Result<Vec<Row>, RdbmsError> {
-        let _ = params;
-        self.query(sql).await
+        Err(RdbmsError::Database(
+            "parameterized query not supported by this backend".into(),
+        ))
     }
     async fn transaction(&self) -> Result<Transaction, RdbmsError>;
 }
@@ -110,4 +113,6 @@ pub enum RdbmsError {
     Database(String),
     #[error("connection error: {0}")]
     Connection(String),
+    #[error("configuration error: {0}")]
+    Config(String),
 }

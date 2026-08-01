@@ -3,7 +3,7 @@ mod encrypted;
 mod env;
 mod file;
 
-pub use encrypted::EncryptedSource;
+pub use encrypted::ObfuscatedSource;
 pub use env::EnvSource;
 pub use file::FileSource;
 

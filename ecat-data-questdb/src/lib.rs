@@ -45,19 +45,19 @@ impl QuestdbClient {
         }
     }
 
-    pub fn from_config(cfg: QuestdbConfig) -> Self {
+    pub fn from_config(cfg: QuestdbConfig) -> Result<Self, RdbmsError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -73,8 +73,9 @@ impl RdbmsClient for QuestdbClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
         let req = self
             .client
-            .get(format!("{}/exec", self.base_url))
-            .query(&[("query", sql)]);
+            .post(format!("{}/exec", self.base_url))
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .body(sql.to_string());
         let resp = self.apply_auth(req).send().await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?;
         if !resp.status().is_success() {
@@ -88,9 +89,10 @@ impl RdbmsClient for QuestdbClient {
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
         let req = self
             .client
-            .get(format!("{}/exec", self.base_url))
-            .query(&[("query", sql), ("count", "true")])
-            .header("Accept", "application/json");
+            .post(format!("{}/exec?count=true", self.base_url))
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .header("Accept", "application/json")
+            .body(sql.to_string());
         let body: serde_json::Value = self.apply_auth(req).send().await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?
             .json()
@@ -134,7 +136,7 @@ mod tests {
         let cfg: QuestdbConfig = serde_json::from_str(
             r#"{"base_url":"http://localhost:9000","username":"admin","password":"quest"}"#
         ).unwrap();
-        let client = QuestdbClient::from_config(cfg);
+        let client = QuestdbClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }
 }

@@ -222,7 +222,6 @@ struct ConsulNode {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct ConsulHealthService {
     #[serde(rename = "Service")]
     service: String,
@@ -231,7 +230,7 @@ struct ConsulHealthService {
     #[serde(rename = "Port")]
     port: u16,
     #[serde(rename = "Tags")]
-    tags: Vec<String>,
+    _tags: Vec<String>,
 }
 
 #[cfg(test)]

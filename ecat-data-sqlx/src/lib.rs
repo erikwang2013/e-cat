@@ -19,6 +19,17 @@ pub struct SqlxConfig {
     pub tls: Option<TlsClientConfig>,
 }
 
+
+fn percent_encode(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' =>
+                format!("%{:02X}", c as u8),
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
 pub struct SqlxClient {
     pool: AnyPool,
 }
@@ -37,7 +48,13 @@ impl SqlxClient {
         let url = if url.contains('@') {
             url.to_string()
         } else {
-            url.replacen("://", &format!("://{username}:{password}@"), 1)
+            let encoded_user = percent_encode(username);
+            let encoded_pass = percent_encode(password);
+            url.replacen(
+                "://",
+                &format!("://{encoded_user}:{encoded_pass}@"),
+                1,
+            )
         };
         Self::connect(&url).await
     }
@@ -76,19 +93,17 @@ impl RdbmsClient for SqlxClient {
             return Ok(Vec::new());
         }
 
-        let columns: std::sync::Arc<Vec<String>> = std::sync::Arc::new(
+        let columns: Vec<String> =
             rows[0]
                 .columns()
                 .iter()
                 .map(|c| c.name().to_string())
-                .collect(),
-        );
+                .collect();
 
-        let cols = std::sync::Arc::clone(&columns);
         let result = rows
             .iter()
             .map(|row| {
-                let values: Vec<serde_json::Value> = cols
+                let values: Vec<serde_json::Value> = columns
                     .iter()
                     .map(|col| {
                         // Try common DB types: bool → i64 → f64 → String → Null
@@ -127,7 +142,7 @@ impl RdbmsClient for SqlxClient {
                     })
                     .collect();
 
-                Row::new((*cols).clone(), values)
+                Row::new(columns.clone(), values)
             })
             .collect();
 
@@ -194,18 +209,17 @@ impl RdbmsClient for SqlxClient {
         if rows.is_empty() {
             return Ok(Vec::new());
         }
-        let columns: std::sync::Arc<Vec<String>> = std::sync::Arc::new(
+        let columns: Vec<String> =
             rows[0]
                 .columns()
                 .iter()
                 .map(|c| c.name().to_string())
-                .collect(),
-        );
-        let cols = std::sync::Arc::clone(&columns);
+                .collect();
+
         let result = rows
             .iter()
             .map(|row| {
-                let values: Vec<serde_json::Value> = cols
+                let values: Vec<serde_json::Value> = columns
                     .iter()
                     .map(|col| {
                         row.try_get::<bool, _>(col.as_str())
@@ -242,7 +256,7 @@ impl RdbmsClient for SqlxClient {
                             .unwrap_or(serde_json::Value::Null)
                     })
                     .collect();
-                Row::new((*cols).clone(), values)
+                Row::new(columns.clone(), values)
             })
             .collect();
         Ok(result)

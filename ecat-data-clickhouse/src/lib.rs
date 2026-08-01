@@ -55,20 +55,20 @@ impl ClickhouseClient {
         }
     }
 
-    pub fn from_config(cfg: ClickhouseConfig) -> Self {
+    pub fn from_config(cfg: ClickhouseConfig) -> Result<Self, RdbmsError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             database: cfg.database,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -85,6 +85,7 @@ impl RdbmsClient for ClickhouseClient {
         let req = self
             .client
             .post(&self.base_url)
+            .header("Content-Type", "text/plain; charset=utf-8")
             .query(&[("database", &self.database)])
             .body(sql.to_string());
         let resp = self.apply_auth(req).send().await
@@ -99,6 +100,7 @@ impl RdbmsClient for ClickhouseClient {
         let req = self
             .client
             .post(&self.base_url)
+            .header("Content-Type", "text/plain; charset=utf-8")
             .query(&[
                 ("database", &self.database),
                 ("default_format", &"JSONEachRow".to_string()),
@@ -142,7 +144,7 @@ mod tests {
         let cfg: ClickhouseConfig = serde_json::from_str(
             r#"{"base_url":"http://localhost:8123","username":"default","password":"secret"}"#
         ).unwrap();
-        let client = ClickhouseClient::from_config(cfg);
+        let client = ClickhouseClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }
 }

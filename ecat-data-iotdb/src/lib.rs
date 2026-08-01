@@ -34,19 +34,19 @@ impl IotdbClient {
         }
     }
 
-    pub fn from_config(cfg: IotdbConfig) -> Self {
+    pub fn from_config(cfg: IotdbConfig) -> Result<Self, TsdbError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 }
 
@@ -73,6 +73,7 @@ impl TsdbClient for IotdbClient {
                 .client
                 .post(format!("{}/rest/v2/insertTablet", self.base_url))
                 .basic_auth(&self.username, Some(&self.password))
+                .header("Content-Type", "application/json")
                 .json(&body)
                 .send()
                 .await
@@ -89,6 +90,7 @@ impl TsdbClient for IotdbClient {
             .client
             .post(format!("{}/rest/v2/query", self.base_url))
             .basic_auth(&self.username, Some(&self.password))
+            .header("Content-Type", "text/plain; charset=utf-8")
             .body(sql.to_string())
             .send()
             .await

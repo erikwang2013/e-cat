@@ -1,14 +1,18 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//
+// ObfuscatedSource applies XOR-based obfuscation to config values prefixed with `obfs:`.
+// This is NOT encryption — it only protects against accidental exposure in plain-text
+// config files. For real encryption use a dedicated secrets manager.
 use super::{ConfigError, ConfigSource};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-pub struct EncryptedSource<S> {
+pub struct ObfuscatedSource<S> {
     inner: S,
     key: Vec<u8>,
 }
 
-impl<S: ConfigSource> EncryptedSource<S> {
+impl<S: ConfigSource> ObfuscatedSource<S> {
     pub fn new(inner: S, key: impl Into<Vec<u8>>) -> Self {
         Self {
             inner,
@@ -18,41 +22,41 @@ impl<S: ConfigSource> EncryptedSource<S> {
 }
 
 #[async_trait]
-impl<S: ConfigSource> ConfigSource for EncryptedSource<S> {
+impl<S: ConfigSource> ConfigSource for ObfuscatedSource<S> {
     async fn load(&self) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
         let map = self.inner.load().await?;
-        let mut decrypted = HashMap::new();
+        let mut deobfuscated = HashMap::new();
         for (k, v) in map {
             if let Some(s) = v.as_str() {
-                if let Some(stripped) = s.strip_prefix("enc:") {
-                    let dec = decrypt(stripped, &self.key)?;
+                if let Some(stripped) = s.strip_prefix("obfs:") {
+                    let dec = deobfuscate(stripped, &self.key)?;
                     if let Ok(json_val) = serde_json::from_str(&dec) {
-                        decrypted.insert(k, json_val);
+                        deobfuscated.insert(k, json_val);
                     } else {
-                        decrypted.insert(k, serde_json::Value::String(dec));
+                        deobfuscated.insert(k, serde_json::Value::String(dec));
                     }
                 } else {
-                    decrypted.insert(k, v);
+                    deobfuscated.insert(k, v);
                 }
             } else {
-                decrypted.insert(k, v);
+                deobfuscated.insert(k, v);
             }
         }
-        Ok(decrypted)
+        Ok(deobfuscated)
     }
 }
 
-fn decrypt(encoded: &str, key: &[u8]) -> Result<String, ConfigError> {
+fn deobfuscate(encoded: &str, key: &[u8]) -> Result<String, ConfigError> {
     let bytes = hex_decode(encoded).map_err(|e| ConfigError::Other(format!("hex: {e}")))?;
     if key.is_empty() {
-        return Err(ConfigError::Other("empty encryption key".into()));
+        return Err(ConfigError::Other("empty obfuscation key".into()));
     }
-    let decrypted: Vec<u8> = bytes
+    let result: Vec<u8> = bytes
         .iter()
         .enumerate()
         .map(|(i, b)| b ^ key[i % key.len()])
         .collect();
-    String::from_utf8(decrypted).map_err(|e| ConfigError::Other(format!("utf8: {e}")))
+    String::from_utf8(result).map_err(|e| ConfigError::Other(format!("utf8: {e}")))
 }
 
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
@@ -78,24 +82,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn decrypts_encrypted_values() {
+    async fn deobfuscates_obfuscated_values() {
         let key = b"mykey1234567890";
         let secret = "hello";
-        let encrypted: Vec<u8> = secret
+        let obfuscated: Vec<u8> = secret
             .bytes()
             .enumerate()
             .map(|(i, b)| b ^ key[i % key.len()])
             .collect();
-        let enc_hex: String = encrypted.iter().map(|b| format!("{b:02x}")).collect();
+        let obfs_hex: String = obfuscated.iter().map(|b| format!("{b:02x}")).collect();
 
         let mut data = HashMap::new();
         data.insert(
             "password".into(),
-            serde_json::Value::String(format!("enc:{enc_hex}")),
+            serde_json::Value::String(format!("obfs:{obfs_hex}")),
         );
         data.insert("host".into(), serde_json::Value::String("localhost".into()));
 
-        let source = EncryptedSource::new(data, key.to_vec());
+        let source = ObfuscatedSource::new(data, key.to_vec());
         let result = source.load().await.unwrap();
         assert_eq!(result.get("password").unwrap().as_str().unwrap(), "hello");
         assert_eq!(result.get("host").unwrap().as_str().unwrap(), "localhost");

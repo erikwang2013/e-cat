@@ -45,19 +45,19 @@ impl ElasticsearchClient {
         }
     }
 
-    pub fn from_config(cfg: ElasticsearchConfig) -> Self {
+    pub fn from_config(cfg: ElasticsearchConfig) -> Result<Self, SearchError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| SearchError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -133,7 +133,7 @@ mod tests {
         let cfg: ElasticsearchConfig = serde_json::from_str(
             r#"{"base_url":"http://localhost:9200","username":"admin","password":"secret"}"#
         ).unwrap();
-        let client = ElasticsearchClient::from_config(cfg);
+        let client = ElasticsearchClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }
 
@@ -142,7 +142,7 @@ mod tests {
         let cfg: ElasticsearchConfig = serde_json::from_str(
             r#"{"base_url":"http://localhost:9200"}"#
         ).unwrap();
-        let client = ElasticsearchClient::from_config(cfg);
+        let client = ElasticsearchClient::from_config(cfg).unwrap();
         assert!(client.username.is_none());
     }
 }

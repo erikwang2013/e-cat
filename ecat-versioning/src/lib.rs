@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::http::HeaderMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub enum VersionStrategy {
     PathPrefix,
@@ -54,12 +55,41 @@ impl VersionedRouter {
     }
 
     fn build_header_router(self) -> axum::Router {
-        // Header-based routing: nest each version under the same path,
-        // requiring clients to set Accept header with version param.
-        let mut router = axum::Router::new();
-        for (_version, version_router) in self.versions {
-            router = router.nest("/api", version_router);
+        use axum::extract::State;
+
+        #[derive(Clone)]
+        struct VersionState {
+            names: Arc<Vec<String>>,
         }
+
+        let version_names: Arc<Vec<String>> =
+            Arc::new(self.versions.keys().cloned().collect());
+
+        let mut router = axum::Router::new();
+        for (_ver, vr) in self.versions {
+            router = router.merge(vr);
+        }
+
+        let state = VersionState {
+            names: Arc::clone(&version_names),
+        };
+        router = router.layer(
+            axum::middleware::from_fn_with_state(
+                state,
+                |State(s): State<VersionState>,
+                 req: axum::http::Request<axum::body::Body>,
+                 next: axum::middleware::Next| async move {
+                    if let Some(ver) = extract_version(req.headers())
+                        && !s.names.contains(&ver) {
+                            return axum::http::Response::builder()
+                                .status(axum::http::StatusCode::NOT_FOUND)
+                                .body(axum::body::Body::from("unknown version"))
+                                .unwrap();
+                        }
+                    next.run(req).await
+                },
+            ),
+        );
         router
     }
 }
@@ -94,6 +124,18 @@ mod tests {
         let v1 = axum::Router::new().route("/health", get(health));
         let v2 = axum::Router::new().route("/health", get(health));
         let router = VersionedRouter::new(VersionStrategy::PathPrefix)
+            .add_version("v1", v1)
+            .add_version("v2", v2)
+            .default_version("v1")
+            .build();
+        assert!(router.has_routes());
+    }
+
+    #[test]
+    fn header_versioned_router_builds() {
+        let v1 = axum::Router::new().route("/health", get(health));
+        let v2 = axum::Router::new().route("/users", get(health));
+        let router = VersionedRouter::new(VersionStrategy::Header)
             .add_version("v1", v1)
             .add_version("v2", v2)
             .default_version("v1")

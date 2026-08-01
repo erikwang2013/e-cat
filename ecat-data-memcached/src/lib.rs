@@ -4,7 +4,7 @@ use ecat_data::{Cache, CacheError};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
 
 type CacheEntry = (Vec<u8>, Option<Instant>);
@@ -22,18 +22,17 @@ pub struct MemcachedConfig {
 
 pub struct MemcachedClient {
     store: Mutex<HashMap<Vec<u8>, CacheEntry>>,
-    #[allow(dead_code)]
-    username: Option<String>,
-    #[allow(dead_code)]
-    password: Option<String>,
+    _username: Option<String>,
+    _password: Option<String>,
 }
 
 impl MemcachedClient {
+
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
-            username: None,
-            password: None,
+            _username: None,
+            _password: None,
         }
     }
 
@@ -43,16 +42,16 @@ impl MemcachedClient {
     ) -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
-            username: Some(_username.into()),
-            password: Some(_password.into()),
+            _username: Some(_username.into()),
+            _password: Some(_password.into()),
         }
     }
 
     pub fn from_config(cfg: MemcachedConfig) -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
-            username: cfg.username,
-            password: cfg.password,
+            _username: cfg.username,
+            _password: cfg.password,
         }
     }
 }
@@ -69,7 +68,7 @@ impl Cache for MemcachedClient {
         let store = self
             .store
             .lock()
-            .map_err(|e| CacheError::Other(e.to_string()))?;
+            .await;
         match store.get(key.as_bytes()) {
             Some((val, Some(exp))) if Instant::now() > *exp => Ok(None),
             Some((val, _)) => Ok(Some(val.clone())),
@@ -81,7 +80,7 @@ impl Cache for MemcachedClient {
         let mut store = self
             .store
             .lock()
-            .map_err(|e| CacheError::Other(e.to_string()))?;
+            .await;
         let expires = if ttl.is_zero() {
             None
         } else {
@@ -95,7 +94,7 @@ impl Cache for MemcachedClient {
         let mut store = self
             .store
             .lock()
-            .map_err(|e| CacheError::Other(e.to_string()))?;
+            .await;
         store.remove(key.as_bytes());
         Ok(())
     }

@@ -34,19 +34,19 @@ impl Neo4jClient {
         }
     }
 
-    pub fn from_config(cfg: Neo4jConfig) -> Self {
+    pub fn from_config(cfg: Neo4jConfig) -> Result<Self, GraphError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| GraphError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 }
 

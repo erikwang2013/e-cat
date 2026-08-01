@@ -18,6 +18,17 @@ pub struct RedisConfig {
     pub tls: Option<TlsClientConfig>,
 }
 
+
+fn percent_encode(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' =>
+                format!("%{:02X}", c as u8),
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
 pub struct RedisCache {
     conn: MultiplexedConnection,
 }
@@ -40,7 +51,8 @@ impl RedisCache {
         let url = if url.contains('@') {
             url.to_string()
         } else {
-            url.replacen("://", &format!("://:{password}@"), 1)
+            let encoded = percent_encode(password);
+            url.replacen("://", &format!("://:{encoded}@"), 1)
         };
         Self::connect(&url).await
     }
@@ -73,12 +85,13 @@ impl Cache for RedisCache {
 
     async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), CacheError> {
         let mut conn = self.conn.clone();
-        let secs = ttl.as_secs();
-        if secs > 0 {
+        let millis = ttl.as_millis();
+        if millis > 0 {
+            let ms = if millis > u64::MAX as u128 { u64::MAX } else { millis as u64 };
             let (): () = conn
-                .set_ex(key, value, secs)
+                .pset_ex(key, value, ms)
                 .await
-                .map_err(|e| CacheError::Other(format!("redis setex: {e}")))?;
+                .map_err(|e| CacheError::Other(format!("redis psetex: {e}")))?;
         } else {
             let (): () = conn
                 .set(key, value)

@@ -38,20 +38,20 @@ impl ArangoClient {
         }
     }
 
-    pub fn from_config(cfg: ArangoConfig) -> Self {
+    pub fn from_config(cfg: ArangoConfig) -> Result<Self, GraphError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| GraphError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             db: cfg.db,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 }
 

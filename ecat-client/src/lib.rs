@@ -24,8 +24,7 @@ impl StaticResolver {
 
     pub fn add_service(self, name: impl Into<String>, endpoints: Vec<String>) -> Self {
         self.endpoints
-            .try_write()
-            .expect("StaticResolver poisoned")
+            .blocking_write()
             .insert(name.into(), endpoints);
         self
     }
@@ -95,12 +94,10 @@ impl LoadBalancer for RandomBalancer {
         if endpoints.is_empty() {
             return None;
         }
-        use std::hash::{DefaultHasher, Hash, Hasher};
-        let mut h = DefaultHasher::new();
-        std::time::Instant::now().hash(&mut h);
-        (h.finish() as usize % endpoints.len())
-            .checked_add(0)
-            .and_then(|i| endpoints.get(i).cloned())
+        use std::collections::hash_map::RandomState;
+        use std::hash::{BuildHasher, Hasher};
+        let idx = RandomState::new().build_hasher().finish() as usize % endpoints.len();
+        endpoints.get(idx).cloned()
     }
 }
 

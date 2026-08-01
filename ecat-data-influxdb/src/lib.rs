@@ -41,22 +41,22 @@ impl InfluxClient {
         }
     }
 
-    pub fn from_config(cfg: InfluxConfig) -> Self {
+    pub fn from_config(cfg: InfluxConfig) -> Result<Self, TsdbError> {
         let base = cfg.base_url.clone();
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             write_url: format!("{base}/api/v2/write"),
             query_url: format!("{base}/api/v2/query"),
             org: cfg.org,
             bucket: cfg.bucket,
             token: cfg.token,
             client,
-        }
+        })
     }
 }
 
@@ -96,6 +96,7 @@ impl TsdbClient for InfluxClient {
             .client
             .post(&self.write_url)
             .header("Authorization", format!("Token {}", self.token))
+            .header("Content-Type", "text/plain; charset=utf-8")
             .query(&[
                 ("org", &self.org),
                 ("bucket", &self.bucket),

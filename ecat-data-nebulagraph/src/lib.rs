@@ -50,20 +50,20 @@ impl NebulaGraphClient {
         }
     }
 
-    pub fn from_config(cfg: NebulaGraphConfig) -> Self {
+    pub fn from_config(cfg: NebulaGraphConfig) -> Result<Self, GraphError> {
         let client = match &cfg.tls {
             Some(tls) if tls.is_enabled() => tls
                 .build_reqwest_client()
-                .expect("TLS client build failed"),
+                .map_err(|e| GraphError::Other(format!("TLS: {e}")))?,
             _ => reqwest::Client::new(),
         };
-        Self {
+        Ok(Self {
             client,
             base_url: cfg.base_url,
             space: cfg.space,
             username: cfg.username,
             password: cfg.password,
-        }
+        })
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -109,7 +109,7 @@ mod tests {
         let cfg: NebulaGraphConfig = serde_json::from_str(
             r#"{"base_url":"http://localhost:19669","space":"test","username":"root","password":"nebula"}"#
         ).unwrap();
-        let client = NebulaGraphClient::from_config(cfg);
+        let client = NebulaGraphClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }
 }
