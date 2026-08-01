@@ -135,15 +135,15 @@
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
 | 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
-| 缓存 | Memcached | `ecat-data-memcached` | 📋 规划中 |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | 📋 规划中 |
 | 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 |
 | 缓存 | Memcached | `ecat-data-memcached` | ✅ 已实现 |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 |
-| 图 | Neo4j | `ecat-data-neo4j` | ❌ 无驱动 |
-| 图 | NebulaGraph / ArangoDB | — | ❌ 无驱动 |
-| 时序 | Apache IoTDB / QuestDB | — | ❌ 无驱动 |
+| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
+| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
+| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。标注"规划中"的 crate 尚未实现。
 

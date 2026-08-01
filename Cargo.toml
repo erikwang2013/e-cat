@@ -40,12 +40,17 @@ members = [
     "ecat-data-elasticsearch",
     "ecat-data-clickhouse",
     "ecat-data-memcached",
+    "ecat-data-neo4j",
+    "ecat-data-nebulagraph",
+    "ecat-data-arangodb",
+    "ecat-data-iotdb",
+    "ecat-data-questdb",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.1.4"
+version = "2.1.5"
 edition = "2024"
 license = "Apache-2.0"
 

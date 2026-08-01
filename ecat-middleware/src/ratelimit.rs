@@ -19,19 +19,25 @@ pub struct MemoryStore {
 
 impl MemoryStore {
     pub fn new() -> Self {
-        Self { buckets: Mutex::new(HashMap::new()) }
+        Self {
+            buckets: Mutex::new(HashMap::new()),
+        }
     }
 }
 
 impl Default for MemoryStore {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl RateLimitStore for MemoryStore {
     async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String> {
         let mut buckets = self.buckets.lock().await;
-        let entry = buckets.entry(key.to_string()).or_insert((0, Instant::now()));
+        let entry = buckets
+            .entry(key.to_string())
+            .or_insert((0, Instant::now()));
         if entry.1.elapsed() > Duration::from_secs(window_secs) {
             *entry = (1, Instant::now());
             return Ok(());
