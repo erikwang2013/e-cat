@@ -1,6 +1,9 @@
 # e-cat 代码审查报告 — 2026-08-01 (第4轮 · 全部修复)
 
-**项目版本:** 1.0.8  
+**项目版本:** 2.1.0  
+**最终状态:** 0 warnings, ~116 tests, clippy clean, fmt clean
+
+**第 5 轮清理:** 移除 12 个未使用依赖（ecat-health/reqwest, ecat-circuit-breaker/tokio, ecat-bench/tracing, ecat-mq/serde+serde_json, ecat-events/async-trait, ecat-config-remote/tracing, ecat-testing/transport-http+axum, ecat-client/serde+serde_json）
 **审查范围:** 全部 18 个 crate
 
 ## 最终状态

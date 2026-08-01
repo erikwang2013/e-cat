@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.0.2）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.0）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -20,10 +20,13 @@
 │     transport      │    middleware      │     registry       │
 │     ─────────      │    ──────────      │     ────────       │
 │     HTTP (axum)    │    RecoveryLayer   │     memory         │
-│     gRPC (tonic)   │    TracingLayer    │                    │
+│     gRPC (tonic)   │    TracingLayer    │     consul         │
 │     encoding       │    LoggingLayer    │                    │
 │                    │    TimeoutLayer    │                    │
+│                    │    RateLimitLayer  │                    │
 │                    │    SecurityLayer   │                    │
+│                    │    CircuitBreaker  │                    │
+│                    │    Auth (JWT/API)  │                    │
 ├────────────────────┼────────────────────┼────────────────────┤
 │     config         │     errors         │     metadata       │
 │     ──────         │     ──────         │     ────────       │
@@ -59,7 +62,8 @@
                               │ 3. Logging     │  请求日志
                               │ 4. Auth        │  认证鉴权
                               │ 5. Metrics     │  指标采集
-│ 6. Security    │  攻击检测（仅告警）
+│ 6. Security    │  攻击检测
+│ 7. CircuitBrk  │  熔断保护
                               └───────┬───────┘
                                       │
                               ┌───────┴───────┐
@@ -130,12 +134,12 @@
 | 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
 | 缓存 | Memcached | `ecat-data-memcached` | 📋 规划中 |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | 📋 规划中 |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | 📋 二期规划 |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | 📋 v2.2 规划 |
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | 📋 规划中 |
 | 图 | Neo4j | `ecat-data-neo4j` | 📋 规划中 |
 | 图 | NebulaGraph | `ecat-data-nebulagraph` | 📋 规划中 |
 | 图 | ArangoDB | `ecat-data-arangodb` | 📋 规划中 |
-| 时序 | InfluxDB | `ecat-data-influxdb` | 📋 二期规划 |
+| 时序 | InfluxDB | `ecat-data-influxdb` | 📋 v2.2 规划 |
 | 时序 | Apache IoTDB | `ecat-data-iotdb` | 📋 规划中 |
 | 时序 | QuestDB | `ecat-data-questdb` | 📋 规划中 |
 
@@ -255,6 +259,8 @@ let layer = ServiceBuilder::new()
     .layer(TracingLayer)
     .layer(LoggingLayer)
     .layer(TimeoutLayer::new(Duration::from_secs(30)))
+    .layer(CircuitBreakerLayer::new())
+    .layer(JwtAuthLayer::new("my-secret-key"))
     .layer(SecurityLayer::new());
 ```
 
@@ -291,6 +297,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 9 | ✅ 完成 | 生态一期（health / client / circuit-breaker / auth / registry-consul） |
 | Phase 10 | ✅ 完成 | 生态二期（redis / mq / events / config-remote） |
 | Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
+| Phase 12 | 📋 规划 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
+| Phase 13 | 📋 规划 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
+| Phase 14 | 📋 规划 | 运维与体验（Helm / WebSocket / API 版本管理 / CI/CD） |
 
 ## 设计目标
 
@@ -323,7 +332,8 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 
 - [设计规范](docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
 - [实现计划](docs/superpowers/plans/2026-07-29-ecat-framework.md)
-- [生态规划](docs/ecosystem-plan.md)
+- [生态规划 v1](docs/ecosystem-plan.md)（已完成）
+- [生态规划 v2](docs/ecosystem-plan-v2.md)（后续规划）
 
 ## 许可证
 
