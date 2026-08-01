@@ -1,10 +1,29 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use http::{Request, StatusCode};
 use security_rust::Scanner;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context as TaskCtx, Poll};
 
 pub use security_rust::{AttackCategory, DetectionResult, ScannerBuilder, Severity};
+
+#[derive(Debug, thiserror::Error)]
+pub enum SecurityError {
+    #[error("attack blocked: {0}")]
+    AttackBlocked(String),
+    #[error("inner error: {0}")]
+    Inner(#[from] Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl SecurityError {
+    pub fn to_http_status(&self) -> StatusCode {
+        match self {
+            Self::AttackBlocked(_) => StatusCode::FORBIDDEN,
+            Self::Inner(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 /// Wraps `security_rust::Scanner` with convenient constructors.
 pub struct SecurityScanner {
@@ -78,26 +97,24 @@ pub struct SecurityService<S> {
     scanner: Arc<SecurityScanner>,
 }
 
-impl<S, B> tower::Service<http::Request<B>> for SecurityService<S>
+impl<S, B> tower::Service<Request<B>> for SecurityService<S>
 where
-    S: tower::Service<http::Request<B>> + Send + 'static,
+    S: tower::Service<Request<B>> + Send + 'static,
     S::Future: Send + 'static,
-    S::Error: Send + 'static,
+    S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     B: Send + 'static,
 {
     type Response = S::Response;
-    type Error = S::Error;
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Error = SecurityError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
+    fn poll_ready(&mut self, cx: &mut TaskCtx<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner
+            .poll_ready(cx)
+            .map_err(|e| SecurityError::Inner(e.into()))
     }
 
-    fn call(&mut self, req: http::Request<B>) -> Self::Future {
+    fn call(&mut self, req: Request<B>) -> Self::Future {
         let mut parts: Vec<String> = Vec::new();
         parts.push(req.uri().to_string());
 
@@ -120,8 +137,19 @@ where
             );
         }
 
+        if results
+            .iter()
+            .any(|r| matches!(r.severity, Severity::High | Severity::Critical))
+        {
+            let attack_types: Vec<String> =
+                results.iter().map(|r| r.attack_type.to_string()).collect();
+            return Box::pin(
+                async move { Err(SecurityError::AttackBlocked(attack_types.join(", "))) },
+            );
+        }
+
         let fut = self.inner.call(req);
-        Box::pin(fut)
+        Box::pin(async move { fut.await.map_err(|e| SecurityError::Inner(e.into())) })
     }
 }
 

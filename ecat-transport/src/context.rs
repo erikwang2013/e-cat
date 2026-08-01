@@ -18,6 +18,21 @@ impl Context {
     pub async fn trace_id(&self) -> Option<String> {
         self.metadata.read().await.trace_id().map(|s| s.to_string())
     }
+
+    pub async fn set_trace_id(&self, trace_id: impl Into<String>) {
+        self.metadata
+            .write()
+            .await
+            .set(ecat_metadata::TRACE_ID, trace_id);
+    }
+
+    pub async fn set_meta(&self, key: impl Into<String>, value: impl Into<String>) {
+        self.metadata.write().await.set(key, value);
+    }
+
+    pub async fn get_meta(&self, key: &str) -> Option<String> {
+        self.metadata.read().await.get(key).map(|s| s.to_string())
+    }
 }
 
 impl Default for Context {

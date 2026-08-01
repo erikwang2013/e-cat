@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::{Registry, RegistryError, Registration, ServiceInfo};
+use crate::{Registration, Registry, RegistryError, ServiceInfo};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub struct MemoryRegistry {
-    services: Arc<RwLock<HashMap<String, ServiceInfo>>>,
+    services: Arc<RwLock<HashMap<String, Arc<ServiceInfo>>>>,
 }
 
 impl Default for MemoryRegistry {
@@ -29,15 +29,21 @@ impl Registry for MemoryRegistry {
     async fn register(&self, service: ServiceInfo) -> Result<Registration, RegistryError> {
         let id = Uuid::new_v4().to_string();
         let mut services = self.services.write().await;
-        services.insert(id.clone(), service.clone());
-        Ok(Registration::new(id, service, Arc::new(MemoryRegistry {
-            services: Arc::clone(&self.services),
-        })))
+        services.insert(id.clone(), Arc::new(service.clone()));
+        Ok(Registration::new(
+            id,
+            service,
+            Arc::new(MemoryRegistry {
+                services: Arc::clone(&self.services),
+            }),
+        ))
     }
 
     async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
         let mut services = self.services.write().await;
-        services.remove(id).ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
+        services
+            .remove(id)
+            .ok_or_else(|| RegistryError::NotFound(id.to_string()))?;
         Ok(())
     }
 
@@ -46,7 +52,7 @@ impl Registry for MemoryRegistry {
         let results: Vec<ServiceInfo> = services
             .values()
             .filter(|s| s.name == name)
-            .cloned()
+            .map(|s| s.as_ref().clone())
             .collect();
         Ok(results)
     }

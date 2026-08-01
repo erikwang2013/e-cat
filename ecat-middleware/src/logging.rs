@@ -29,7 +29,10 @@ where
     type Error = S::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
@@ -39,7 +42,10 @@ where
         Box::pin(async move {
             let result = fut.await;
             let elapsed = start.elapsed();
-            tracing::info!(duration_ms = elapsed.as_millis() as u64, "request completed");
+            tracing::info!(
+                duration_ms = elapsed.as_millis() as u64,
+                "request completed"
+            );
             result
         })
     }

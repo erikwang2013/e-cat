@@ -78,8 +78,10 @@ mod tests {
     fn config_get_typed() {
         let mut c = Config::new();
         // Manually insert to test typed retrieval
-        c.data.insert("num".into(), serde_json::Value::Number(42.into()));
-        c.data.insert("s".into(), serde_json::Value::String("hello".into()));
+        c.data
+            .insert("num".into(), serde_json::Value::Number(42.into()));
+        c.data
+            .insert("s".into(), serde_json::Value::String("hello".into()));
 
         assert_eq!(c.get::<i32>("num"), Some(42));
         assert_eq!(c.get::<String>("s"), Some("hello".into()));

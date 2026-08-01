@@ -9,7 +9,9 @@ pub struct EnvSource {
 
 impl EnvSource {
     pub fn new(prefix: impl Into<String>) -> Self {
-        Self { prefix: prefix.into() }
+        Self {
+            prefix: prefix.into(),
+        }
     }
 }
 
@@ -23,10 +25,10 @@ fn parse_env_value(s: &str) -> serde_json::Value {
     if let Ok(n) = s.parse::<i64>() {
         return serde_json::Value::Number(n.into());
     }
-    if let Ok(n) = s.parse::<f64>() {
-        if let Some(num) = serde_json::Number::from_f64(n) {
-            return serde_json::Value::Number(num);
-        }
+    if let Ok(n) = s.parse::<f64>()
+        && let Some(num) = serde_json::Number::from_f64(n)
+    {
+        return serde_json::Value::Number(num);
     }
     serde_json::Value::String(s.to_string())
 }
@@ -75,6 +77,9 @@ mod tests {
 
     #[test]
     fn parse_string_fallback() {
-        assert_eq!(parse_env_value("hello"), serde_json::Value::String("hello".into()));
+        assert_eq!(
+            parse_env_value("hello"),
+            serde_json::Value::String("hello".into())
+        );
     }
 }

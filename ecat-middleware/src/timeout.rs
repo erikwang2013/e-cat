@@ -18,7 +18,10 @@ impl TimeoutLayer {
 impl<S> Layer<S> for TimeoutLayer {
     type Service = TimeoutService<S>;
     fn layer(&self, inner: S) -> Self::Service {
-        TimeoutService { inner, timeout: self.timeout }
+        TimeoutService {
+            inner,
+            timeout: self.timeout,
+        }
     }
 }
 
@@ -39,7 +42,10 @@ where
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
     }
 
@@ -49,7 +55,12 @@ where
         Box::pin(async move {
             tokio::time::timeout(timeout, fut)
                 .await
-                .map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "request timed out")) as Box<dyn std::error::Error + Send + Sync>)?
+                .map_err(|_| {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "request timed out",
+                    )) as Box<dyn std::error::Error + Send + Sync>
+                })?
                 .map_err(|e| Box::new(e) as _)
         })
     }

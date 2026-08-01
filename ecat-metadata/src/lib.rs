@@ -121,7 +121,10 @@ mod tests {
     fn from_http_header_map_skips_non_utf8() {
         let mut headers = http::HeaderMap::new();
         headers.insert("valid", "ok".parse().unwrap());
-        headers.insert("binary", http::HeaderValue::from_bytes(b"\xff\xfe").unwrap());
+        headers.insert(
+            "binary",
+            http::HeaderValue::from_bytes(b"\xff\xfe").unwrap(),
+        );
 
         let m = Metadata::from(&headers);
         assert_eq!(m.get("valid"), Some("ok"));
@@ -157,9 +160,12 @@ mod tests {
 
         let mut pairs: Vec<(String, String)> = m.into_iter().collect();
         pairs.sort();
-        assert_eq!(pairs, vec![
-            ("a".to_string(), "1".to_string()),
-            ("b".to_string(), "2".to_string()),
-        ]);
+        assert_eq!(
+            pairs,
+            vec![
+                ("a".to_string(), "1".to_string()),
+                ("b".to_string(), "2".to_string()),
+            ]
+        );
     }
 }

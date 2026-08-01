@@ -72,12 +72,30 @@ mod tests {
     fn test_error_code_http_mapping() {
         assert_eq!(ErrorCode::Ok.http_status(), StatusCode::OK);
         assert_eq!(ErrorCode::NotFound.http_status(), StatusCode::NOT_FOUND);
-        assert_eq!(ErrorCode::InvalidArgument.http_status(), StatusCode::BAD_REQUEST);
-        assert_eq!(ErrorCode::PermissionDenied.http_status(), StatusCode::FORBIDDEN);
-        assert_eq!(ErrorCode::Unauthenticated.http_status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(ErrorCode::Internal.http_status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(ErrorCode::Unavailable.http_status(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(ErrorCode::DeadlineExceeded.http_status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(
+            ErrorCode::InvalidArgument.http_status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ErrorCode::PermissionDenied.http_status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ErrorCode::Unauthenticated.http_status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            ErrorCode::Internal.http_status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            ErrorCode::Unavailable.http_status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            ErrorCode::DeadlineExceeded.http_status(),
+            StatusCode::GATEWAY_TIMEOUT
+        );
     }
 
     #[test]

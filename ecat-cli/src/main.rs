@@ -59,12 +59,103 @@ fn main() {
 
     match cli.command {
         Commands::New { name } => {
-            println!("Creating new e-cat project: {}", name);
-            println!("  mkdir {}", name);
-            println!("  generating Cargo.toml...");
-            println!("  generating src/main.rs...");
-            println!("  generating proto/...");
+            use std::fs;
+
+            let dir = std::path::Path::new(&name);
+            if dir.exists() {
+                eprintln!("Error: directory '{}' already exists", name);
+                process::exit(1);
+            }
+
+            fs::create_dir_all(dir.join("src")).unwrap_or_else(|e| {
+                eprintln!("Failed to create project: {}", e);
+                process::exit(1);
+            });
+            fs::create_dir_all(dir.join("proto")).unwrap_or_else(|e| {
+                eprintln!("Failed to create proto dir: {}", e);
+                process::exit(1);
+            });
+
+            let cargo_toml = format!(
+                r#"[package]
+name = "{}"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecat = {{ path = "../ecat" }}
+ecat-transport-http = {{ path = "../ecat-transport-http" }}
+ecat-middleware = {{ path = "../ecat-middleware" }}
+ecat-logging = {{ path = "../ecat-logging" }}
+tokio.workspace = true
+tracing.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+"#,
+                name
+            );
+            fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
+
+            let main_rs = r#"use axum::{{routing::get, Json, Router}};
+use ecat::App;
+use ecat_middleware::{{LoggingLayer, TracingLayer}};
+use ecat_transport_http::HttpServer;
+use serde::Serialize;
+use tower::ServiceBuilder;
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+}
+
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {{ status: "ok" }})
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let middleware = ServiceBuilder::new()
+        .layer(TracingLayer)
+        .layer(LoggingLayer);
+
+    let router = Router::new()
+        .route("/health", get(health))
+        .layer(middleware);
+
+    let http_srv = HttpServer::new(":8000").router(router);
+
+    let mut app = App::builder()
+        .name(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .server(http_srv)
+        .build()?;
+
+    app.run().await?;
+    Ok(())
+}
+"#;
+            fs::write(dir.join("src").join("main.rs"), main_rs).unwrap();
+
+            let proto_file = r#"syntax = "proto3";
+package service;
+
+service Service {
+    rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message HealthRequest {}
+message HealthResponse {
+    string status = 1;
+}
+"#;
+            fs::write(dir.join("proto").join("service.proto"), proto_file).unwrap();
+
             println!("Project '{}' created successfully!", name);
+            println!();
+            println!("  {}/Cargo.toml", name);
+            println!("  {}/src/main.rs", name);
+            println!("  {}/proto/service.proto", name);
             println!();
             println!("Next steps:");
             println!("  cd {}", name);

@@ -4,16 +4,54 @@ use super::{Codec, CodecError};
 #[derive(Debug)]
 pub struct ProtoCodec;
 
+impl ProtoCodec {
+    /// Encode a protobuf message using prost.
+    #[cfg(feature = "prost-codec")]
+    pub fn encode_message<T: prost::Message>(&self, val: &T) -> Result<Vec<u8>, CodecError> {
+        let mut buf = Vec::with_capacity(val.encoded_len());
+        val.encode(&mut buf)
+            .map_err(|e| CodecError::Encode(e.to_string()))?;
+        Ok(buf)
+    }
+
+    /// Decode a protobuf message using prost.
+    #[cfg(feature = "prost-codec")]
+    pub fn decode_message<T: prost::Message + Default>(
+        &self,
+        data: &[u8],
+    ) -> Result<T, CodecError> {
+        T::decode(data).map_err(|e| CodecError::Decode(e.to_string()))
+    }
+
+    /// Encode using prost (stub without feature).
+    #[cfg(not(feature = "prost-codec"))]
+    pub fn encode_message<T>(&self, _val: &T) -> Result<Vec<u8>, CodecError> {
+        Err(CodecError::Encode(
+            "enable 'prost-codec' feature and implement prost::Message".into(),
+        ))
+    }
+
+    /// Decode using prost (stub without feature).
+    #[cfg(not(feature = "prost-codec"))]
+    pub fn decode_message<T: Default>(&self, _data: &[u8]) -> Result<T, CodecError> {
+        Err(CodecError::Decode(
+            "enable 'prost-codec' feature and implement prost::Message".into(),
+        ))
+    }
+}
+
 impl Codec for ProtoCodec {
     fn encode<T: serde::Serialize>(&self, _val: &T) -> Result<Vec<u8>, CodecError> {
         Err(CodecError::Encode(
-            "proto codec requires prost::Message trait".into(),
+            "ProtoCodec: use encode_message() with prost::Message types, or enable 'prost-codec'"
+                .into(),
         ))
     }
 
     fn decode<T: serde::de::DeserializeOwned>(&self, _data: &[u8]) -> Result<T, CodecError> {
         Err(CodecError::Decode(
-            "proto codec requires prost::Message trait".into(),
+            "ProtoCodec: use decode_message() with prost::Message types, or enable 'prost-codec'"
+                .into(),
         ))
     }
 

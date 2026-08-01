@@ -31,7 +31,10 @@ where
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
     }
 
@@ -42,7 +45,8 @@ where
             match tokio::task::spawn(fut.instrument(span)).await {
                 Ok(Ok(response)) => Ok(response),
                 Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-                Err(_) => Err(Box::new(std::io::Error::other("task panicked")) as Box<dyn std::error::Error + Send + Sync>),
+                Err(_) => Err(Box::new(std::io::Error::other("task panicked"))
+                    as Box<dyn std::error::Error + Send + Sync>),
             }
         })
     }

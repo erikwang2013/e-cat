@@ -39,21 +39,32 @@ impl RdbmsClient for SqlxClient {
             return Ok(Vec::new());
         }
 
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect();
+        let columns: std::sync::Arc<Vec<String>> = std::sync::Arc::new(
+            rows[0]
+                .columns()
+                .iter()
+                .map(|c| c.name().to_string())
+                .collect(),
+        );
 
         let result = rows
             .iter()
             .map(|row| {
-                let values: Vec<serde_json::Value> = columns
+                let cols = std::sync::Arc::clone(&columns);
+                let values: Vec<serde_json::Value> = cols
                     .iter()
                     .map(|col| {
-                        // Try i64 first, then f64, then String, then fallback to Null
-                        row.try_get::<i64, _>(col.as_str())
-                            .map(|n| serde_json::Value::Number(n.into()))
+                        // Try common DB types: bool → i64 → f64 → String → Null
+                        row.try_get::<bool, _>(col.as_str())
+                            .map(serde_json::Value::Bool)
+                            .or_else(|_| {
+                                row.try_get::<i64, _>(col.as_str())
+                                    .map(|n| serde_json::Value::Number(n.into()))
+                            })
+                            .or_else(|_| {
+                                row.try_get::<i32, _>(col.as_str())
+                                    .map(|n| serde_json::Value::Number((n as i64).into()))
+                            })
                             .or_else(|_| {
                                 row.try_get::<f64, _>(col.as_str())
                                     .ok()
@@ -79,7 +90,7 @@ impl RdbmsClient for SqlxClient {
                     })
                     .collect();
 
-                Row::new(columns.clone(), values)
+                Row::new((*cols).clone(), values)
             })
             .collect();
 
@@ -87,8 +98,10 @@ impl RdbmsClient for SqlxClient {
     }
 
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
-        Err(RdbmsError::Database(
-            "transactions not yet implemented".into(),
-        ))
+        self.pool
+            .begin()
+            .await
+            .map(|_tx| ecat_data::Transaction::new())
+            .map_err(|e| RdbmsError::Database(e.to_string()))
     }
 }

@@ -39,7 +39,11 @@ pub struct Registration {
 
 impl Registration {
     pub(crate) fn new(id: String, service: ServiceInfo, registry: Arc<dyn Registry>) -> Self {
-        Self { id, service, registry: Some(registry) }
+        Self {
+            id,
+            service,
+            registry: Some(registry),
+        }
     }
 }
 
@@ -47,11 +51,15 @@ impl Drop for Registration {
     fn drop(&mut self) {
         if let Some(reg) = self.registry.take() {
             let id = self.id.clone();
-            tokio::spawn(async move {
-                if let Err(e) = reg.deregister(&id).await {
-                    tracing::warn!(service_id = %id, error = %e, "auto-deregister on drop failed");
-                }
-            });
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    if let Err(e) = reg.deregister(&id).await {
+                        tracing::warn!(service_id = %id, error = %e, "auto-deregister on drop failed");
+                    }
+                });
+            } else {
+                tracing::warn!(service_id = %id, "runtime dropped; cannot auto-deregister");
+            }
         }
     }
 }

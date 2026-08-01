@@ -17,17 +17,24 @@ impl FileSource {
 #[async_trait]
 impl ConfigSource for FileSource {
     async fn load(&self) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
-        let content = tokio::fs::read_to_string(&self.path).await.map_err(|e| {
-            ConfigError::Other(format!("read {}: {}", self.path.display(), e))
-        })?;
+        let content = tokio::fs::read_to_string(&self.path)
+            .await
+            .map_err(|e| ConfigError::Other(format!("read {}: {}", self.path.display(), e)))?;
 
-        let value: serde_json::Value = if self.path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+        let value: serde_json::Value = if self
+            .path
+            .extension()
+            .map_or(false, |e| e == "yaml" || e == "yml")
+        {
             serde_yaml::from_str(&content).map_err(|e| ConfigError::Other(e.to_string()))?
         } else {
             serde_json::from_str(&content).map_err(|e| ConfigError::Other(e.to_string()))?
         };
 
-        let map = value.as_object().cloned().unwrap_or_default();
+        let map = value
+            .as_object()
+            .cloned()
+            .ok_or_else(|| ConfigError::Other("expected a JSON/YAML object at top level".into()))?;
         Ok(map.into_iter().collect())
     }
 }

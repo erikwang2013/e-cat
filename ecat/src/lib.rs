@@ -24,19 +24,24 @@ impl App {
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ecat_logging::init();
 
-        tracing::info!(name = self.name, version = self.version, "starting application");
+        tracing::info!(
+            name = self.name,
+            version = self.version,
+            "starting application"
+        );
 
         for hook in &self.start_hooks {
             hook.on_start().await?;
         }
 
+        let mut handles = Vec::new();
         for server in &self.servers {
             let server = Arc::clone(server);
-            tokio::spawn(async move {
+            handles.push(tokio::spawn(async move {
                 if let Err(e) = server.start().await {
                     tracing::error!(error = %e, "server error");
                 }
-            });
+            }));
         }
 
         wait_for_shutdown().await;
@@ -48,6 +53,11 @@ impl App {
         for server in &self.servers {
             if let Err(e) = server.stop().await {
                 tracing::error!(error = %e, "server stop error");
+            }
+        }
+        for handle in handles {
+            if let Err(e) = handle.await {
+                tracing::error!(error = %e, "server task panicked");
             }
         }
 

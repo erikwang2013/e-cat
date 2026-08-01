@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use axum::{routing::get, Json, Router};
+use axum::{Json, Router, routing::get};
 use ecat::App;
 use ecat_middleware::{LoggingLayer, TracingLayer};
 use ecat_transport_http::HttpServer;

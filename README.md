@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v1.0.3）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -80,11 +80,11 @@
 - **API-first**：Protobuf 定义 API、错误码、元数据；prost + tonic-build 代码生成
 - **双协议支持**：HTTP（axum）和 gRPC（tonic）共用同一套 tower::Layer 中间件
 - **可插拔架构**：Registry、Config、Logging、Encoding 全部通过 trait 抽象，默认提供生产可用实现
-- **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、Security；通过 tower::ServiceBuilder 组合
+- **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security；通过 tower::ServiceBuilder 组合
 - **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
 - **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
 - **可观测性**：tracing + opentelemetry + Prometheus 开箱即用
-- **攻击检测**：27 种攻击模式自动识别（SQL 注入、XSS、SSRF、路径遍历等），仅日志告警不阻断
+- **攻击检测**：SecurityLayer 自动检测并阻断 SQL 注入、XSS、SSRF 等 27 种攻击模式，支持 Tower 中间件集成
 - **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存、OLAP、搜索引擎、图数据库、时序数据库
 
 ### Kratos 概念映射
