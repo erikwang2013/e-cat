@@ -7,9 +7,12 @@
 //! `prost::Message` types when the `prost-codec` feature is enabled.
 //!
 //! ```ignore
+//! // Requires `prost-codec` feature and a prost::Message type
+//! # #[cfg(feature = "prost-codec")] {
 //! let codec = ProtoCodec;
 //! let bytes = codec.encode_message(&my_proto_msg)?;
 //! let msg: MyProto = codec.decode_message(&bytes)?;
+//! # }
 //! ```
 use super::{Codec, CodecError};
 

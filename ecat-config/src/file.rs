@@ -26,7 +26,7 @@ impl ConfigSource for FileSource {
             .extension()
             .map_or(false, |e| e == "yaml" || e == "yml")
         {
-            serde_yaml::from_str(&content).map_err(|e| ConfigError::Other(e.to_string()))?
+            yaml_serde::from_str(&content).map_err(|e| ConfigError::Other(e.to_string()))?
         } else {
             serde_json::from_str(&content).map_err(|e| ConfigError::Other(e.to_string()))?
         };

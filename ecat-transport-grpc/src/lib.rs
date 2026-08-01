@@ -31,7 +31,7 @@ impl TransportServer for GrpcServer {
         let addr = self.addr.parse()?;
         let routes = self.routes.clone().unwrap_or_default();
         let (tx, mut rx) = watch::channel(());
-        *self.shutdown_tx.lock().unwrap() = Some(tx);
+        *self.shutdown_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
         let shutdown_signal = async move {
             let _ = rx.changed().await;
         };
@@ -43,9 +43,38 @@ impl TransportServer for GrpcServer {
     }
 
     async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
+        if let Some(tx) = self
+            .shutdown_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             let _ = tx.send(());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_addr() {
+        let srv = GrpcServer::new("0.0.0.0:50051");
+        assert_eq!(srv.addr, "0.0.0.0:50051");
+    }
+
+    #[test]
+    fn routes_sets_routes() {
+        let routes = tonic::service::Routes::default();
+        let srv = GrpcServer::new("0.0.0.0:50051").routes(routes);
+        assert!(srv.routes.is_some());
+    }
+
+    #[test]
+    fn new_without_routes_has_none() {
+        let srv = GrpcServer::new("0.0.0.0:50051");
+        assert!(srv.routes.is_none());
     }
 }

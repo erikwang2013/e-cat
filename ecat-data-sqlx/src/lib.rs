@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{RdbmsClient, RdbmsError, Row};
+use ecat_data::{RdbmsClient, RdbmsError, Row, TransactionInner};
 use sqlx::any::AnyRow;
 use sqlx::{AnyPool, Column as SqlxColumn, Row as SqlxRow};
 
@@ -217,6 +217,33 @@ impl RdbmsClient for SqlxClient {
             .begin()
             .await
             .map_err(|e| RdbmsError::Database(e.to_string()))?;
-        Ok(ecat_data::Transaction::with_inner(Box::new(tx)))
+        Ok(ecat_data::Transaction::with_inner(Box::new(
+            SqlxTransactionWrapper { inner: Some(tx) },
+        )))
+    }
+}
+
+struct SqlxTransactionWrapper {
+    inner: Option<sqlx::Transaction<'static, sqlx::Any>>,
+}
+
+#[async_trait]
+impl TransactionInner for SqlxTransactionWrapper {
+    async fn commit(&mut self) -> Result<(), RdbmsError> {
+        if let Some(tx) = self.inner.take() {
+            tx.commit()
+                .await
+                .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn rollback(&mut self) -> Result<(), RdbmsError> {
+        if let Some(tx) = self.inner.take() {
+            tx.rollback()
+                .await
+                .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        }
+        Ok(())
     }
 }

@@ -95,7 +95,10 @@ serde_json = "1"
 "#,
                 name
             );
-            fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
+            fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap_or_else(|e| {
+                eprintln!("Failed to write Cargo.toml: {}", e);
+                process::exit(1);
+            });
 
             let main_rs = r#"use axum::{{routing::get, Json, Router}};
 use ecat::App;
@@ -135,7 +138,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 "#;
-            fs::write(dir.join("src").join("main.rs"), main_rs).unwrap();
+            fs::write(dir.join("src").join("main.rs"), main_rs).unwrap_or_else(|e| {
+                eprintln!("Failed to write main.rs: {}", e);
+                process::exit(1);
+            });
 
             let proto_file = r#"syntax = "proto3";
 package service;
@@ -149,7 +155,10 @@ message HealthResponse {
     string status = 1;
 }
 "#;
-            fs::write(dir.join("proto").join("service.proto"), proto_file).unwrap();
+            fs::write(dir.join("proto").join("service.proto"), proto_file).unwrap_or_else(|e| {
+                eprintln!("Failed to write service.proto: {}", e);
+                process::exit(1);
+            });
 
             println!("Project '{}' created successfully!", name);
             println!();

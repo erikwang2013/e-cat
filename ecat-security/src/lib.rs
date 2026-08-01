@@ -31,7 +31,7 @@ pub struct SecurityScanner {
 }
 
 impl SecurityScanner {
-    /// Create scanner with all 27 detectors enabled.
+    /// Create scanner with default detector configuration.
     pub fn new() -> Self {
         Self {
             scanner: Scanner::default(),
@@ -45,7 +45,7 @@ impl SecurityScanner {
 
     /// Scan multiple request parts (path, headers, body, etc.).
     pub fn scan_parts(&self, parts: &[&str]) -> Vec<DetectionResult> {
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(parts.len() * 2);
         for part in parts {
             results.extend(self.scanner.scan(part));
         }

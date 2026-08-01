@@ -26,11 +26,17 @@ impl Row {
     }
 }
 
+/// Inner transaction trait for cross-backend transaction support.
+#[async_trait]
+pub trait TransactionInner: Send {
+    async fn commit(&mut self) -> Result<(), RdbmsError>;
+    async fn rollback(&mut self) -> Result<(), RdbmsError>;
+}
+
 #[derive(Default)]
 pub struct Transaction {
     committed: bool,
-    /// Boxed trait object to hold the real DB transaction across backends.
-    pub inner: Option<Box<dyn std::any::Any + Send>>,
+    inner: Option<Box<dyn TransactionInner>>,
 }
 
 impl Transaction {
@@ -38,19 +44,25 @@ impl Transaction {
         Self::default()
     }
 
-    pub fn with_inner(inner: Box<dyn std::any::Any + Send>) -> Self {
+    pub fn with_inner(inner: Box<dyn TransactionInner>) -> Self {
         Self {
             inner: Some(inner),
             committed: false,
         }
     }
 
-    pub fn commit(mut self) -> Result<(), RdbmsError> {
+    pub async fn commit(mut self) -> Result<(), RdbmsError> {
+        if let Some(ref mut inner) = self.inner {
+            inner.commit().await?;
+        }
         self.committed = true;
         Ok(())
     }
 
-    pub fn rollback(mut self) -> Result<(), RdbmsError> {
+    pub async fn rollback(mut self) -> Result<(), RdbmsError> {
+        if let Some(ref mut inner) = self.inner {
+            inner.rollback().await?;
+        }
         self.committed = false;
         Ok(())
     }
