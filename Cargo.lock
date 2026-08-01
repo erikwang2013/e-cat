@@ -74,6 +74,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arc-swap"
+version = "1.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -354,6 +363,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "combine"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -465,7 +488,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "ecat"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "ecat-errors",
@@ -479,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -492,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "tokio",
  "tower 0.5.3",
@@ -501,14 +524,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "ecat-client"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -520,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -531,8 +554,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-config-remote"
+version = "2.0.1"
+dependencies = [
+ "async-trait",
+ "ecat-config",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ecat-data"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -543,8 +579,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-data-redis"
+version = "2.0.1"
+dependencies = [
+ "async-trait",
+ "ecat-data",
+ "redis",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ecat-data-sqlx"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -554,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-encoding"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "prost",
  "serde",
@@ -564,7 +611,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "ecat-protos",
  "http",
@@ -575,8 +622,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-events"
+version = "2.0.1"
+dependencies = [
+ "async-trait",
+ "ecat-mq",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ecat-health"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -589,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -597,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metadata"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "http",
  "tonic",
@@ -605,14 +665,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-metrics"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "prometheus",
 ]
 
 [[package]]
 name = "ecat-middleware"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "http",
@@ -622,8 +682,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-mq"
+version = "2.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ecat-protos"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "prost",
  "prost-types",
@@ -633,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -645,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "ecat-registry",
@@ -659,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-security"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "http",
  "security-rust",
@@ -670,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -684,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "ecat-transport",
@@ -694,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -966,7 +1038,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -1266,6 +1338,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itertools"
@@ -1731,7 +1812,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck",
- "itertools",
+ "itertools 0.14.0",
  "log",
  "multimap",
  "once_cell",
@@ -1751,7 +1832,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1897,6 +1978,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caa0f4137e1c0a72f4c651489402276c8e8e1cf081f3b0ba156d2cbeef09e86a"
 dependencies = [
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "redis"
+version = "0.27.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09d8f99a4090c89cc489a94833c901ead69bfbf3877b4867d5482e321ee875bc"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures-util",
+ "itertools 0.13.0",
+ "itoa",
+ "num-bigint",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "sha1_smol",
+ "socket2 0.5.10",
+ "tokio",
+ "tokio-util",
+ "url",
 ]
 
 [[package]]
@@ -2176,6 +2281,12 @@ dependencies = [
  "cpufeatures 0.2.17",
  "digest",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
