@@ -2,9 +2,9 @@
 
 **日期**: 2026-08-01  
 **分支**: main  
-**版本**: 2.1.6  
-**Crate 数量**: 48 (workspace members)
-**状态**: ✅ 所有可修复问题已解决
+**版本**: 2.1.7  
+**Crate 数量**: 47 (workspace members)
+**状态**: ✅ 所有可修复问题已解决 + 数据后端全面支持配置文件
 
 ---
 
@@ -25,6 +25,73 @@
 | 11 | `type_complexity` | `ecat-data-memcached/src/lib.rs:9` | 添加 `type CacheEntry` 别名 |
 
 **最终结果**: `cargo build` 零 warning，`cargo clippy --all-targets` 零 warning，`cargo test` 全部通过（0 失败）。
+
+### 12 ─ 数据后端全面支持配置文件（Cargo + lib.rs）
+
+为 12 个数据后端 crate 新增 `Config` 结构体（`#[derive(Deserialize)]`）和 `from_config()` 构造函数，支持从 JSON/YAML 配置文件加载连接信息，无需硬编码。
+
+| Crate | Config 结构体 | 字段 |
+|-------|--------------|------|
+| `ecat-data-redis` | `RedisConfig` | `url` |
+| `ecat-data-sqlx` | `SqlxConfig` | `url` |
+| `ecat-data-clickhouse` | `ClickhouseConfig` | `base_url`, `database`（默认 "default"） |
+| `ecat-data-questdb` | `QuestdbConfig` | `base_url` |
+| `ecat-data-elasticsearch` | `ElasticsearchConfig` | `base_url` |
+| `ecat-data-opensearch` | `OpenSearchConfig` | `base_url` |
+| `ecat-data-influxdb` | `InfluxConfig` | `base_url`, `org`, `bucket`, `token` |
+| `ecat-data-memcached` | `MemcachedConfig` | （空 — 内存实现） |
+| `ecat-data-neo4j` | `Neo4jConfig` | `base_url`, `username`, `password` |
+| `ecat-data-nebulagraph` | `NebulaGraphConfig` | `base_url`, `space` |
+| `ecat-data-arangodb` | `ArangoConfig` | `base_url`, `db`, `username`, `password` |
+| `ecat-data-iotdb` | `IotdbConfig` | `base_url`, `username`, `password` |
+
+**使用示例**:
+```rust
+// 从 YAML 配置文件加载
+let cfg: ClickhouseConfig = serde_json::from_str(r#"{"base_url":"http://localhost:8123"}"#)?;
+let client = ClickhouseClient::from_config(cfg);
+```
+
+### 13 ─ HTTP 后端增加可选认证支持（5 个 crate）
+
+为 5 个纯 HTTP 后端新增可选 `username` / `password` 字段和 `with_auth()` 构造函数。全为 `Option<String>`（`#[serde(default)]`），不配置则无认证。
+
+| Crate | 新增 Config 字段 | 新增构造函数 |
+|-------|-----------------|-------------|
+| `ecat-data-elasticsearch` | `username?`, `password?` | `with_auth()` |
+| `ecat-data-opensearch` | `username?`, `password?` | `with_auth()` |
+| `ecat-data-clickhouse` | `username?`, `password?` | `with_auth()` |
+| `ecat-data-questdb` | `username?`, `password?` | `with_auth()` |
+| `ecat-data-nebulagraph` | `username?`, `password?` | `with_auth()` |
+
+所有 HTTP 请求通过 `apply_auth()` 辅助方法自动附加 Basic Auth（仅当两者均非 None 时）。
+
+### 14 ─ Redis / RDBMS / Memcached 增加可选认证字段（3 个 crate）
+
+| Crate | 新增 Config 字段 | 新增构造函数 | 认证方式 |
+|-------|-----------------|-------------|----------|
+| `ecat-data-redis` | `password?` | `connect_with_password()` | URL 嵌入密码 |
+| `ecat-data-sqlx` | `username?`, `password?` | `connect_with_auth()` | URL 嵌入认证 |
+| `ecat-data-memcached` | `username?`, `password?` | `with_auth()` | 保留字段（内存实现） |
+
+Sqlx 覆盖 SQLite / PostgreSQL / MySQL / TiDB 四种 RDBMS。Auth 字段通过 `replacen("://", "://user:pass@")` 嵌入连接 URL，仅在 URL 不含 `@` 时生效。
+
+### 15 ─ TLS 证书认证支持 + ecat-tls crate（全部 12 后端）
+
+新增 `ecat-tls` crate，提供：
+- `TlsClientConfig` — 可选 TLS 配置（ca_cert, client_cert, client_key, skip_verify）
+- `generate_ca()` — 自签名 CA 证书生成
+- `generate_server_cert()` — 服务端证书生成
+- `generate_client_cert()` — 客户端证书生成（mTLS）
+
+全部 12 个数据后端 Config 新增 `#[serde(default)] tls: Option<TlsClientConfig>` 字段。
+
+| 后端类型 | TLS 方式 |
+|----------|----------|
+| 9 个 HTTP 后端 | `tls.build_reqwest_client()` 构造 TLS reqwest Client |
+| Redis | URL scheme 切换 `redis://` → `rediss://` |
+| Sqlx | 保留字段（TLS 通过 URL 参数 `?sslmode=require`） |
+| Memcached | 保留字段（网络实现预留） |
 
 ---
 

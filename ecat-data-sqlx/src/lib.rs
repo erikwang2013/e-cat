@@ -1,8 +1,23 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{RdbmsClient, RdbmsError, Row, TransactionInner};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
 use sqlx::any::AnyRow;
 use sqlx::{AnyPool, Column as SqlxColumn, Row as SqlxRow};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SqlxConfig {
+    pub url: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    /// TLS — SQLx TLS is configured via URL params (e.g. ?sslmode=require).
+    /// This field is reserved for future programmatic TLS support.
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
 
 pub struct SqlxClient {
     pool: AnyPool,
@@ -12,6 +27,28 @@ impl SqlxClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         let pool = AnyPool::connect(url).await?;
         Ok(Self { pool })
+    }
+
+    pub async fn connect_with_auth(
+        url: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<Self, sqlx::Error> {
+        let url = if url.contains('@') {
+            url.to_string()
+        } else {
+            url.replacen("://", &format!("://{username}:{password}@"), 1)
+        };
+        Self::connect(&url).await
+    }
+
+    pub async fn from_config(cfg: SqlxConfig) -> Result<Self, sqlx::Error> {
+        match (&cfg.username, &cfg.password) {
+            (Some(u), Some(p)) if !u.is_empty() || !p.is_empty() => {
+                Self::connect_with_auth(&cfg.url, u, p).await
+            }
+            _ => Self::connect(&cfg.url).await,
+        }
     }
 
     pub fn from_pool(pool: AnyPool) -> Self {

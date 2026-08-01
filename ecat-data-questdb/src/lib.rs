@@ -1,10 +1,25 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{RdbmsClient, RdbmsError, Row};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuestdbConfig {
+    pub base_url: String,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
 
 pub struct QuestdbClient {
     client: reqwest::Client,
     base_url: String,
+    username: Option<String>,
+    password: Option<String>,
 }
 
 impl QuestdbClient {
@@ -12,6 +27,43 @@ impl QuestdbClient {
         Self {
             client: reqwest::Client::new(),
             base_url: base_url.into(),
+            username: None,
+            password: None,
+        }
+    }
+
+    pub fn with_auth(
+        base_url: impl Into<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.into(),
+            username: Some(username.into()),
+            password: Some(password.into()),
+        }
+    }
+
+    pub fn from_config(cfg: QuestdbConfig) -> Self {
+        let client = match &cfg.tls {
+            Some(tls) if tls.is_enabled() => tls
+                .build_reqwest_client()
+                .expect("TLS client build failed"),
+            _ => reqwest::Client::new(),
+        };
+        Self {
+            client,
+            base_url: cfg.base_url,
+            username: cfg.username,
+            password: cfg.password,
+        }
+    }
+
+    fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match (&self.username, &self.password) {
+            (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
+            _ => req,
         }
     }
 }
@@ -19,12 +71,11 @@ impl QuestdbClient {
 #[async_trait]
 impl RdbmsClient for QuestdbClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
-        let resp = self
+        let req = self
             .client
             .get(format!("{}/exec", self.base_url))
-            .query(&[("query", sql)])
-            .send()
-            .await
+            .query(&[("query", sql)]);
+        let resp = self.apply_auth(req).send().await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?;
         if !resp.status().is_success() {
             return Err(RdbmsError::Database(
@@ -35,13 +86,12 @@ impl RdbmsClient for QuestdbClient {
     }
 
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        let body: serde_json::Value = self
+        let req = self
             .client
             .get(format!("{}/exec", self.base_url))
             .query(&[("query", sql), ("count", "true")])
-            .header("Accept", "application/json")
-            .send()
-            .await
+            .header("Accept", "application/json");
+        let body: serde_json::Value = self.apply_auth(req).send().await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?
             .json()
             .await
@@ -50,11 +100,7 @@ impl RdbmsClient for QuestdbClient {
         if let Some(columns) = body.get("columns").and_then(|c| c.as_array()) {
             let cols: Vec<String> = columns
                 .iter()
-                .filter_map(|c| {
-                    c.get("name")
-                        .and_then(|n| n.as_str())
-                        .map(|s| s.to_string())
-                })
+                .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
                 .collect();
             if let Some(dataset) = body.get("dataset").and_then(|d| d.as_array()) {
                 for row in dataset {
@@ -77,8 +123,18 @@ impl RdbmsClient for QuestdbClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn client_constructs() {
         let _client = QuestdbClient::new("http://localhost:9000");
+    }
+
+    #[test]
+    fn config_with_optional_auth() {
+        let cfg: QuestdbConfig = serde_json::from_str(
+            r#"{"base_url":"http://localhost:9000","username":"admin","password":"quest"}"#
+        ).unwrap();
+        let client = QuestdbClient::from_config(cfg);
+        assert!(client.username.is_some());
     }
 }

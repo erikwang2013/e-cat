@@ -1,8 +1,8 @@
 # e-cat 生态规划 v3 — 最终评估
 
-**版本:** 2.1.6  
+**版本:** 2.1.7  
 **日期:** 2026-08-01  
-**crate 总数:** 46 · 全部规划已完成
+**crate 总数:** 47 · 全部规划已完成
 
 ---
 
@@ -15,10 +15,10 @@
 | 中间件 | Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, Auth×3 | 100% |
 | 配置 | env, file (JSON/YAML), Consul KV, 加密 (XOR) | 100% |
 | 注册中心 | memory, Consul, etcd | 100% |
-| 安全 | 攻击检测, JWT, API Key, OAuth2 | 95% |
-| 通信 | TlsConfig — 未接入 transport server | 80% |
+| 安全 | 攻击检测, JWT, API Key, OAuth2, TLS 客户端证书, mTLS | 95% |
+| 通信 | TLS 客户端证书 — 全部数据后端支持 | 95% |
 | 服务通信 | HTTP Client, gRPC Client, Resolver, LoadBalancer | 95% |
-| 数据 | RDBMS (sqlx), Redis, OpenSearch, Elasticsearch, ClickHouse, Memcached, Neo4j, NebulaGraph, ArangoDB, InfluxDB, IoTDB, QuestDB | 95% |
+| 数据 | RDBMS (sqlx), Redis, OpenSearch, Elasticsearch, ClickHouse, Memcached, Neo4j, NebulaGraph, ArangoDB, InfluxDB, IoTDB, QuestDB — 全部支持 Config 文件配置 | 95% |
 | 消息 | MessageQueue trait, InMemory, Kafka, EventBus | 100% |
 | 可观测 | tracing, Prometheus, Health, 分布式追踪 | 100% |
 | DevOps | CLI, Dockerfile, K8s, Helm, GitHub Actions, Bench, Testing | 95% |
@@ -47,7 +47,7 @@
 
 ## 判定
 
-**e-cat 已达到生产可用成熟度。** 46 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
+**e-cat 已达到生产可用成熟度。** 47 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
 
 ## 数据后端覆盖（14 个）
 

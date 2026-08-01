@@ -1,6 +1,18 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{GraphClient, GraphError};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Neo4jConfig {
+    pub base_url: String,
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
+
 pub struct Neo4jClient {
     client: reqwest::Client,
     base_url: String,
@@ -19,6 +31,21 @@ impl Neo4jClient {
             base_url: base_url.into(),
             username: username.into(),
             password: password.into(),
+        }
+    }
+
+    pub fn from_config(cfg: Neo4jConfig) -> Self {
+        let client = match &cfg.tls {
+            Some(tls) if tls.is_enabled() => tls
+                .build_reqwest_client()
+                .expect("TLS client build failed"),
+            _ => reqwest::Client::new(),
+        };
+        Self {
+            client,
+            base_url: cfg.base_url,
+            username: cfg.username,
+            password: cfg.password,
         }
     }
 }

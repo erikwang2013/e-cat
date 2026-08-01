@@ -7,4 +7,6 @@ edition.workspace = true
 ecat-data = { path = "../ecat-data" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql"] }
 async-trait.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+ecat-tls = { path = "../ecat-tls" }

@@ -1,6 +1,18 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{DataPoint, FieldValue, TsdbClient, TsdbError};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InfluxConfig {
+    pub base_url: String,
+    pub org: String,
+    pub bucket: String,
+    pub token: String,
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
 
 pub struct InfluxClient {
     client: reqwest::Client,
@@ -26,6 +38,24 @@ impl InfluxClient {
             bucket: bucket.into(),
             token: token.into(),
             client: reqwest::Client::new(),
+        }
+    }
+
+    pub fn from_config(cfg: InfluxConfig) -> Self {
+        let base = cfg.base_url.clone();
+        let client = match &cfg.tls {
+            Some(tls) if tls.is_enabled() => tls
+                .build_reqwest_client()
+                .expect("TLS client build failed"),
+            _ => reqwest::Client::new(),
+        };
+        Self {
+            write_url: format!("{base}/api/v2/write"),
+            query_url: format!("{base}/api/v2/query"),
+            org: cfg.org,
+            bucket: cfg.bucket,
+            token: cfg.token,
+            client,
         }
     }
 }

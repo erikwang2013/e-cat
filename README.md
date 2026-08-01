@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.6 · 46 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.7 · 47 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -142,10 +142,62 @@
 | 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API |
 | 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
 | 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
+| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
 | 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
 | 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。标注"规划中"的 crate 尚未实现。
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+
+### 数据库配置示例
+
+每个数据后端提供 `XxxConfig` 结构体和 `from_config()` 方法，将连接信息从代码中解耦到配置文件：
+
+```rust
+use ecat_data_redis::{RedisCache, RedisConfig};
+use ecat_data_sqlx::{SqlxClient, SqlxConfig};
+use ecat_data_clickhouse::{ClickhouseClient, ClickhouseConfig};
+
+// 从配置文件加载（JSON 或 YAML）
+let config: serde_json::Value = serde_json::from_str(r#"{
+    "redis":     {"url": "redis://localhost:6379"},
+    "sql":       {"url": "postgres://user:pass@localhost/db"},
+    "clickhouse":{"base_url": "http://localhost:8123", "database": "mydb"}
+}"#)?;
+
+// Redis
+let redis_cfg: RedisConfig = serde_json::from_value(config["redis"].clone())?;
+let cache = RedisCache::from_config(redis_cfg).await?;
+cache.set("key", b"value", Duration::from_secs(60)).await?;
+
+// RDBMS
+let sql_cfg: SqlxConfig = serde_json::from_value(config["sql"].clone())?;
+let db = SqlxClient::from_config(sql_cfg).await?;
+let rows = db.query("SELECT * FROM users").await?;
+
+// ClickHouse
+let ch_cfg: ClickhouseConfig = serde_json::from_value(config["clickhouse"].clone())?;
+let ch = ClickhouseClient::from_config(ch_cfg);
+ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
+```
+
+**配置字段参考**:
+
+| 后端 | Config | 字段 | 示例值 |
+|------|--------|------|--------|
+| Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
+| QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
+| Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |
+| OpenSearch | `OpenSearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |
+| InfluxDB | `InfluxConfig` | `base_url`, `org`, `bucket`, `token` | — |
+| Neo4j | `Neo4jConfig` | `base_url`, `username`, `password` | — |
+| NebulaGraph | `NebulaGraphConfig` | `base_url`, `space`, `username`?, `password`? | — |
+| ArangoDB | `ArangoConfig` | `base_url`, `db`, `username`, `password` | — |
+| IoTDB | `IotdbConfig` | `base_url`, `username`, `password` | — |
+| Memcached | `MemcachedConfig` | `username`?, `password`?（保留字段） | — |
+
+> 所有后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证。详见 [数据库配置教程](docs/database-config-tutorial.md)。
 
 ## 项目结构
 
@@ -190,7 +242,9 @@ e-cat/
 ├── ecat-data-memcached/        # Memcached 缓存后端
 ├── ecat-transport-ws/          # WebSocket transport
 ├── ecat-versioning/            # API 版本路由
+├── ecat-tls/                   # TLS 证书配置与自动生成
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
+├── config/                     # 配置示例文件
 ├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
 ```
@@ -349,6 +403,9 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 - [生态规划 v2](docs/ecosystem-plan-v2.md)（已完成）
 - [生态规划 v3](docs/ecosystem-plan-v3.md)（最终评估）
 - [审计报告 r5](docs/audit-report-2026-08-01-r5.md)（2026-08-01）
+- [数据库配置教程](docs/database-config-tutorial.md)
+- [TLS 证书认证教程](docs/tls-certificate-tutorial.md)
+- [配置示例文件](config/databases.example.yaml)
 
 ## 许可证
 

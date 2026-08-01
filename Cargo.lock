@@ -83,6 +83,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "asn1-rs"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f43a50ac4fdca5df8e885c21b835997f0a1cdee65494a6847694a98652d9d8"
+dependencies = [
+ "asn1-rs-derive",
+ "asn1-rs-impl",
+ "displaydoc",
+ "nom",
+ "num-traits",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
+name = "asn1-rs-derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3109e49b1e4909e9db6515a30c633684d68cdeaa252f215214cb4fa1a5bfee2c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "synstructure",
+]
+
+[[package]]
+name = "asn1-rs-impl"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b18050c2cd6fe86c3a76584ef5e0baf286d038cda203eb6223df2cc413565f7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -249,6 +288,15 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "bit-vec"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitflags"
@@ -461,6 +509,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-parser"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
+dependencies = [
+ "asn1-rs",
+ "displaydoc",
+ "nom",
+ "num-bigint",
+ "num-traits",
+ "rusticata-macros",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,7 +559,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "ecat"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-errors",
@@ -511,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -525,14 +587,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-bench"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "tower 0.5.3",
  "tracing",
@@ -540,14 +602,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "ecat-client"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -558,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "serde",
@@ -570,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config-remote"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-config",
@@ -582,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "serde",
@@ -594,136 +656,160 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-arangodb"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-clickhouse"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-elasticsearch"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-influxdb"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-iotdb"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-memcached"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
+ "serde",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-nebulagraph"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-neo4j"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-opensearch"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-questdb"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-redis"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
  "redis",
+ "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-sqlx"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-tls",
+ "serde",
  "serde_json",
  "sqlx",
 ]
 
 [[package]]
 name = "ecat-encoding"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "prost",
  "serde",
@@ -733,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "ecat-protos",
  "http",
@@ -745,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-events"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "ecat-mq",
  "serde",
@@ -757,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-graphql"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -768,7 +854,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-health"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -780,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -788,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metadata"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "http",
  "tonic",
@@ -796,14 +882,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-metrics"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "prometheus",
 ]
 
 [[package]]
 name = "ecat-middleware"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "http",
@@ -814,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -824,7 +910,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-kafka"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-mq",
@@ -833,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-openapi"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -841,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-protos"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "prost",
  "prost-types",
@@ -851,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "serde",
@@ -863,7 +949,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-registry",
@@ -877,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-etcd"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-registry",
@@ -890,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-security"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "http",
  "security-rust",
@@ -901,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-testing"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-transport",
@@ -909,8 +995,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-tls"
+version = "2.1.7"
+dependencies = [
+ "rcgen",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ecat-tracing"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "http",
  "tower 0.5.3",
@@ -920,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "bytes",
@@ -934,7 +1030,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "ecat-transport",
@@ -944,7 +1040,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -955,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-ws"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -967,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-versioning"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -1262,7 +1358,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "2.1.6"
+version = "2.1.7"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -1740,6 +1836,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
 name = "mio"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1755,6 +1857,16 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
+name = "nom"
+version = "7.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
+]
 
 [[package]]
 name = "nu-ansi-term"
@@ -1824,6 +1936,15 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "oid-registry"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
+dependencies = [
+ "asn1-rs",
 ]
 
 [[package]]
@@ -2240,6 +2361,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcgen"
+version = "0.14.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57f6d249aad744e274e682777a50283a225a32705394ee6d5fcc01efa25e4055"
+dependencies = [
+ "pem",
+ "ring",
+ "rustls-pki-types",
+ "time",
+ "x509-parser",
+ "yasna",
+]
+
+[[package]]
 name = "redis"
 version = "0.27.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2387,6 +2522,15 @@ name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+
+[[package]]
+name = "rusticata-macros"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faf0c4a6ece9950b9abdb62b1cfcf2a68b3b67a10ba445b3bb85be2a293d0632"
+dependencies = [
+ "nom",
+]
 
 [[package]]
 name = "rustix"
@@ -3687,6 +3831,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom",
+ "oid-registry",
+ "ring",
+ "rusticata-macros",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
 name = "yaml_serde"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3697,6 +3859,16 @@ dependencies = [
  "libyaml-rs",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "yasna"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5f6765e852b9b4dc8e2a76843e4d64d1cea8e79bcde0b6901aea8e7c7f08282"
+dependencies = [
+ "bit-vec",
+ "time",
 ]
 
 [[package]]

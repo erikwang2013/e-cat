@@ -1,6 +1,19 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{GraphClient, GraphError};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArangoConfig {
+    pub base_url: String,
+    pub db: String,
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
+
 pub struct ArangoClient {
     client: reqwest::Client,
     base_url: String,
@@ -22,6 +35,22 @@ impl ArangoClient {
             db: db.into(),
             username: username.into(),
             password: password.into(),
+        }
+    }
+
+    pub fn from_config(cfg: ArangoConfig) -> Self {
+        let client = match &cfg.tls {
+            Some(tls) if tls.is_enabled() => tls
+                .build_reqwest_client()
+                .expect("TLS client build failed"),
+            _ => reqwest::Client::new(),
+        };
+        Self {
+            client,
+            base_url: cfg.base_url,
+            db: cfg.db,
+            username: cfg.username,
+            password: cfg.password,
         }
     }
 }

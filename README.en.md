@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.1.7 · 47 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -88,7 +88,41 @@ It provides an API-first development experience, pluggable component architectur
 | TSDB | Apache IoTDB | `ecat-data-iotdb` | iotdb-client-rs |
 | TSDB | QuestDB | `ecat-data-questdb` | questdb-rs (ILP) |
 
-> All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`). Import the corresponding contrib crate as needed.
+> All backends share unified trait abstractions and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+
+### Database Configuration
+
+Each backend provides a config struct and `from_config()` method:
+
+```rust
+use ecat_data_redis::{RedisCache, RedisConfig};
+use ecat_data_sqlx::{SqlxClient, SqlxConfig};
+
+// Load from config file
+let redis_cfg: RedisConfig = serde_json::from_str(r#"{"url":"redis://localhost"}"#)?;
+let cache = RedisCache::from_config(redis_cfg).await?;
+
+let sql_cfg: SqlxConfig = serde_json::from_str(r#"{"url":"postgres://localhost/db"}"#)?;
+let db = SqlxClient::from_config(sql_cfg).await?;
+let rows = db.query("SELECT * FROM users").await?;
+```
+
+| Backend | Config Struct | Fields |
+|---------|--------------|--------|
+| Redis | `RedisConfig` | `url`, `password`? |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? |
+| ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? |
+| QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? |
+| Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? |
+| OpenSearch | `OpenSearchConfig` | `base_url`, `username`?, `password`? |
+| InfluxDB | `InfluxConfig` | `base_url`, `org`, `bucket`, `token` |
+| Neo4j | `Neo4jConfig` | `base_url`, `username`, `password` |
+| NebulaGraph | `NebulaGraphConfig` | `base_url`, `space`, `username`?, `password`? |
+| ArangoDB | `ArangoConfig` | `base_url`, `db`, `username`, `password` |
+| IoTDB | `IotdbConfig` | `base_url`, `username`, `password` |
+| Memcached | `MemcachedConfig` | `username`?, `password`?, `tls`? *(reserved)* |
+
+> All backends support optional `tls` field for client certificate auth (CA cert, mTLS, skip verification). See [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md).
 
 ## Quick Start
 
@@ -123,11 +157,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 | Phase 5.5 | ✅ Done | Data access layer (traits + sqlx backend) |
 | Phase 6 | ✅ Done | CLI toolchain (new/proto/run/build) |
 | Phase 7 | ✅ Done | README, examples (helloworld), design docs |
+| Phase 8 | ✅ Done | Attack detection (security-rust, ecat-security) |
+| Phase 9 | ✅ Done | Ecosystem I (health / client / circuit-breaker / auth / consul) |
+| Phase 10 | ✅ Done | Ecosystem II (redis / mq / events / config-remote) |
+| Phase 11 | ✅ Done | Ecosystem III (testing / deploy / bench / openapi) |
+| Phase 12 | ✅ Done | Comms & security (gRPC client / OAuth2 / mTLS / tracing) |
+| Phase 13 | ✅ Done | Data backends (etcd / Kafka / OpenSearch / InfluxDB / ES / ClickHouse / Memcached / Neo4j / NebulaGraph / ArangoDB / IoTDB / QuestDB) |
+| Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
 
 ## Documentation
 
 - [Design Spec](docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
 - [Implementation Plan](docs/superpowers/plans/2026-07-29-ecat-framework.md)
+- [Ecosystem Plan v1](docs/ecosystem-plan.md)
+- [Ecosystem Plan v2](docs/ecosystem-plan-v2.md)
+- [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final)
+- [Audit Report r5](docs/audit-report-2026-08-01-r5.md) (2026-08-01)
+- [Database Config Tutorial](docs/database-config-tutorial.md)
+- [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md)
+- [Config Example](config/databases.example.yaml)
 
 ## License
 

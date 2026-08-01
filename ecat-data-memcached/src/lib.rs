@@ -1,20 +1,58 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{Cache, CacheError};
+use ecat_tls::TlsClientConfig;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 type CacheEntry = (Vec<u8>, Option<Instant>);
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MemcachedConfig {
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+    /// TLS config — reserved for future network-based memcached implementation.
+    #[serde(default)]
+    pub tls: Option<TlsClientConfig>,
+}
+
 pub struct MemcachedClient {
     store: Mutex<HashMap<Vec<u8>, CacheEntry>>,
+    #[allow(dead_code)]
+    username: Option<String>,
+    #[allow(dead_code)]
+    password: Option<String>,
 }
 
 impl MemcachedClient {
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
+            username: None,
+            password: None,
+        }
+    }
+
+    pub fn with_auth(
+        _username: impl Into<String>,
+        _password: impl Into<String>,
+    ) -> Self {
+        Self {
+            store: Mutex::new(HashMap::new()),
+            username: Some(_username.into()),
+            password: Some(_password.into()),
+        }
+    }
+
+    pub fn from_config(cfg: MemcachedConfig) -> Self {
+        Self {
+            store: Mutex::new(HashMap::new()),
+            username: cfg.username,
+            password: cfg.password,
         }
     }
 }
