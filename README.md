@@ -90,6 +90,8 @@
 - **服务间通信**：HttpClient 集成服务发现与负载均衡，CircuitBreaker 熔断保护
 - **认证鉴权**：JWT / API Key 认证中间件，Claims 传递至请求上下文
 - **消息与事件**：MessageQueue trait + EventBus 本地/远程 Pub/Sub
+- **分布式追踪**：请求 span、trace_id 注入/提取
+- **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
 - **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、Redis 缓存，统一 trait 抽象
 
 ### Kratos 概念映射
@@ -113,7 +115,7 @@
 | gRPC | **tonic** |
 | Protobuf | **prost + tonic-build** |
 | 中间件 | **tower::Service / Layer** |
-| 日志/追踪 | **tracing** |
+| 日志/追踪 | **tracing + trace_id propagation** |
 | 指标 | **prometheus** |
 | 序列化 | **serde + prost** |
 | 攻击检测 | **security-rust** |
@@ -177,6 +179,7 @@ e-cat/
 ├── ecat-testing/               # 集成测试工具
 ├── ecat-openapi/               # OpenAPI spec 生成
 ├── ecat-bench/                 # 性能基准
+├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
 ├── ecat-deploy/                # Docker / K8s 部署模板
 ├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
@@ -297,7 +300,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 9 | ✅ 完成 | 生态一期（health / client / circuit-breaker / auth / registry-consul） |
 | Phase 10 | ✅ 完成 | 生态二期（redis / mq / events / config-remote） |
 | Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
-| Phase 12 | 📋 规划 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
+| Phase 12 | ✅ 完成 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
 | Phase 13 | 📋 规划 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
 | Phase 14 | 📋 规划 | 运维与体验（Helm / WebSocket / API 版本管理 / CI/CD） |
 

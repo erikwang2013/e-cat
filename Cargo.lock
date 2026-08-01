@@ -488,7 +488,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "ecat"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-errors",
@@ -502,11 +502,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "axum 0.8.9",
  "http",
  "jsonwebtoken",
+ "reqwest",
  "serde",
  "serde_json",
  "tower 0.5.3",
@@ -515,14 +516,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-bench"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "tower 0.5.3",
  "tracing",
@@ -530,24 +531,25 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "ecat-client"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "reqwest",
  "tokio",
+ "tonic",
  "tracing",
 ]
 
 [[package]]
 name = "ecat-config"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -559,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config-remote"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-config",
@@ -571,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -583,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-redis"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -594,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-sqlx"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -604,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-encoding"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "prost",
  "serde",
@@ -614,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "ecat-protos",
  "http",
@@ -626,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-events"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "ecat-mq",
  "serde",
@@ -638,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-health"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -650,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -658,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metadata"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "http",
  "tonic",
@@ -666,14 +668,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-metrics"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "prometheus",
 ]
 
 [[package]]
 name = "ecat-middleware"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "http",
@@ -684,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -694,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-openapi"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -702,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-protos"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "prost",
  "prost-types",
@@ -712,7 +714,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -724,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-registry",
@@ -738,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-security"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "http",
  "security-rust",
@@ -749,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-testing"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-transport",
@@ -757,8 +759,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-tracing"
+version = "2.1.1"
+dependencies = [
+ "http",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ecat-transport"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -772,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "ecat-transport",
@@ -782,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1054,7 +1066,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "axum 0.8.9",
  "ecat",

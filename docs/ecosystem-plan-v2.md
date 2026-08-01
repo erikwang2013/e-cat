@@ -62,15 +62,14 @@
 
 ## 三、后续四期规划
 
-### 第四期：通信与安全强化（建议 v2.1.0）
+### 第四期：通信与安全强化（v2.1.0）✅ 已完成
 
-| Crate | 内容 | 预计行数 |
-|-------|------|----------|
-| `ecat-client` 扩展 | GrpcClient | ~200 |
-| `ecat-auth` 扩展 | OAuth2Layer | ~150 |
-| `ecat-transport` 扩展 | mTLS config | ~80 |
-| `ecat-tracing`（新） | OpenTelemetry 集成 | ~200 |
-| 合计 | 4 项 | ~630 |
+| Crate | 内容 | 状态 |
+|-------|------|------|
+| `ecat-client` 扩展 | GrpcClient | ✅ |
+| `ecat-auth` 扩展 | OAuth2Layer | ✅ |
+| `ecat-transport` 扩展 | mTLS config (TlsConfig) | ✅ |
+| `ecat-tracing`（新） | 分布式追踪（span + trace_id） | ✅ |
 
 ### 第五期：数据后端补齐（建议 v2.2.0）
 
@@ -99,7 +98,7 @@
 ```
 v1.0.x  核心骨架（18 crates）                    ✅ 已完成
 v2.0.x  生态一期～三期（+13 crates = 31 total）   ✅ 已完成
-v2.1.x  通信与安全强化（+1 crate, 3 扩展）        📋 规划中
+v2.1.x  通信与安全强化（+1 crate, 3 扩展）        ✅ 已完成
 v2.2.x  数据后端补齐（+4 crates）                 📋 规划中
 v2.3.x  运维与体验（+2 crates, 2 扩展）           📋 规划中
 ```

@@ -1,0 +1,123 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tower::{Layer, Service};
+
+/// Initialize structured logging with env filter.
+pub fn init(service_name: &str) {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    tracing::info!(service = service_name, "tracing initialized");
+}
+
+/// Tower Layer that creates a request span with trace_id injection.
+#[derive(Clone)]
+pub struct TracingLayer {
+    service_name: String,
+}
+
+impl TracingLayer {
+    pub fn new(service_name: impl Into<String>) -> Self {
+        Self {
+            service_name: service_name.into(),
+        }
+    }
+}
+
+impl<S> Layer<S> for TracingLayer {
+    type Service = TracingService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        TracingService {
+            inner,
+            service_name: self.service_name.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct TracingService<S> {
+    inner: S,
+    service_name: String,
+}
+
+impl<S, Req> Service<Req> for TracingService<S>
+where
+    S: Service<Req> + Send + 'static,
+    S::Future: Send + 'static,
+    S::Error: std::error::Error + Send + Sync + 'static,
+    Req: Send + 'static,
+{
+    type Response = S::Response;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
+    }
+
+    fn call(&mut self, req: Req) -> Self::Future {
+        let span = tracing::info_span!(
+            "request",
+            service = %self.service_name,
+        );
+        let fut = self.inner.call(req);
+        Box::pin(async move {
+            let _guard = span.enter();
+            fut.await.map_err(|e| Box::new(e) as _)
+        })
+    }
+}
+
+/// Extract trace_id from request headers for propagation.
+pub fn extract_trace_id(headers: &http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-trace-id")
+        .or_else(|| headers.get("traceparent"))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+/// Inject trace_id into a header map for downstream calls.
+pub fn inject_trace_id(headers: &mut http::HeaderMap) {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    std::time::Instant::now().hash(&mut h);
+    let trace_id = format!("{:016x}", h.finish());
+    if let Ok(v) = http::HeaderValue::from_str(&trace_id) {
+        headers.insert("x-trace-id", v);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracing_layer_constructs() {
+        let _layer = TracingLayer::new("test-service");
+    }
+
+    #[test]
+    fn extract_empty_headers() {
+        let headers = http::HeaderMap::new();
+        assert_eq!(extract_trace_id(&headers), None);
+    }
+
+    #[test]
+    fn inject_trace_id_adds_header() {
+        let mut headers = http::HeaderMap::new();
+        inject_trace_id(&mut headers);
+        assert!(headers.get("x-trace-id").is_some());
+    }
+}

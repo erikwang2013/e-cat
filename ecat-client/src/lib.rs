@@ -215,6 +215,69 @@ impl HttpClientBuilder {
     }
 }
 
+// ── gRPC Client ──
+
+pub struct GrpcClient {
+    resolver: Arc<dyn ServiceResolver>,
+    balancer: Arc<dyn LoadBalancer>,
+}
+
+impl GrpcClient {
+    pub fn builder() -> GrpcClientBuilder {
+        GrpcClientBuilder::default()
+    }
+
+    pub async fn connect(&self, service: &str) -> Result<tonic::transport::Channel, String> {
+        let endpoints = self.resolver.resolve(service).await?;
+        let endpoint = self
+            .balancer
+            .pick(&endpoints)
+            .ok_or_else(|| format!("no available endpoint for '{service}'"))?;
+        tonic::transport::Endpoint::from_shared(endpoint)
+            .map_err(|e| format!("invalid endpoint: {e}"))?
+            .connect()
+            .await
+            .map_err(|e| format!("grpc connect failed: {e}"))
+    }
+}
+
+pub struct GrpcClientBuilder {
+    resolver: Option<Arc<dyn ServiceResolver>>,
+    balancer: Option<Arc<dyn LoadBalancer>>,
+}
+
+impl Default for GrpcClientBuilder {
+    fn default() -> Self {
+        Self {
+            resolver: None,
+            balancer: None,
+        }
+    }
+}
+
+impl GrpcClientBuilder {
+    pub fn resolver(mut self, r: impl ServiceResolver + 'static) -> Self {
+        self.resolver = Some(Arc::new(r));
+        self
+    }
+
+    pub fn balancer(mut self, b: impl LoadBalancer + 'static) -> Self {
+        self.balancer = Some(Arc::new(b));
+        self
+    }
+
+    pub fn build(self) -> Result<GrpcClient, String> {
+        Ok(GrpcClient {
+            resolver: self
+                .resolver
+                .ok_or_else(|| "resolver is required".to_string())?,
+            balancer: self
+                .balancer
+                .unwrap_or_else(|| Arc::new(RoundRobin::new())),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

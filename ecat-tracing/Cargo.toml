@@ -1,0 +1,10 @@
+[package]
+name = "ecat-tracing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
+http.workspace = true
+tower.workspace = true
