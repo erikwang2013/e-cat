@@ -57,7 +57,7 @@ fn decrypt(encoded: &str, key: &[u8]) -> Result<String, ConfigError> {
 
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
     let s = s.trim();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err("odd hex length".into());
     }
     (0..s.len())

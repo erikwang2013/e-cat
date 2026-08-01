@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.0 · 42 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.6 · 46 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -348,6 +348,7 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 - [生态规划 v1](docs/ecosystem-plan.md)（已完成）
 - [生态规划 v2](docs/ecosystem-plan-v2.md)（已完成）
 - [生态规划 v3](docs/ecosystem-plan-v3.md)（最终评估）
+- [审计报告 r5](docs/audit-report-2026-08-01-r5.md)（2026-08-01）
 
 ## 许可证
 

@@ -53,12 +53,12 @@ impl RdbmsClient for ClickhouseClient {
             .map_err(|e| RdbmsError::Database(format!("ch read: {e}")))?;
         let mut rows = Vec::new();
         for line in text.lines() {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(obj) = v.as_object() {
-                    let cols: Vec<String> = obj.keys().cloned().collect();
-                    let vals: Vec<serde_json::Value> = obj.values().cloned().collect();
-                    rows.push(Row::new(cols, vals));
-                }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line)
+                && let Some(obj) = v.as_object()
+            {
+                let cols: Vec<String> = obj.keys().cloned().collect();
+                let vals: Vec<serde_json::Value> = obj.values().cloned().collect();
+                rows.push(Row::new(cols, vals));
             }
         }
         Ok(rows)

@@ -89,12 +89,12 @@ impl Registry for EtcdRegistry {
         let mut services = Vec::new();
         if let Some(kvs) = result.get("kvs").and_then(|v| v.as_array()) {
             for kv in kvs {
-                if let Some(v) = kv.get("value").and_then(|v| v.as_str()) {
-                    if let Ok(svc) = decode_b64_str(v).and_then(|s| {
+                if let Some(v) = kv.get("value").and_then(|v| v.as_str())
+                    && let Ok(svc) = decode_b64_str(v).and_then(|s| {
                         serde_json::from_str::<ServiceInfo>(&s).map_err(|e| e.to_string())
-                    }) {
-                        services.push(svc);
-                    }
+                    })
+                {
+                    services.push(svc);
                 }
             }
         }

@@ -5,8 +5,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+type CacheEntry = (Vec<u8>, Option<Instant>);
+
 pub struct MemcachedClient {
-    store: Mutex<HashMap<Vec<u8>, (Vec<u8>, Option<Instant>)>>,
+    store: Mutex<HashMap<Vec<u8>, CacheEntry>>,
 }
 
 impl MemcachedClient {

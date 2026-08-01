@@ -241,18 +241,10 @@ impl GrpcClient {
     }
 }
 
+#[derive(Default)]
 pub struct GrpcClientBuilder {
     resolver: Option<Arc<dyn ServiceResolver>>,
     balancer: Option<Arc<dyn LoadBalancer>>,
-}
-
-impl Default for GrpcClientBuilder {
-    fn default() -> Self {
-        Self {
-            resolver: None,
-            balancer: None,
-        }
-    }
 }
 
 impl GrpcClientBuilder {

@@ -1,6 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::http::HeaderMap;
-use axum::routing::get;
 use std::collections::HashMap;
 
 pub enum VersionStrategy {
@@ -58,14 +57,14 @@ impl VersionedRouter {
         // Header-based routing: nest each version under the same path,
         // requiring clients to set Accept header with version param.
         let mut router = axum::Router::new();
-        for (version, version_router) in self.versions {
-            router = router.nest(&format!("/api"), version_router);
+        for (_version, version_router) in self.versions {
+            router = router.nest("/api", version_router);
         }
         router
     }
 }
 
-fn extract_version(headers: &HeaderMap) -> Option<String> {
+pub fn extract_version(headers: &HeaderMap) -> Option<String> {
     headers
         .get("Accept")
         .and_then(|v| v.to_str().ok())
@@ -84,6 +83,7 @@ fn extract_version(headers: &HeaderMap) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::routing::get;
 
     async fn health() -> &'static str {
         "ok"

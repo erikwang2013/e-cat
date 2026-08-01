@@ -27,7 +27,9 @@ impl RdbmsClient for QuestdbClient {
             .await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?;
         if !resp.status().is_success() {
-            return Err(RdbmsError::Database(resp.text().await.unwrap_or_default()));
+            return Err(RdbmsError::Database(
+                resp.text().await.unwrap_or_else(|e| format!("questdb: {e}")),
+            ));
         }
         Ok(0)
     }
@@ -36,7 +38,7 @@ impl RdbmsClient for QuestdbClient {
         let body: serde_json::Value = self
             .client
             .get(format!("{}/exec", self.base_url))
-            .query(&[("query", sql), ("count", &"true".to_string())])
+            .query(&[("query", sql), ("count", "true")])
             .header("Accept", "application/json")
             .send()
             .await
