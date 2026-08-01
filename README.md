@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.0）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.2.0）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -136,12 +136,12 @@
 | 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
 | 缓存 | Memcached | `ecat-data-memcached` | 📋 规划中 |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | 📋 规划中 |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | 📋 v2.2 规划 |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | 📋 规划中 |
 | 图 | Neo4j | `ecat-data-neo4j` | 📋 规划中 |
 | 图 | NebulaGraph | `ecat-data-nebulagraph` | 📋 规划中 |
 | 图 | ArangoDB | `ecat-data-arangodb` | 📋 规划中 |
-| 时序 | InfluxDB | `ecat-data-influxdb` | 📋 v2.2 规划 |
+| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ 已实现 |
 | 时序 | Apache IoTDB | `ecat-data-iotdb` | 📋 规划中 |
 | 时序 | QuestDB | `ecat-data-questdb` | 📋 规划中 |
 
@@ -180,6 +180,10 @@ e-cat/
 ├── ecat-openapi/               # OpenAPI spec 生成
 ├── ecat-bench/                 # 性能基准
 ├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
+├── ecat-registry-etcd/         # etcd 服务注册
+├── ecat-mq-kafka/              # Kafka 消息队列适配
+├── ecat-data-opensearch/       # OpenSearch 搜索后端
+├── ecat-data-influxdb/         # InfluxDB 时序后端
 ├── ecat-deploy/                # Docker / K8s 部署模板
 ├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
@@ -301,7 +305,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 10 | ✅ 完成 | 生态二期（redis / mq / events / config-remote） |
 | Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
 | Phase 12 | ✅ 完成 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
-| Phase 13 | 📋 规划 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
+| Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
 | Phase 14 | 📋 规划 | 运维与体验（Helm / WebSocket / API 版本管理 / CI/CD） |
 
 ## 设计目标

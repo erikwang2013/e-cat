@@ -1,0 +1,9 @@
+[package]
+name = "ecat-mq-kafka"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecat-mq = { path = "../ecat-mq" }
+tokio.workspace = true
+async-trait.workspace = true

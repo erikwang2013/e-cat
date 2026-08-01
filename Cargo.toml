@@ -30,12 +30,16 @@ members = [
     "ecat-openapi",
     "ecat-bench",
     "ecat-tracing",
+    "ecat-registry-etcd",
+    "ecat-mq-kafka",
+    "ecat-data-opensearch",
+    "ecat-data-influxdb",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.1.1"
+version = "2.1.2"
 edition = "2024"
 license = "Apache-2.0"
 

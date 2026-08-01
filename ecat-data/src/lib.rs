@@ -9,4 +9,4 @@ pub use cache::{Cache, CacheError};
 pub use graph::{GraphClient, GraphError};
 pub use rdbms::{RdbmsClient, RdbmsError, Row, Transaction, TransactionInner};
 pub use search::{SearchClient, SearchError};
-pub use tsdb::{DataPoint, TsdbClient, TsdbError};
+pub use tsdb::{DataPoint, FieldValue, TsdbClient, TsdbError};
