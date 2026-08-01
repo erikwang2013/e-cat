@@ -1,0 +1,10 @@
+[package]
+name = "ecat-versioning"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+http.workspace = true
+tower.workspace = true
+tracing.workspace = true

@@ -34,12 +34,14 @@ members = [
     "ecat-mq-kafka",
     "ecat-data-opensearch",
     "ecat-data-influxdb",
+    "ecat-transport-ws",
+    "ecat-versioning",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.1.2"
+version = "2.1.3"
 edition = "2024"
 license = "Apache-2.0"
 

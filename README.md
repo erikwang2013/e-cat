@@ -306,7 +306,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
 | Phase 12 | ✅ 完成 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
 | Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
-| Phase 14 | 📋 规划 | 运维与体验（Helm / WebSocket / API 版本管理 / CI/CD） |
+| Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
 
 ## 设计目标
 

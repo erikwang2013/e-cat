@@ -1,0 +1,12 @@
+[package]
+name = "ecat-transport-ws"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ecat-transport = { path = "../ecat-transport" }
+tokio.workspace = true
+async-trait.workspace = true
+axum = { version = "0.8", features = ["ws"] }
+tower.workspace = true
+futures-util = "0.3"
