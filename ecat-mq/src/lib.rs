@@ -1,7 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::broadcast;
 

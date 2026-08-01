@@ -26,12 +26,15 @@ members = [
     "ecat-mq",
     "ecat-events",
     "ecat-config-remote",
+    "ecat-testing",
+    "ecat-openapi",
+    "ecat-bench",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.0.1"
+version = "2.0.2"
 edition = "2024"
 license = "Apache-2.0"
 
