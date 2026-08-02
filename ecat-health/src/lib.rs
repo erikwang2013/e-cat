@@ -152,8 +152,8 @@ mod tests {
         assert!(check.check().await.is_err());
     }
 
-    #[tokio::test]
-    async fn registry_builds_with_checks() {
+    #[test]
+    fn registry_builds_with_checks() {
         let _reg = HealthRegistry::new()
             .with_check(FnCheck::new("a", || async { Ok(()) }))
             .with_check(FnCheck::new("b", || async { Err("err".into()) }));

@@ -42,3 +42,45 @@ where
         Box::pin(fut.instrument(span))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::Service;
+
+    #[derive(Clone)]
+    struct EchoService;
+
+    impl Service<String> for EchoService {
+        type Response = String;
+        type Error = std::io::Error;
+        type Future = Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + Send>>;
+
+        fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, req: String) -> Self::Future {
+            Box::pin(async move { Ok(req) })
+        }
+    }
+
+    #[test]
+    fn layer_constructs() {
+        let _layer = TracingLayer;
+    }
+
+    #[test]
+    fn layer_wraps_service() {
+        let layer = TracingLayer;
+        let _svc = layer.layer(EchoService);
+    }
+
+    #[tokio::test]
+    async fn calls_inner_service() {
+        let layer = TracingLayer;
+        let mut svc = layer.layer(EchoService);
+        let result = svc.call("hello".into()).await.unwrap();
+        assert_eq!(result, "hello");
+    }
+}

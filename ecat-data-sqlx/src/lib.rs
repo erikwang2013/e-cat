@@ -278,6 +278,76 @@ struct SqlxTransactionWrapper {
     inner: Option<sqlx::Transaction<'static, sqlx::Any>>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encode_special_chars() {
+        assert_eq!(percent_encode("user:pass"), "user%3Apass");
+        assert_eq!(percent_encode("a/b@c"), "a%2Fb%40c");
+        assert_eq!(percent_encode("a#b?c&d=e"), "a%23b%3Fc%26d%3De");
+        assert_eq!(percent_encode("100%"), "100%25");
+        assert_eq!(percent_encode("a+b"), "a%2Bb");
+        assert_eq!(percent_encode("hello world"), "hello%20world");
+    }
+
+    #[test]
+    fn percent_encode_no_special_chars() {
+        assert_eq!(percent_encode("simple"), "simple");
+        assert_eq!(percent_encode("user123"), "user123");
+        assert_eq!(percent_encode(""), "");
+    }
+
+    #[test]
+    fn config_deserialize_basic() {
+        let cfg: SqlxConfig = serde_json::from_str(
+            r#"{"url": "postgres://localhost/db"}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.url, "postgres://localhost/db");
+        assert!(cfg.username.is_none());
+        assert!(cfg.password.is_none());
+        assert!(cfg.tls.is_none());
+    }
+
+    #[test]
+    fn config_deserialize_with_auth() {
+        let cfg: SqlxConfig = serde_json::from_str(
+            r#"{"url": "mysql://localhost/db", "username": "root", "password": "secret"}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.url, "mysql://localhost/db");
+        assert_eq!(cfg.username.as_deref(), Some("root"));
+        assert_eq!(cfg.password.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn config_deserialize_with_tls() {
+        let cfg: SqlxConfig = serde_json::from_str(
+            r#"{"url": "postgres://localhost/db", "tls": {"skip_verify": true}}"#,
+        )
+        .unwrap();
+        assert!(cfg.tls.is_some());
+        let tls = cfg.tls.unwrap();
+        assert_eq!(tls.skip_verify, Some(true));
+    }
+
+    #[test]
+    fn config_missing_url_is_error() {
+        let result: Result<SqlxConfig, _> = serde_json::from_str(r#"{}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_pool_is_constructible() {
+        // Compile-time check: SqlxClient::from_pool exists with correct signature.
+        fn _check_sig(pool: sqlx::AnyPool) -> SqlxClient {
+            SqlxClient::from_pool(pool)
+        }
+    }
+}
+
 #[async_trait]
 impl TransactionInner for SqlxTransactionWrapper {
     async fn commit(&mut self) -> Result<(), RdbmsError> {

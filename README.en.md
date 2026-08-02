@@ -177,6 +177,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 - [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md)
 - [Config Example](config/databases.example.yaml)
 
+## Support
+
+Your support is welcome!
+
+| WeChat Pay | Alipay |
+|:---:|:---:|
+| <img src="docs/weixinpay.png" width="130" height="130" alt="WeChat Pay"> | <img src="docs/alipay.png" width="130" height="130" alt="Alipay"> |
+
 ## License
 
 MIT

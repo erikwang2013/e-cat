@@ -407,6 +407,14 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 - [TLS 证书认证教程](docs/tls-certificate-tutorial.md)
 - [配置示例文件](config/databases.example.yaml)
 
+## 支持
+
+欢迎支持本项目！
+
+| 微信支付 | 支付宝 |
+|:---:|:---:|
+| <img src="docs/weixinpay.png" width="130" height="130" alt="微信支付"> | <img src="docs/alipay.png" width="130" height="130" alt="支付宝"> |
+
 ## 许可证
 
 MIT
