@@ -23,6 +23,16 @@ pub struct PathItem {
     pub get: Option<Operation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub put: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delete: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Operation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,6 +107,11 @@ impl OpenApiBuilder {
         let entry = self.paths.entry(path.into()).or_insert(PathItem {
             get: None,
             post: None,
+            put: None,
+            delete: None,
+            patch: None,
+            head: None,
+            options: None,
         });
         let op = Operation {
             summary: Some(summary.into()),
@@ -117,6 +132,11 @@ impl OpenApiBuilder {
         match method {
             "GET" | "get" => entry.get = Some(op),
             "POST" | "post" => entry.post = Some(op),
+            "PUT" | "put" => entry.put = Some(op),
+            "DELETE" | "delete" => entry.delete = Some(op),
+            "PATCH" | "patch" => entry.patch = Some(op),
+            "HEAD" | "head" => entry.head = Some(op),
+            "OPTIONS" | "options" => entry.options = Some(op),
             _ => {}
         }
         self
@@ -191,5 +211,33 @@ mod tests {
         let spec = OpenApiBuilder::new("Test", "1.0").build();
         let json = serde_json::to_string(&spec).unwrap();
         assert!(json.contains("\"openapi\""));
+    }
+
+    #[test]
+    fn all_seven_methods_serialize() {
+        let spec = OpenApiBuilder::new("M", "1")
+            .add_route("/r", "GET", "g", vec![])
+            .add_route("/r", "POST", "p", vec![])
+            .add_route("/r", "PUT", "u", vec![])
+            .add_route("/r", "DELETE", "d", vec![])
+            .add_route("/r", "PATCH", "a", vec![])
+            .add_route("/r", "HEAD", "h", vec![])
+            .add_route("/r", "OPTIONS", "o", vec![])
+            .build();
+        let json = serde_json::to_value(&spec).unwrap();
+        let item = json.pointer("/paths/~1r").unwrap().as_object().unwrap();
+        for method in ["get", "post", "put", "delete", "patch", "head", "options"] {
+            assert!(item.contains_key(method), "missing {method}");
+        }
+    }
+
+    #[test]
+    fn unknown_method_ignored() {
+        let spec = OpenApiBuilder::new("M", "1")
+            .add_route("/x", "TRACE", "t", vec![])
+            .build();
+        let json = serde_json::to_value(&spec).unwrap();
+        let item = json.pointer("/paths/~1x").unwrap().as_object().unwrap();
+        assert!(item.is_empty(), "unknown method must be ignored");
     }
 }
