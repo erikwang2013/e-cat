@@ -26,16 +26,17 @@ pub struct MqttMq {
 }
 
 impl MqttMq {
-    pub fn connect(url: &str) -> Result<Self, MqError> {
+    pub async fn connect(url: &str) -> Result<Self, MqError> {
         Self::from_config(MqttConfig {
             url: url.to_string(),
             client_id: None,
             username: None,
             password: None,
         })
+        .await
     }
 
-    pub fn from_config(cfg: MqttConfig) -> Result<Self, MqError> {
+    pub async fn from_config(cfg: MqttConfig) -> Result<Self, MqError> {
         let (host, port) = parse_url(&cfg.url);
         let client_id = cfg.client_id.clone().unwrap_or_else(|| "ecat-mqtt".into());
         let (client, eventloop) = AsyncClient::new(client_options(&cfg, host, port, client_id), 10);

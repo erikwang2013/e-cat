@@ -5,6 +5,11 @@ use std::task::{Context, Poll};
 use tower::{Layer, Service};
 
 /// Initialize structured logging with env filter.
+///
+/// NOTE: only one subscriber can be installed per process. Do not call this
+/// together with `ecat_tracing_otlp::init` (or any other subscriber init);
+/// the second `init` would panic with "a global default trace dispatcher
+/// has already been set".
 pub fn init(service_name: &str) {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;

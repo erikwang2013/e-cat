@@ -4,6 +4,7 @@ use ecat_data::{Cache, CacheError};
 use ecat_lock::{DistributedLock, LockError};
 use ecat_tls::TlsClientConfig;
 use redis::AsyncCommands;
+use redis::ConnectionInfo;
 use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
 use std::time::Duration;
@@ -18,17 +19,6 @@ pub struct RedisConfig {
     /// Cert paths are for future TLS connection parameter support.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
-}
-
-fn percent_encode(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' => {
-                format!("%{:02X}", c as u8)
-            }
-            _ => c.to_string(),
-        })
-        .collect()
 }
 
 fn build_url(cfg: &RedisConfig) -> String {
@@ -55,15 +45,24 @@ impl RedisCache {
     }
 
     pub async fn connect_with_password(url: &str, password: &str) -> Result<Self, CacheError> {
-        let url = if url.contains('@') {
-            url.to_string()
-        } else {
-            let encoded = percent_encode(password);
-            url.replacen("://", &format!("://:{encoded}@"), 1)
-        };
-        Self::connect(&url).await
+        // 通过 ConnectionInfo 单独传密码，避免密码嵌入 URL（否则错误消息会泄露口令）
+        let mut info: ConnectionInfo = url
+            .parse()
+            .map_err(|e| CacheError::Other(format!("redis url: {e}")))?;
+        info.redis.password = Some(password.to_string());
+        let client =
+            redis::Client::open(info).map_err(|e| CacheError::Other(format!("redis open: {e}")))?;
+        let conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| CacheError::Other(format!("redis connect: {e}")))?;
+        Ok(Self { conn })
     }
 
+    // Reconnection behavior: there is no explicit reconnect logic here.
+    // The underlying redis::aio::MultiplexedConnection reconnects
+    // internally on transient failures; a dropped connection is detected
+    // on the next command, which will return an error.
     pub async fn from_config(cfg: RedisConfig) -> Result<Self, CacheError> {
         let url = build_url(&cfg);
         match &cfg.password {
@@ -134,17 +133,21 @@ impl RedisLock {
 
     pub async fn from_config(cfg: RedisConfig) -> Result<Self, LockError> {
         let url = build_url(&cfg);
-        match &cfg.password {
-            Some(pw) if !pw.is_empty() => {
-                let url = if url.contains('@') {
-                    url
-                } else {
-                    let encoded = percent_encode(pw);
-                    url.replacen("://", &format!("://:{encoded}@"), 1)
-                };
-                Self::connect(&url).await
-            }
-            _ => Self::connect(&url).await,
+        if let Some(pw) = cfg.password.as_ref().filter(|p| !p.is_empty()) {
+            // 通过 ConnectionInfo 单独传密码，避免密码嵌入 URL 后泄露在错误消息中
+            let mut info: ConnectionInfo = url
+                .parse()
+                .map_err(|e| LockError::Other(format!("redis url: {e}")))?;
+            info.redis.password = Some(pw.clone());
+            let client = redis::Client::open(info)
+                .map_err(|e| LockError::Other(format!("redis open: {e}")))?;
+            let conn = client
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
+            Ok(Self { conn })
+        } else {
+            Self::connect(&url).await
         }
     }
 
@@ -158,13 +161,20 @@ impl DistributedLock for RedisLock {
     async fn acquire(&self, key: &str, ttl: Duration) -> Result<Option<String>, LockError> {
         let mut conn = self.conn.clone();
         let token = Uuid::new_v4().to_string();
+        let millis = ttl.as_millis();
+        // 与 Cache::set 保持一致：ttl 溢出时钳制为 u64::MAX
+        let px = if millis > u64::MAX as u128 {
+            u64::MAX
+        } else {
+            millis as u64
+        };
         let acquired: Option<()> = conn
             .set_options(
                 key,
                 token.as_str(),
                 redis::SetOptions::default()
                     .conditional_set(redis::ExistenceCheck::NX)
-                    .with_expiration(redis::SetExpiry::PX(ttl.as_millis() as u64)),
+                    .with_expiration(redis::SetExpiry::PX(px)),
             )
             .await
             .map_err(|e| LockError::Other(format!("redis acquire: {e}")))?;

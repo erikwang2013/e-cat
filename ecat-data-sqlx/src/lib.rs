@@ -272,6 +272,27 @@ struct SqlxTransactionWrapper {
     inner: Option<sqlx::Transaction<'static, sqlx::Any>>,
 }
 
+#[async_trait]
+impl TransactionInner for SqlxTransactionWrapper {
+    async fn commit(&mut self) -> Result<(), RdbmsError> {
+        if let Some(tx) = self.inner.take() {
+            tx.commit()
+                .await
+                .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn rollback(&mut self) -> Result<(), RdbmsError> {
+        if let Some(tx) = self.inner.take() {
+            tx.rollback()
+                .await
+                .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,26 +358,5 @@ mod tests {
         fn _check_sig(pool: sqlx::AnyPool) -> SqlxClient {
             SqlxClient::from_pool(pool)
         }
-    }
-}
-
-#[async_trait]
-impl TransactionInner for SqlxTransactionWrapper {
-    async fn commit(&mut self) -> Result<(), RdbmsError> {
-        if let Some(tx) = self.inner.take() {
-            tx.commit()
-                .await
-                .map_err(|e| RdbmsError::Database(e.to_string()))?;
-        }
-        Ok(())
-    }
-
-    async fn rollback(&mut self) -> Result<(), RdbmsError> {
-        if let Some(tx) = self.inner.take() {
-            tx.rollback()
-                .await
-                .map_err(|e| RdbmsError::Database(e.to_string()))?;
-        }
-        Ok(())
     }
 }

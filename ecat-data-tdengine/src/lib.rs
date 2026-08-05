@@ -75,44 +75,66 @@ impl TdengineClient {
     }
 }
 
+/// 转义双引号字符串字面量：先转义反斜杠再转义双引号，防止注入逃逸
+fn escape_sql_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// 转义双引号包裹的标识符（measurement/列名）
+fn escape_ident(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// 单条 DataPoint 生成一条 INSERT 语句
+fn point_to_insert(p: &DataPoint) -> String {
+    // Tags are flattened as columns; measurement is the table name.
+    let mut cols = Vec::new();
+    let mut vals = Vec::new();
+    cols.push("ts".to_string());
+    vals.push(
+        p.timestamp
+            .map(|ts| ts.to_string())
+            .unwrap_or_else(|| "now".to_string()),
+    );
+    for (k, v) in &p.tags {
+        cols.push(format!("\"{}\"", escape_ident(k)));
+        vals.push(format!("\"{}\"", escape_sql_string(v)));
+    }
+    for (k, v) in &p.fields {
+        cols.push(format!("\"{}\"", escape_ident(k)));
+        vals.push(match v {
+            FieldValue::Float(f) => f.to_string(),
+            FieldValue::Int(i) => i.to_string(),
+            FieldValue::String(s) => format!("\"{}\"", escape_sql_string(s)),
+            FieldValue::Bool(b) => {
+                if *b {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                }
+            }
+        });
+    }
+    format!(
+        "INSERT INTO \"{}\" ({}) VALUES ({})",
+        escape_ident(&p.measurement),
+        cols.join(", "),
+        vals.join(", ")
+    )
+}
+
+/// 每批最多写入的语句数，TDengine REST 支持换行分隔的多语句
+const BATCH_SIZE: usize = 100;
+
 #[async_trait]
 impl TsdbClient for TdengineClient {
     async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError> {
-        for p in points {
-            // Tags are flattened as columns; measurement is the table name.
-            let mut cols = Vec::new();
-            let mut vals = Vec::new();
-            cols.push("ts".to_string());
-            vals.push(
-                p.timestamp
-                    .map(|ts| ts.to_string())
-                    .unwrap_or_else(|| "now".to_string()),
-            );
-            for (k, v) in &p.tags {
-                cols.push(format!("\"{k}\""));
-                vals.push(format!("\"{v}\""));
-            }
-            for (k, v) in &p.fields {
-                cols.push(format!("\"{k}\""));
-                vals.push(match v {
-                    FieldValue::Float(f) => f.to_string(),
-                    FieldValue::Int(i) => i.to_string(),
-                    FieldValue::String(s) => format!("\"{s}\""),
-                    FieldValue::Bool(b) => {
-                        if *b {
-                            "true".to_string()
-                        } else {
-                            "false".to_string()
-                        }
-                    }
-                });
-            }
-            let sql = format!(
-                "INSERT INTO \"{}\" ({}) VALUES ({})",
-                p.measurement,
-                cols.join(", "),
-                vals.join(", ")
-            );
+        for chunk in points.chunks(BATCH_SIZE) {
+            let sql = chunk
+                .iter()
+                .map(point_to_insert)
+                .collect::<Vec<_>>()
+                .join("\n");
             self.exec(&sql).await?;
         }
         Ok(())

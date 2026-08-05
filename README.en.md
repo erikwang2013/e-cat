@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.1.7 · 47 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.3.0 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -12,17 +12,21 @@ It provides an API-first development experience, pluggable component architectur
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                         ecat-cli                             │
-│              (new │ proto │ run │ build)                     │
+│        (new │ proto │ run --watch │ build │ upgrade)         │
 ├──────────────────────────────────────────────────────────────┤
 │                     ecat (App Lifecycle)                     │
 │      AppBuilder → App { name, servers, hooks, ... }         │
 ├────────────────────┬────────────────────┬────────────────────┤
 │     transport      │    middleware      │     registry       │
 │     ─────────      │    ──────────      │     ────────       │
-│     HTTP (axum)    │    RecoveryLayer   │     etcd           │
+│     HTTP (axum)    │    RecoveryLayer   │     memory         │
 │     gRPC (tonic)   │    TracingLayer    │     consul         │
-│     encoding       │    LoggingLayer    │     dns            │
-│                    │    TimeoutLayer    │     memory         │
+│     WebSocket      │    LoggingLayer    │     etcd           │
+│     GraphQL        │    TimeoutLayer    │                    │
+│                    │    RateLimitLayer  │                    │
+│                    │    SecurityLayer   │                    │
+│                    │    CircuitBreaker  │                    │
+│                    │    Auth (JWT/API)  │                    │
 ├────────────────────┼────────────────────┼────────────────────┤
 │     config         │     errors         │     metadata       │
 │     ──────         │     ──────         │     ────────       │
@@ -36,22 +40,73 @@ It provides an API-first development experience, pluggable component architectur
 │     olap:    ClickHouse                                      │
 │     search:  OpenSearch / Elasticsearch                      │
 │     graph:   Neo4j / NebulaGraph / ArangoDB                  │
-│     tsdb:    InfluxDB / Apache IoTDB / QuestDB               │
+│     tsdb:    InfluxDB / Apache IoTDB / QuestDB / TDengine   │
+│     document: MongoDB                                        │
+│     storage: S3 / MinIO                                      │
 ├──────────────────────────────────────────────────────────────┤
 │                       ecat-protos                             │
 │     (shared .proto definitions: errors, metadata, ...)       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
+### Request Flow
+
+```
+Client Request
+  │
+  ├─ HTTP 0.0.0.0:8000 ──→ axum::Router ──┐
+  │                                        │
+  └─ gRPC 0.0.0.0:9000 ──→ tonic::Server ─┤
+                                           │
+                                   ┌───────┴───────┐
+                                   │   Middleware   │
+                                   │   ──────────   │
+                                   │ 1. Recovery    │  catch panics
+                                   │ 2. Tracing     │  inject trace_id
+                                   │ 3. Logging     │  request logs
+                                   │ 4. Auth        │  authn/authz
+                                   │ 5. Security    │  attack detection
+                                   │ 6. CircuitBrk  │  circuit breaking
+                                   └───────┬───────┘
+                                           │
+                                   ┌───────┴───────┐
+                                   │    Handler     │  business logic
+                                   │ (tower::Service)│
+                                   └───────┬───────┘
+                                           │
+                                   ┌───────┴───────┐
+                                   │   Response     │  encode
+                                   │ JSON/Protobuf  │
+                                   └───────────────┘
+```
+
 ## Features
 
-- **API-first**: Protobuf-defined APIs, error codes, and metadata
-- **Dual protocol**: HTTP (axum) and gRPC (tonic) sharing one middleware chain
-- **Pluggable**: Registry, Config, Logging, Encoding via trait abstractions
-- **Middleware**: Built-in Recovery, Tracing, Logging, Timeout layers
-- **Lifecycle**: Builder pattern, concurrent servers, graceful shutdown
-- **Type-safe**: Protobuf-based error codes with compile-time HTTP mapping
-- **Observable**: tracing + OpenTelemetry + Prometheus out of the box
+- **API-first**: Protobuf-defined APIs, error codes, and metadata; prost + tonic-build code generation
+- **Dual protocol**: HTTP (axum) and gRPC (tonic) sharing one tower::Layer middleware chain
+- **Pluggable**: Registry, Config, Logging, Encoding via trait abstractions, production-ready defaults
+- **Middleware**: Built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security layers, composed with tower::ServiceBuilder
+- **Lifecycle**: Builder pattern, concurrent servers, SIGTERM/SIGINT handling, start/stop hooks
+- **Type-safe**: Protobuf-based error codes with compile-time HTTP status mapping
+- **Observable**: tracing + OpenTelemetry (OTLP) + Prometheus + Health endpoints (/health, /ready)
+- **Attack detection**: SecurityLayer detects SQL injection, XSS, SSRF patterns and blocks high-risk requests
+- **Service comms**: HttpClient/GrpcClient with service discovery and load balancing; CircuitBreaker protection
+- **Auth**: JWT / API Key authentication middleware, claims propagated to request context
+- **Messaging**: MessageQueue trait + EventBus local/remote Pub/Sub
+- **Multi-protocol**: HTTP, gRPC, WebSocket, GraphQL unified routing
+- **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO)
+
+### Kratos Concept Mapping
+
+| Kratos (Go) | e-cat (Rust) | Notes |
+|-------------|-------------|-------|
+| `kratos.New()` | `App::builder()` | Builder pattern |
+| `http.Handler` | `tower::Service` | Standard Rust ecosystem trait |
+| `http.Server` | `axum::Router` | Mainstream HTTP framework |
+| `grpc.Server` | `tonic::transport::Server` | Most mature gRPC impl |
+| `proto generate` | `prost + tonic-build` | Standard protobuf codegen |
+| `registry.Discovery` | `Registry` trait | Pluggable discovery |
+| `config.Source` | `ConfigSource` trait | Multi-source config loading |
 
 ## Tech Stack
 
@@ -62,33 +117,51 @@ It provides an API-first development experience, pluggable component architectur
 | gRPC | **tonic** |
 | Protobuf | **prost + tonic-build** |
 | Middleware | **tower::Service / Layer** |
-| Tracing | **tracing + opentelemetry-rust** |
+| Logging/Tracing | **tracing + trace_id propagation** |
 | Metrics | **prometheus** |
 | Serialization | **serde + prost** |
+| Attack detection | **security-rust** |
 | RDBMS | **sqlx** |
+| Redis | **redis-rs** |
+| JWT | **jsonwebtoken** |
+| HTTP Client | **reqwest** |
 | CLI | **clap** |
 
-## Supported Databases
+## Supported Databases (18 backends)
 
-| Category | Database | Crate | Rust Driver |
-|----------|----------|-------|-------------|
-| RDBMS | SQLite | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | MySQL | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| RDBMS | TiDB | `ecat-data-sqlx` | [sqlx](https://crates.io/crates/sqlx) |
-| Cache | Redis | `ecat-data-redis` | [redis-rs](https://crates.io/crates/redis) |
-| Cache | Memcached | `ecat-data-memcached` | [memcache](https://crates.io/crates/memcache) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | [clickhouse-rs](https://crates.io/crates/clickhouse-rs) |
-| Search | OpenSearch | `ecat-data-opensearch` | [opensearch](https://crates.io/crates/opensearch) |
-| Search | Elasticsearch | `ecat-data-elasticsearch` | [elasticsearch](https://crates.io/crates/elasticsearch) |
-| Graph | Neo4j | `ecat-data-neo4j` | [neo4rs](https://crates.io/crates/neo4rs) |
-| Graph | NebulaGraph | `ecat-data-nebulagraph` | nebula-client |
-| Graph | ArangoDB | `ecat-data-arangodb` | [arangors](https://crates.io/crates/arangors) |
-| TSDB | InfluxDB | `ecat-data-influxdb` | [influxdb2](https://crates.io/crates/influxdb2) |
-| TSDB | Apache IoTDB | `ecat-data-iotdb` | iotdb-client-rs |
-| TSDB | QuestDB | `ecat-data-questdb` | questdb-rs (ILP) |
+| Category | Database | Crate | Status |
+|----------|----------|-------|--------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implemented |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implemented |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented |
+| Cache | Redis | `ecat-data-redis` | ✅ Implemented |
+| Cache | Memcached | `ecat-data-memcached` | ✅ Implemented (in-memory) |
+| Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented |
+| Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented |
+| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
+| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
+| TSDB | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
+| TSDB | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
+| TSDB | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
+| TSDB | TDengine | `ecat-data-tdengine` | ✅ REST API |
+| Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ rust-s3 |
 
-> All backends share unified trait abstractions and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+> All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+
+### Messaging Backends (4 MQ)
+
+| Backend | Crate | `from_config` |
+|---------|-------|---------------|
+| Kafka | `ecat-mq-kafka` | `async` |
+| RabbitMQ | `ecat-mq-rabbitmq` | `async` |
+| MQTT | `ecat-mq-mqtt` | `async` |
+| NATS | `ecat-mq-nats` | `async` |
+
+Also: service registry (Consul / etcd), distributed lock (Redis), scheduler (tokio), OTLP tracing export, API versioning, OpenAPI spec generation.
 
 ### Database Configuration
 
@@ -98,7 +171,7 @@ Each backend provides a config struct and `from_config()` method:
 use ecat_data_redis::{RedisCache, RedisConfig};
 use ecat_data_sqlx::{SqlxClient, SqlxConfig};
 
-// Load from config file
+// Load from config file (JSON or YAML)
 let redis_cfg: RedisConfig = serde_json::from_str(r#"{"url":"redis://localhost"}"#)?;
 let cache = RedisCache::from_config(redis_cfg).await?;
 
@@ -120,11 +193,107 @@ let rows = db.query("SELECT * FROM users").await?;
 | NebulaGraph | `NebulaGraphConfig` | `base_url`, `space`, `username`?, `password`? |
 | ArangoDB | `ArangoConfig` | `base_url`, `db`, `username`, `password` |
 | IoTDB | `IotdbConfig` | `base_url`, `username`, `password` |
-| Memcached | `MemcachedConfig` | `username`?, `password`?, `tls`? *(reserved)* |
+| Memcached | `MemcachedConfig` | `username`?, `password`? (reserved) |
+| TDengine | `TdengineConfig` | `base_url`, `username`, `password`, `database`? |
+| MongoDB | `MongoConfig` | `url`, `database`, `tls`? |
+| S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? |
 
-> All backends support optional `tls` field for client certificate auth (CA cert, mTLS, skip verification). See [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md).
+> All backends support optional `tls` field (`TlsClientConfig`) for client certificate auth. See [Database Config Tutorial](docs/database-config-tutorial.md) and [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md).
+
+## Project Structure
+
+```
+e-cat/
+├── ecat/                       # Core: App lifecycle
+├── ecat-transport/             # Transport abstraction (Server trait)
+├── ecat-transport-http/        # axum implementation
+├── ecat-transport-grpc/        # tonic implementation
+├── ecat-transport-ws/          # WebSocket transport
+├── ecat-middleware/            # tower::Layer middleware
+├── ecat-protos/                # Protobuf definitions
+├── ecat-errors/                # Error code system
+├── ecat-metadata/              # Metadata propagation
+├── ecat-encoding/              # Serialization abstraction
+├── ecat-logging/               # tracing integration
+├── ecat-registry/              # Service registry & discovery
+├── ecat-registry-consul/       # Consul registry
+├── ecat-registry-etcd/         # etcd registry
+├── ecat-config/                # Configuration management
+├── ecat-config-remote/         # Consul KV remote config
+├── ecat-metrics/               # Prometheus integration
+├── ecat-data/                  # Data access traits
+├── ecat-data-*/                # 18 database backend crates
+├── ecat-security/              # Attack detection (security-rust)
+├── ecat-cli/                   # CLI toolchain
+├── ecat-health/                # Health checks (/health /ready)
+├── ecat-auth/                  # Auth middleware (JWT / API Key / OAuth2)
+├── ecat-client/                # HTTP/gRPC service client
+├── ecat-circuit-breaker/       # Circuit breaker (Tower Layer)
+├── ecat-mq/                    # Message queue abstraction
+├── ecat-mq-kafka/              # Kafka adapter
+├── ecat-mq-rabbitmq/           # RabbitMQ adapter
+├── ecat-mq-mqtt/               # MQTT adapter
+├── ecat-mq-nats/               # NATS adapter
+├── ecat-events/                # Event bus (local + remote)
+├── ecat-testing/               # Integration test tools
+├── ecat-openapi/               # OpenAPI spec generation
+├── ecat-bench/                 # Performance benchmarks
+├── ecat-tracing/               # Distributed tracing (trace_id)
+├── ecat-tracing-otlp/          # OpenTelemetry OTLP export
+├── ecat-graphql/               # GraphQL endpoint (single-field)
+├── ecat-versioning/            # API version routing
+├── ecat-tls/                   # TLS config & cert generation
+├── ecat-lock/                  # Distributed lock (Redis)
+├── ecat-scheduler/             # tokio scheduled tasks
+├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
+├── config/                     # Example config files
+├── docs/                       # Design docs & ecosystem plans
+└── examples/                   # Example projects
+```
 
 ## Quick Start
+
+### Prerequisites
+
+- Rust 1.85+ (stable toolchain, required for edition 2024)
+- [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers compiler)
+
+### Install the CLI
+
+```bash
+cargo install ecat-cli
+```
+
+### Create a Service
+
+```bash
+# Scaffold a project
+ecat new helloworld
+cd helloworld
+
+# Add a proto definition
+ecat proto add api/helloworld/helloworld.proto
+
+# Generate client and server code
+ecat proto client api/helloworld/helloworld.proto
+ecat proto server api/helloworld/helloworld.proto -t internal/service
+
+# Run in development mode
+ecat run
+
+# Watch src/ for changes and auto-restart
+ecat run --watch
+
+# Build for production
+ecat build --release
+
+# Update all ecat-* workspace dependencies
+ecat upgrade
+```
+
+Visit `http://localhost:8000/helloworld/ecat`.
+
+### Code Example
 
 ```rust
 use ecat::App;
@@ -133,15 +302,63 @@ use ecat_transport_grpc::GrpcServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let http_srv = HttpServer::new("0.0.0.0:8000");
+    let grpc_srv = GrpcServer::new("0.0.0.0:9000");
+
     let app = App::builder()
         .name("my-service")
         .version("v1.0.0")
-        .server(HttpServer::new(":8000"))
-        .server(GrpcServer::new(":9000"))
+        .server(http_srv)
+        .server(grpc_srv)
+        .on_start(|| async {
+            tracing::info!("service started");
+            Ok(())
+        })
+        .on_stop(|| async {
+            tracing::info!("service stopped");
+            Ok(())
+        })
         .build()?;
 
-    app.run().await?; // blocks until SIGTERM
+    app.run().await?; // blocks until SIGTERM/SIGINT
     Ok(())
+}
+```
+
+> Note: use `0.0.0.0:port` (not `:port`) as the listen address so the service
+> also binds correctly on hosts without IPv6.
+
+### Middleware
+
+```rust
+use tower::ServiceBuilder;
+use ecat_middleware::{RecoveryLayer, TracingLayer, LoggingLayer, TimeoutLayer};
+use std::time::Duration;
+
+let layer = ServiceBuilder::new()
+    .layer(RecoveryLayer)
+    .layer(TracingLayer)
+    .layer(LoggingLayer)
+    .layer(TimeoutLayer::new(Duration::from_secs(30)))
+    .layer(CircuitBreakerLayer::new())
+    .layer(JwtAuthLayer::new("my-secret-key"))
+    .layer(SecurityLayer::new());
+```
+
+### Error Handling
+
+```rust
+use ecat_errors::{Error, ErrorCode};
+
+fn get_user(id: u64) -> Result<User, Error> {
+    if id == 0 {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "bad_request",
+            "user id must be positive",
+        ));
+    }
+    // ...
 }
 ```
 
@@ -164,14 +381,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 | Phase 12 | ✅ Done | Comms & security (gRPC client / OAuth2 / mTLS / tracing) |
 | Phase 13 | ✅ Done | Data backends (etcd / Kafka / OpenSearch / InfluxDB / ES / ClickHouse / Memcached / Neo4j / NebulaGraph / ArangoDB / IoTDB / QuestDB) |
 | Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
+| Phase 15 | ✅ Done | Ecosystem v2 (real Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / distributed lock / scheduler / CLI watch+upgrade) |
+
+## Design Goals
+
+| # | Goal | Notes |
+|---|------|-------|
+| 1 | **Kratos alignment** | API-first, pluggable, unified abstractions |
+| 2 | **Rust idiomatic** | tower::Service, trait generics, zero-cost abstractions; no "Go in Rust" |
+| 3 | **Type safety** | Compile-time errors, fully typed Protobuf definitions |
+| 4 | **Pluggable** | Registry, Config, Logging, Encoding via traits |
+| 5 | **Complete toolchain** | CLI scaffolding, proto codegen, dev run, upgrade |
+| 6 | **Performance first** | Zero-cost abstractions + async runtime |
+| 7 | **Observable** | tracing + Prometheus out of the box |
+| 8 | **Complete ecosystem** | Clients, circuit breaker, auth, health checks, registry backends |
+
+## Technical Notes
+
+### Why tower::Service
+
+[`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) is the Rust async ecosystem equivalent of `http.Handler`. Both axum and tonic are built on tower, so e-cat needs no custom middleware trait — implement tower::Layer directly, with zero adapter overhead.
+
+### Why a Cargo Workspace
+
+Consistent with Kratos' modular design. Each `ecat-*` crate versions and compiles independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
+
+### Why prost (not protobuf-rs)
+
+prost is the most widely used protobuf implementation in the Rust community, generating type-safe code at compile time with deep tonic integration.
 
 ## Documentation
 
 - [Design Spec](docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
 - [Implementation Plan](docs/superpowers/plans/2026-07-29-ecat-framework.md)
-- [Ecosystem Plan v1](docs/ecosystem-plan.md)
-- [Ecosystem Plan v2](docs/ecosystem-plan-v2.md)
-- [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final)
+- [Ecosystem Plan v1](docs/ecosystem-plan.md) (completed)
+- [Ecosystem Plan v2](docs/ecosystem-plan-v2.md) (completed)
+- [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final evaluation)
 - [Audit Report r5](docs/audit-report-2026-08-01-r5.md) (2026-08-01)
 - [Database Config Tutorial](docs/database-config-tutorial.md)
 - [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md)

@@ -30,6 +30,14 @@ impl ApiKeyLayer {
         self
     }
 
+    /// Allow the API key in a query parameter as a fallback when it is not
+    /// present in the header.
+    ///
+    /// # Security risk
+    /// Keys passed in query strings can leak through access logs, browser
+    /// history, and `Referer` headers, and may be cached by intermediaries.
+    /// Prefer the header only; this fallback exists for legacy clients and
+    /// logs a warning whenever it is actually used.
     pub fn query_param(mut self, param: impl Into<String>) -> Self {
         self.query_param = Some(param.into());
         self
@@ -69,12 +77,25 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let key = extract_header(req.headers(), &self.config.header_name).or_else(|| {
-            self.config
-                .query_param
-                .as_ref()
-                .and_then(|p| extract_query_param(req.uri().query(), p))
-        });
+        let header_key = extract_header(req.headers(), &self.config.header_name);
+        let key = match header_key {
+            Some(k) => Some(k),
+            None => {
+                let query_key = self
+                    .config
+                    .query_param
+                    .as_ref()
+                    .and_then(|p| extract_query_param(req.uri().query(), p));
+                if query_key.is_some() {
+                    tracing::warn!(
+                        param = ?self.config.query_param,
+                        "api key accepted via query parameter; keys in URLs can leak \
+                         through logs, history, and Referer headers"
+                    );
+                }
+                query_key
+            }
+        };
 
         let claims = key.and_then(|k| self.config.keys.get(&k).cloned());
         let mut inner = self.inner.clone();

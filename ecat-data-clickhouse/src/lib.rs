@@ -79,7 +79,10 @@ impl RdbmsClient for ClickhouseClient {
             .client
             .post(&self.base_url)
             .header("Content-Type", "text/plain; charset=utf-8")
-            .query(&[("database", &self.database)])
+            .query(&[
+                ("database", &self.database),
+                ("send_progress_in_http_headers", &"1".to_string()),
+            ])
             .body(sql.to_string());
         let resp = self
             .apply_auth(req)
@@ -89,7 +92,22 @@ impl RdbmsClient for ClickhouseClient {
         if !resp.status().is_success() {
             return Err(RdbmsError::Database(resp.text().await.unwrap_or_default()));
         }
-        Ok(0)
+        // ClickHouse reports written/result rows in the X-ClickHouse-Summary
+        // response header (enabled via send_progress_in_http_headers=1).
+        // Falls back to 0 when the server does not send the header.
+        let affected = resp
+            .headers()
+            .get("x-clickhouse-summary")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .and_then(|v| {
+                v.get("written_rows")
+                    .and_then(|n| n.as_str())
+                    .map(String::from)
+            })
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        Ok(affected)
     }
 
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
@@ -113,9 +131,16 @@ impl RdbmsClient for ClickhouseClient {
             .map_err(|e| RdbmsError::Database(format!("ch read: {e}")))?;
         let mut rows = Vec::new();
         for line in text.lines() {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line)
-                && let Some(obj) = v.as_object()
-            {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let v = serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
+                RdbmsError::Database(format!(
+                    "ch query: unparseable row (first 200 bytes shown): {e}: {}",
+                    line.chars().take(200).collect::<String>()
+                ))
+            })?;
+            if let Some(obj) = v.as_object() {
                 let cols: Vec<String> = obj.keys().cloned().collect();
                 let vals: Vec<serde_json::Value> = obj.values().cloned().collect();
                 rows.push(Row::new(cols, vals));

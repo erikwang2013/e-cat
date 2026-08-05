@@ -1,5 +1,27 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
+/// Validate a project name for `ecat new`.
+///
+/// Rejects path separators (`/`, `\`), quotes, newlines and any character
+/// outside `^[a-z][a-z0-9_-]*$`, so the name can be safely used as a
+/// directory and embedded in a generated Cargo.toml.
+pub fn validate_crate_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("name must not be empty".into());
+    }
+    if name.contains(['/', '\\', '"', '\'', '\n', '\r']) {
+        return Err("name must not contain path separators, quotes or newlines".into());
+    }
+    let valid = name.char_indices().all(|(i, c)| {
+        (i == 0 && c.is_ascii_lowercase())
+            || (i > 0 && (c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-'))
+    });
+    if !valid {
+        return Err("name must match ^[a-z][a-z0-9_-]*$ (start with a lowercase letter)".into());
+    }
+    Ok(())
+}
+
 pub fn generate_cargo_toml(name: &str) -> String {
     format!(
         r#"[package]
@@ -48,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/health", get(health))
         .layer(middleware);
 
-    let http_srv = HttpServer::new(":8000").router(router);
+    let http_srv = HttpServer::new("0.0.0.0:8000").router(router);
 
     let mut app = App::builder()
         .name(env!("CARGO_PKG_NAME"))
@@ -131,5 +153,36 @@ mod tests {
     fn cargo_toml_special_chars_in_name() {
         let toml = generate_cargo_toml("my_app-123");
         assert!(toml.contains("name = \"my_app-123\""));
+    }
+
+    #[test]
+    fn validate_crate_name_accepts_valid_names() {
+        assert!(validate_crate_name("myapp").is_ok());
+        assert!(validate_crate_name("my-app-123").is_ok());
+        assert!(validate_crate_name("my_app").is_ok());
+    }
+
+    #[test]
+    fn validate_crate_name_rejects_path_traversal() {
+        assert!(validate_crate_name("../../x").is_err());
+        assert!(validate_crate_name("a/b").is_err());
+        assert!(validate_crate_name("a\\b").is_err());
+    }
+
+    #[test]
+    fn validate_crate_name_rejects_injection_chars() {
+        assert!(validate_crate_name("a\"b").is_err());
+        assert!(validate_crate_name("a'b").is_err());
+        assert!(validate_crate_name("a\nb").is_err());
+        assert!(validate_crate_name("a\rb").is_err());
+    }
+
+    #[test]
+    fn validate_crate_name_rejects_bad_patterns() {
+        assert!(validate_crate_name("").is_err());
+        assert!(validate_crate_name("1app").is_err());
+        assert!(validate_crate_name("App").is_err());
+        assert!(validate_crate_name("app name").is_err());
+        assert!(validate_crate_name("app.name").is_err());
     }
 }

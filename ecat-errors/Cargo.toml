@@ -10,5 +10,5 @@ ecat-protos = { path = "../ecat-protos" }
 prost.workspace = true
 thiserror.workspace = true
 serde.workspace = true
-http = "1"
+http.workspace = true
 tonic.workspace = true

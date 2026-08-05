@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use base64::Engine as _;
 use ecat_config::{ConfigError, ConfigSource};
 use std::collections::HashMap;
 
@@ -82,45 +83,12 @@ struct ConsulKvEntry {
 impl ConsulKvEntry {
     fn decoded_value(&self) -> Option<String> {
         self.value.as_ref().and_then(|v| {
-            base64_decode(v)
+            base64::engine::general_purpose::STANDARD
+                .decode(v)
                 .ok()
                 .and_then(|bytes| String::from_utf8(bytes).ok())
         })
     }
-}
-
-fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        .chars()
-        .collect();
-    let mut table = std::collections::HashMap::new();
-    for (i, &c) in chars.iter().enumerate() {
-        table.insert(c, i as u8);
-    }
-
-    let input = input.trim_end_matches('=');
-    let mut result = Vec::new();
-    let bytes: Vec<u8> = input
-        .chars()
-        .filter_map(|c| table.get(&c).copied())
-        .collect();
-
-    for chunk in bytes.chunks(4) {
-        if chunk.len() < 2 {
-            break;
-        }
-        let b0 = chunk[0];
-        let b1 = chunk[1];
-        result.push((b0 << 2) | (b1 >> 4));
-        if chunk.len() >= 3 {
-            result.push((b1 << 4) | (chunk[2] >> 2));
-        }
-        if chunk.len() >= 4 {
-            result.push((chunk[2] << 6) | chunk[3]);
-        }
-    }
-
-    Ok(result)
 }
 
 #[cfg(test)]
@@ -134,7 +102,9 @@ mod tests {
 
     #[test]
     fn base64_decode_simple() {
-        let result = base64_decode("aGVsbG8=").unwrap();
+        let result = base64::engine::general_purpose::STANDARD
+            .decode("aGVsbG8=")
+            .unwrap();
         assert_eq!(String::from_utf8(result).unwrap(), "hello");
     }
 }

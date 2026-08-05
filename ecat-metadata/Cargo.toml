@@ -6,5 +6,5 @@ license.workspace = true
 description = "Request/response metadata propagation for e-cat"
 
 [dependencies]
-http = "1"
+http.workspace = true
 tonic.workspace = true

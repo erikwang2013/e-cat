@@ -12,5 +12,5 @@ ecat-errors = { path = "../ecat-errors" }
 tower.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
-http = "1"
+http.workspace = true
 bytes = "1"

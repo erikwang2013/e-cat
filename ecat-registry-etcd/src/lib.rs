@@ -64,9 +64,14 @@ impl Registry for EtcdRegistry {
     }
 
     async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
+        // 注册键为 /ecat/services/{id}/{uuid}，用范围删除前缀匹配的所有实例键
+        let prefix = format!("/ecat/services/{id}/");
         self.client
             .post(format!("{}/v3/kv/deleterange", self.base_url()))
-            .json(&serde_json::json!({"key": b64(id)}))
+            .json(&serde_json::json!({
+                "key": b64(&prefix),
+                "range_end": b64(&prefix_end(&prefix)),
+            }))
             .send()
             .await
             .map_err(|e| RegistryError::Other(format!("etcd del: {e}")))?;

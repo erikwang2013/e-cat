@@ -1,4 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! InfluxDB 2.x client (line protocol writer + Flux query).
+//!
+//! Measurements, tag keys/values, field keys and string field values are
+//! escaped per the InfluxDB line protocol so that `,`, ` `, `=` and `"` in
+//! user data cannot break or inject lines.
+
 use async_trait::async_trait;
 use ecat_data::{DataPoint, FieldValue, TsdbClient, TsdbError};
 use ecat_tls::TlsClientConfig;
@@ -56,6 +62,41 @@ impl InfluxClient {
     }
 }
 
+/// Escape a measurement, tag key/value or field key per InfluxDB line
+/// protocol: backslash, comma, space and `=` must be escaped in these
+/// unquoted parts of a line.
+fn escape_line_part(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' | ',' | ' ' | '=' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Escape a string field value per InfluxDB line protocol: backslash and
+/// double quote are required by the spec; comma and space are escaped too so
+/// that user data cannot break or inject lines (the parser consumes the
+/// escape, so values are preserved verbatim).
+fn escape_field_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' | '"' | ',' | ' ' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[async_trait]
 impl TsdbClient for InfluxClient {
     async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError> {
@@ -66,22 +107,28 @@ impl TsdbClient for InfluxClient {
             } else {
                 p.tags
                     .iter()
-                    .map(|(k, v)| format!(",{k}={v}"))
+                    .map(|(k, v)| format!(",{}={}", escape_line_part(k), escape_line_part(v)))
                     .collect::<Vec<_>>()
                     .join("")
             };
             let fields: String = p
                 .fields
                 .iter()
-                .map(|(k, v)| match v {
-                    FieldValue::Float(f) => format!("{k}={f}"),
-                    FieldValue::Int(i) => format!("{k}={i}i"),
-                    FieldValue::String(s) => format!("{k}=\"{s}\""),
-                    FieldValue::Bool(b) => format!("{k}={b}"),
+                .map(|(k, v)| {
+                    let k = escape_line_part(k);
+                    match v {
+                        FieldValue::Float(f) => format!("{k}={f}"),
+                        FieldValue::Int(i) => format!("{k}={i}i"),
+                        FieldValue::String(s) => format!("{k}=\"{}\"", escape_field_string(s)),
+                        FieldValue::Bool(b) => format!("{k}={b}"),
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            lines.push_str(&format!("{}{tags} {fields}", p.measurement));
+            lines.push_str(&format!(
+                "{}{tags} {fields}",
+                escape_line_part(&p.measurement)
+            ));
             if let Some(ts) = p.timestamp {
                 lines.push_str(&format!(" {ts}"));
             }
@@ -145,5 +192,18 @@ mod tests {
             .with_timestamp(1625097600000000000);
         assert_eq!(p.measurement, "cpu");
         assert_eq!(p.tags.get("host").unwrap(), "server01");
+    }
+
+    #[test]
+    fn escapes_line_parts() {
+        assert_eq!(escape_line_part("a,b c=d\\e"), "a\\,b\\ c\\=d\\\\e");
+        assert_eq!(escape_line_part("plain"), "plain");
+    }
+
+    #[test]
+    fn escapes_field_strings() {
+        assert_eq!(escape_field_string("say \"hi\""), "say\\ \\\"hi\\\"");
+        assert_eq!(escape_field_string("a\\b"), "a\\\\b");
+        assert_eq!(escape_field_string("x y,z"), "x\\ y\\,z");
     }
 }

@@ -1,4 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! Elasticsearch client.
+//!
+//! All writes/reads/errors are validated against the HTTP status code; index
+//! names and document ids are percent-encoded before being placed in the URL
+//! path so that reserved characters cannot break the request.
+
 use async_trait::async_trait;
 use ecat_data::{SearchClient, SearchError};
 use ecat_tls::TlsClientConfig;
@@ -61,6 +67,30 @@ impl ElasticsearchClient {
     }
 }
 
+/// Percent-encode a single URL path segment (RFC 3986): every byte except
+/// unreserved characters (`A-Z a-z 0-9 - _ . ~`) becomes `%XX`.
+fn percent_encode_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Build the non-2xx error message, including the HTTP status code.
+async fn status_error(prefix: &str, resp: reqwest::Response) -> SearchError {
+    let status = resp.status().as_u16();
+    SearchError::Other(format!(
+        "{prefix} failed: status {status}, body: {}",
+        resp.text().await.unwrap_or_default()
+    ))
+}
+
 #[async_trait]
 impl SearchClient for ElasticsearchClient {
     async fn index(
@@ -71,7 +101,12 @@ impl SearchClient for ElasticsearchClient {
     ) -> Result<(), SearchError> {
         let req = self
             .client
-            .put(format!("{}/{index}/_doc/{id}", self.base_url))
+            .put(format!(
+                "{}/{}/_doc/{}",
+                self.base_url,
+                percent_encode_segment(index),
+                percent_encode_segment(id)
+            ))
             .json(doc);
         let resp = self
             .apply_auth(req)
@@ -79,7 +114,7 @@ impl SearchClient for ElasticsearchClient {
             .await
             .map_err(|e| SearchError::Other(format!("es index: {e}")))?;
         if !resp.status().is_success() {
-            return Err(SearchError::Other(resp.text().await.unwrap_or_default()));
+            return Err(status_error("es index", resp).await);
         }
         Ok(())
     }
@@ -91,25 +126,40 @@ impl SearchClient for ElasticsearchClient {
     ) -> Result<serde_json::Value, SearchError> {
         let req = self
             .client
-            .post(format!("{}/{index}/_search", self.base_url))
+            .post(format!(
+                "{}/{}/_search",
+                self.base_url,
+                percent_encode_segment(index)
+            ))
             .json(query);
-        self.apply_auth(req)
+        let resp = self
+            .apply_auth(req)
             .send()
             .await
-            .map_err(|e| SearchError::Other(format!("es search: {e}")))?
-            .json()
+            .map_err(|e| SearchError::Other(format!("es search: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(status_error("es search", resp).await);
+        }
+        resp.json()
             .await
             .map_err(|e| SearchError::Other(format!("es parse: {e}")))
     }
 
     async fn delete(&self, index: &str, id: &str) -> Result<(), SearchError> {
-        let req = self
-            .client
-            .delete(format!("{}/{index}/_doc/{id}", self.base_url));
-        self.apply_auth(req)
+        let req = self.client.delete(format!(
+            "{}/{}/_doc/{}",
+            self.base_url,
+            percent_encode_segment(index),
+            percent_encode_segment(id)
+        ));
+        let resp = self
+            .apply_auth(req)
             .send()
             .await
             .map_err(|e| SearchError::Other(format!("es delete: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(status_error("es delete", resp).await);
+        }
         Ok(())
     }
 }
@@ -144,5 +194,15 @@ mod tests {
             serde_json::from_str(r#"{"base_url":"http://localhost:9200"}"#).unwrap();
         let client = ElasticsearchClient::from_config(cfg).unwrap();
         assert!(client.username.is_none());
+    }
+
+    #[test]
+    fn percent_encode_segment_encodes_reserved_chars() {
+        assert_eq!(percent_encode_segment("logs-2026"), "logs-2026");
+        assert_eq!(
+            percent_encode_segment("a/b c#d?e%f"),
+            "a%2Fb%20c%23d%3Fe%25f"
+        );
+        assert_eq!(percent_encode_segment("你好"), "%E4%BD%A0%E5%A5%BD");
     }
 }

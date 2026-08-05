@@ -50,18 +50,18 @@ impl ConsulRegistry {
 impl Registry for ConsulRegistry {
     async fn register(&self, service: ServiceInfo) -> Result<Registration, RegistryError> {
         let id = format!("{}-{}", service.name, uuid::Uuid::new_v4());
-        let address = service
-            .endpoints
-            .first()
+        let endpoint = service.endpoints.first();
+        let address = endpoint
             .map(|e| extract_host(e))
             .unwrap_or("127.0.0.1")
             .to_string();
+        let port = endpoint.and_then(|e| extract_port(e));
 
         let req = ConsulRegisterRequest {
             id: id.clone(),
             name: service.name.clone(),
             address,
-            port: 0,
+            port,
             check: None,
         };
 
@@ -140,7 +140,15 @@ impl Registry for ConsulRegistry {
             .map(|e| {
                 let addr = e.service.address.as_deref().unwrap_or(&e.node.address);
                 let endpoint = format!("http://{addr}:{}", e.service.port);
-                ServiceInfo::new(&e.service.service, "1.0").with_endpoint(endpoint)
+                // Consul has no native version field; parse it from a
+                // "version=x" service tag when present, else leave it empty.
+                let version = e
+                    .service
+                    .tags
+                    .iter()
+                    .find_map(|t| t.strip_prefix("version="))
+                    .unwrap_or("");
+                ServiceInfo::new(&e.service.service, version).with_endpoint(endpoint)
             })
             .collect();
 
@@ -177,6 +185,13 @@ fn extract_host(endpoint: &str) -> &str {
         .unwrap_or("127.0.0.1")
 }
 
+fn extract_port(endpoint: &str) -> Option<u32> {
+    endpoint
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.trim_end_matches('/').parse().ok())
+}
+
 // ── Consul API types ──
 
 #[derive(Debug, Serialize)]
@@ -187,8 +202,8 @@ struct ConsulRegisterRequest {
     name: String,
     #[serde(rename = "Address")]
     address: String,
-    #[serde(rename = "Port")]
-    port: u32,
+    #[serde(rename = "Port", skip_serializing_if = "Option::is_none")]
+    port: Option<u32>,
     #[serde(rename = "Check", skip_serializing_if = "Option::is_none")]
     check: Option<ConsulHealthCheck>,
 }
@@ -230,7 +245,7 @@ struct ConsulHealthService {
     #[serde(rename = "Port")]
     port: u16,
     #[serde(rename = "Tags")]
-    _tags: Vec<String>,
+    tags: Vec<String>,
 }
 
 #[cfg(test)]

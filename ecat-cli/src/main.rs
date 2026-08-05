@@ -69,6 +69,11 @@ fn main() {
         Commands::New { name } => {
             use std::fs;
 
+            if let Err(msg) = ecat_cli::validate_crate_name(&name) {
+                eprintln!("Error: invalid project name '{}': {}", name, msg);
+                process::exit(1);
+            }
+
             let dir = std::path::Path::new(&name);
             if dir.exists() {
                 eprintln!("Error: directory '{}' already exists", name);

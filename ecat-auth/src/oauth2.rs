@@ -9,26 +9,48 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
 
+/// HTTP timeout for token introspection requests.
+const INTROSPECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Clone)]
 pub struct OAuth2Layer {
     introspection_url: String,
     client_id: String,
     client_secret: String,
     cache_ttl_secs: u64,
+    /// Shared HTTP client: connections are pooled and reused across requests
+    /// instead of being created (and torn down) per request.
+    client: reqwest::Client,
 }
 
 impl OAuth2Layer {
+    /// The introspection URL must use `https`; plain `http` is rejected
+    /// (skipped in `cfg(test)` so unit tests may point at a local server).
     pub fn new(
         introspection_url: impl Into<String>,
         client_id: impl Into<String>,
         client_secret: impl Into<String>,
-    ) -> Self {
-        Self {
-            introspection_url: introspection_url.into(),
+    ) -> Result<Self, String> {
+        let introspection_url = introspection_url.into();
+        #[cfg(not(test))]
+        {
+            if !introspection_url.starts_with("https://") {
+                return Err(format!(
+                    "introspection URL must use https, got: {introspection_url}"
+                ));
+            }
+        }
+        let client = reqwest::Client::builder()
+            .timeout(INTROSPECT_TIMEOUT)
+            .build()
+            .map_err(|e| format!("failed to build http client: {e}"))?;
+        Ok(Self {
+            introspection_url,
             client_id: client_id.into(),
             client_secret: client_secret.into(),
             cache_ttl_secs: 300,
-        }
+            client,
+        })
     }
 
     pub fn cache_ttl(mut self, secs: u64) -> Self {
@@ -97,9 +119,7 @@ where
                     tracing::warn!(error = %e, "oauth2 introspection failed");
                     Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(format!(
-                            r#"{{"error":"invalid token: {e}"}}"#
-                        )))
+                        .body(axum::body::Body::from(r#"{"error":"invalid token"}"#))
                         .unwrap())
                 }
             }
@@ -108,14 +128,14 @@ where
 }
 
 async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaims, String> {
-    let client = reqwest::Client::new();
     let params = [
         ("token", token),
         ("client_id", &config.client_id),
         ("client_secret", &config.client_secret),
     ];
 
-    let resp = client
+    let resp = config
+        .client
         .post(&config.introspection_url)
         .form(&params)
         .send()

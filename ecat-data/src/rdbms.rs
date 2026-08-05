@@ -70,6 +70,10 @@ impl Transaction {
 
 impl Drop for Transaction {
     fn drop(&mut self) {
+        // This Drop impl only logs. No SQL is sent here (async work is not
+        // possible in Drop); actual rollback relies on the backing sqlx
+        // Transaction dropping without commit, which rolls back the
+        // underlying DB connection.
         if !self.committed {
             tracing::warn!("transaction dropped without commit — rolling back");
         }

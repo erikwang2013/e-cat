@@ -8,19 +8,35 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tower::{Layer, Service};
 
+/// How often the in-memory store sweeps expired buckets.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+/// Buckets idle for longer than this are removed by the sweep, which keeps
+/// the map bounded by the distinct keys seen in the last day.
+const MAX_IDLE: Duration = Duration::from_secs(24 * 60 * 60);
+
+type KeyFn<B> = Arc<dyn Fn(&http::Request<B>) -> String + Send + Sync>;
+
 #[async_trait]
 pub trait RateLimitStore: Send + Sync {
     async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String>;
 }
 
+struct MemoryStoreInner {
+    buckets: HashMap<String, (u32, Instant)>,
+    last_sweep: Instant,
+}
+
 pub struct MemoryStore {
-    buckets: Mutex<HashMap<String, (u32, Instant)>>,
+    inner: Mutex<MemoryStoreInner>,
 }
 
 impl MemoryStore {
     pub fn new() -> Self {
         Self {
-            buckets: Mutex::new(HashMap::new()),
+            inner: Mutex::new(MemoryStoreInner {
+                buckets: HashMap::new(),
+                last_sweep: Instant::now(),
+            }),
         }
     }
 }
@@ -34,8 +50,18 @@ impl Default for MemoryStore {
 #[async_trait]
 impl RateLimitStore for MemoryStore {
     async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String> {
-        let mut buckets = self.buckets.lock().await;
-        let entry = buckets
+        let mut inner = self.inner.lock().await;
+        // Lazy expiry cleanup: periodically drop buckets that have been idle
+        // longer than MAX_IDLE so the map cannot grow without bound.
+        if inner.last_sweep.elapsed() >= SWEEP_INTERVAL {
+            let cutoff = Instant::now() - MAX_IDLE;
+            inner
+                .buckets
+                .retain(|_, (_, last_touched)| *last_touched > cutoff);
+            inner.last_sweep = Instant::now();
+        }
+        let entry = inner
+            .buckets
             .entry(key.to_string())
             .or_insert((0, Instant::now()));
         if entry.1.elapsed() > Duration::from_secs(window_secs) {
@@ -48,6 +74,23 @@ impl RateLimitStore for MemoryStore {
         entry.0 += 1;
         Ok(())
     }
+}
+
+/// Default key extraction: first hop of `X-Forwarded-For`, falling back to
+/// `X-Real-IP`, then to a shared `"global"` bucket when neither is present.
+fn default_key_fn<B>(req: &http::Request<B>) -> String {
+    for name in ["x-forwarded-for", "x-real-ip"] {
+        if let Some(hop) = req
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next().map(str::trim))
+            .filter(|hop| !hop.is_empty())
+        {
+            return hop.to_string();
+        }
+    }
+    "global".into()
 }
 
 struct RateLimiter {
@@ -77,24 +120,32 @@ impl RateLimiter {
     }
 }
 
+/// A rate-limiting tower layer.
+///
+/// The type parameter `B` is the request body type the key extraction
+/// function inspects. `new` produces `RateLimitLayer<()>`; call
+/// [`with_key_fn`](Self::with_key_fn) with the body type of your service
+/// (e.g. `axum::body::Body`) to extract keys from the full request.
 #[derive(Clone)]
-pub struct RateLimitLayer {
+pub struct RateLimitLayer<B = ()> {
     limiter: Arc<RateLimiter>,
     max_requests: u32,
     window: Duration,
-    key_fn: Arc<dyn Fn(&str) -> String + Send + Sync>,
+    key_fn: KeyFn<B>,
 }
 
-impl RateLimitLayer {
+impl RateLimitLayer<()> {
     pub fn new(max_requests: u32, window: Duration) -> Self {
         Self {
             limiter: Arc::new(RateLimiter::new(max_requests, window)),
             max_requests,
             window,
-            key_fn: Arc::new(|_| "global".into()),
+            key_fn: Arc::new(default_key_fn),
         }
     }
+}
 
+impl<B> RateLimitLayer<B> {
     /// Use a shared rate-limit store, e.g. a Redis-backed one
     /// (see the `redis` feature).
     pub fn with_store(mut self, store: Arc<dyn RateLimitStore>) -> Self {
@@ -106,15 +157,31 @@ impl RateLimitLayer {
         self
     }
 
-    /// Set a custom key extraction function (e.g. per-client-IP, per-route).
-    pub fn with_key_fn(mut self, f: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
-        self.key_fn = Arc::new(f);
-        self
+    /// Set a custom key extraction function that receives the full request
+    /// (e.g. per-client-IP, per-route, per-user).
+    ///
+    /// The body type `B2` is inferred from the closure's argument, so write
+    /// e.g. `|req: &http::Request<axum::body::Body>| ...`.
+    pub fn with_key_fn<B2>(
+        self,
+        f: impl Fn(&http::Request<B2>) -> String + Send + Sync + 'static,
+    ) -> RateLimitLayer<B2> {
+        RateLimitLayer {
+            limiter: self.limiter,
+            max_requests: self.max_requests,
+            window: self.window,
+            key_fn: Arc::new(f),
+        }
     }
 }
 
-impl<S> Layer<S> for RateLimitLayer {
-    type Service = RateLimitService<S>;
+impl<S, B> Layer<S> for RateLimitLayer<B>
+where
+    S: Service<http::Request<B>> + Send + 'static,
+    S::Future: Send + 'static,
+    S::Error: std::error::Error + Send + Sync + 'static,
+{
+    type Service = RateLimitService<S, B>;
     fn layer(&self, inner: S) -> Self::Service {
         RateLimitService {
             inner,
@@ -125,18 +192,18 @@ impl<S> Layer<S> for RateLimitLayer {
 }
 
 #[derive(Clone)]
-pub struct RateLimitService<S> {
+pub struct RateLimitService<S, B = ()> {
     inner: S,
     limiter: Arc<RateLimiter>,
-    key_fn: Arc<dyn Fn(&str) -> String + Send + Sync>,
+    key_fn: KeyFn<B>,
 }
 
-impl<S, Req> Service<Req> for RateLimitService<S>
+impl<S, B> Service<http::Request<B>> for RateLimitService<S, B>
 where
-    S: Service<Req> + Send + 'static,
+    S: Service<http::Request<B>> + Send + 'static,
     S::Future: Send + 'static,
     S::Error: std::error::Error + Send + Sync + 'static,
-    Req: Send + 'static,
+    B: Send + 'static,
 {
     type Response = S::Response;
     type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -149,10 +216,10 @@ where
         self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
     }
 
-    fn call(&mut self, req: Req) -> Self::Future {
+    fn call(&mut self, req: http::Request<B>) -> Self::Future {
         let limiter = Arc::clone(&self.limiter);
         let key_fn = Arc::clone(&self.key_fn);
-        let key = key_fn(""); // default uses empty string; custom fn can ignore it
+        let key = key_fn(&req);
         let fut = self.inner.call(req);
         Box::pin(async move {
             if !limiter.allow(&key).await {
@@ -199,7 +266,31 @@ mod tests {
 
     #[test]
     fn layer_with_custom_key() {
-        let _layer =
-            RateLimitLayer::new(5, Duration::from_secs(1)).with_key_fn(|_ip| "custom-key".into());
+        let _layer = RateLimitLayer::new(5, Duration::from_secs(1))
+            .with_key_fn(|_req: &http::Request<()>| "custom-key".into());
+    }
+
+    #[test]
+    fn default_key_fn_uses_forwarded_for() {
+        let req = http::Request::builder()
+            .header("x-forwarded-for", "1.2.3.4, 5.6.7.8")
+            .body(())
+            .unwrap();
+        assert_eq!(default_key_fn(&req), "1.2.3.4");
+    }
+
+    #[test]
+    fn default_key_fn_uses_real_ip_fallback() {
+        let req = http::Request::builder()
+            .header("x-real-ip", "9.9.9.9")
+            .body(())
+            .unwrap();
+        assert_eq!(default_key_fn(&req), "9.9.9.9");
+    }
+
+    #[test]
+    fn default_key_fn_global_without_ip_headers() {
+        let req = http::Request::builder().body(()).unwrap();
+        assert_eq!(default_key_fn(&req), "global");
     }
 }

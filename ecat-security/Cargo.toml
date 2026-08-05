@@ -8,6 +8,10 @@ license = "Apache-2.0"
 [dependencies]
 security-rust = "1.0"
 thiserror.workspace = true
-tracing = "0.1"
-tower = { version = "0.5", features = ["util"] }
-http = "1"
+tracing.workspace = true
+tower = { workspace = true, features = ["util"] }
+http.workspace = true
+axum.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

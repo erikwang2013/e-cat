@@ -4,6 +4,13 @@ use std::pin::Pin;
 use tower::{Layer, Service};
 use tracing::Instrument;
 
+/// Request span layer (no subscriber installed here).
+///
+/// NOTE: this layer only creates spans; it does not install a
+/// tracing_subscriber. Exactly one subscriber must be initialized at app
+/// startup (e.g. via `ecat_tracing::init` or `ecat_tracing_otlp::init`) —
+/// installing two subscribers in one process conflicts ("global default
+/// trace dispatcher has already been set").
 #[derive(Clone)]
 pub struct TracingLayer;
 

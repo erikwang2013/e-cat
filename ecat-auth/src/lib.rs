@@ -8,7 +8,7 @@ mod oauth2;
 pub use apikey::{ApiKeyLayer, ApiKeyService};
 pub use claims::AuthClaims;
 pub use helpers::claims_from_request;
-pub use jwt::{JwtAuthLayer, JwtAuthService};
+pub use jwt::{JwtAuthError, JwtAuthLayer, JwtAuthService};
 pub use oauth2::{OAuth2Layer, OAuth2Service};
 
 #[cfg(test)]
@@ -61,9 +61,19 @@ mod tests {
 
     #[test]
     fn layer_construction() {
-        let _layer = JwtAuthLayer::new("secret-key")
+        let layer = JwtAuthLayer::new("secret-key-0123456789abcdefghijklmnopqrstuv")
+            .expect("32+ byte secret accepted");
+        let _layer = layer
             .require_claims(&["sub", "role"])
             .header_name("X-Auth-Token");
+    }
+
+    #[test]
+    fn layer_rejects_weak_secret() {
+        assert!(matches!(
+            JwtAuthLayer::new("too-short"),
+            Err(JwtAuthError::WeakKey)
+        ));
     }
 
     #[test]

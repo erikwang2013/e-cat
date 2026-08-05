@@ -23,24 +23,44 @@ impl RedisRateLimitStore {
     }
 }
 
+/// Atomic fixed-window increment: INCR, and on the first request set the
+/// window TTL. If EXPIRE fails (e.g. wrong key type), the key is deleted so a
+/// later successful request can restart the window instead of leaving a
+/// permanent key that would block the client forever.
+const INCR_SCRIPT: &str = r#"
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then
+    local ok, err = pcall(redis.call, 'EXPIRE', KEYS[1], ARGV[1])
+    if not ok then
+        redis.call('DEL', KEYS[1])
+    end
+end
+return c
+"#;
+
 #[async_trait]
 impl RateLimitStore for RedisRateLimitStore {
     async fn check(&self, key: &str, max: u32, window_secs: u64) -> Result<(), String> {
         let mut conn = self.conn.clone();
         let rkey = format!("rl:{key}");
-        let count: i64 = redis::cmd("INCR")
-            .arg(&rkey)
-            .query_async(&mut conn)
+        let script = redis::Script::new(INCR_SCRIPT);
+        // Fail-open: if Redis is unreachable we cannot rate limit, so allow
+        // the request and log — an outage must not lock every client out.
+        let count: i64 = match script
+            .key(&rkey)
+            .arg(window_secs)
+            .invoke_async(&mut conn)
             .await
-            .map_err(|e| e.to_string())?;
-        if count == 1 {
-            let _: () = redis::cmd("EXPIRE")
-                .arg(&rkey)
-                .arg(window_secs)
-                .query_async(&mut conn)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "redis rate-limit store unavailable; allowing request (fail-open)"
+                );
+                return Ok(());
+            }
+        };
         if count as u32 > max {
             Err("rate limit exceeded".into())
         } else {

@@ -1,4 +1,16 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! S3 / MinIO object storage client (rust-s3, path-style addressing).
+//!
+//! All operations — including `list()` — run against the rust-s3 HTTP client,
+//! which applies a 60-second default request timeout
+//! (`Bucket::DEFAULT_REQUEST_TIMEOUT`); a hung server therefore cannot block
+//! a call forever. The timeout can be tuned per bucket via
+//! `Bucket::with_request_timeout` / `set_request_timeout`.
+//!
+//! `Credentials::new` runs in the synchronous `from_config` and performs no
+//! network I/O (it only reads env vars/credential files), so no
+//! `spawn_blocking` wrapper is required.
+
 use async_trait::async_trait;
 use ecat_data::{StorageClient, StorageError};
 use s3::creds::Credentials;
@@ -80,6 +92,10 @@ impl StorageClient for S3Client {
         Ok(())
     }
 
+    /// List object keys under `prefix`.
+    ///
+    /// Bounded by the rust-s3 client's 60-second default request timeout (see
+    /// crate docs), so a stuck server returns an error instead of hanging.
     async fn list(&self, bucket: &str, prefix: &str) -> Result<Vec<String>, StorageError> {
         let pages = self
             .bucket(bucket)?

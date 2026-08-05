@@ -32,14 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/health", get(health))
         .layer(middleware);
 
-    let http_srv = HttpServer::new(":8000").router(router);
+    let http_srv = HttpServer::new("0.0.0.0:8000").router(router);
 
     let mut app = App::builder()
         .name("helloworld")
         .version("v0.1.0")
         .server(http_srv)
         .on_start(|| async {
-            tracing::info!("helloworld service started on :8000");
+            tracing::info!("helloworld service started on 0.0.0.0:8000");
             Ok(())
         })
         .on_stop(|| async {

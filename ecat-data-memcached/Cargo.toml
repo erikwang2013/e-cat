@@ -3,7 +3,7 @@ name = "ecat-data-memcached"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Memcached-compatible in-memory cache client for e-cat"
+description = "⚠️ 内存实现，仅用于开发/测试，禁止生产使用 — Memcached-compatible in-memory (HashMap) cache client for e-cat; does NOT implement the memcached network protocol"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }

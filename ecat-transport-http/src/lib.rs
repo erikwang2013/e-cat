@@ -15,7 +15,9 @@ pub struct HttpServer {
 impl HttpServer {
     pub fn new(addr: impl Into<String>) -> Self {
         Self {
-            addr: addr.into(),
+            // 空 host（如 ":8000"）会解析到 IPv6 通配 [::]，在无 IPv6 环境绑定失败；
+            // 规范化为 IPv4 通配 "0.0.0.0"
+            addr: normalize_addr(addr.into()),
             router: None,
             shutdown_tx: Mutex::new(None),
             tls_config: None,
@@ -30,6 +32,16 @@ impl HttpServer {
     pub fn tls(mut self, config: TlsConfig) -> Self {
         self.tls_config = Some(config);
         self
+    }
+}
+
+/// 将空 host 的地址（":8000"）规范化为 IPv4 通配（"0.0.0.0:8000"），
+/// 避免解析到 IPv6 [::] 而在无 IPv6 环境绑定失败。
+fn normalize_addr(addr: String) -> String {
+    if addr.starts_with(':') {
+        format!("0.0.0.0{addr}")
+    } else {
+        addr
     }
 }
 
@@ -74,6 +86,12 @@ mod tests {
     #[test]
     fn new_sets_addr() {
         let srv = HttpServer::new("0.0.0.0:9000");
+        assert_eq!(srv.addr, "0.0.0.0:9000");
+    }
+
+    #[test]
+    fn new_normalizes_bare_port_to_ipv4_wildcard() {
+        let srv = HttpServer::new(":9000");
         assert_eq!(srv.addr, "0.0.0.0:9000");
     }
 

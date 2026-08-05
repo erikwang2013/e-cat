@@ -1,4 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! QuestDB client (HTTP `/exec` endpoint).
+//!
+//! Error responses pass through the server's raw body text: credentials are
+//! sent via the Authorization header (never in the URL), so error messages
+//! cannot leak secrets; outer layers handle the generic error text.
+
 use async_trait::async_trait;
 use ecat_data::{RdbmsClient, RdbmsError, Row};
 use ecat_tls::TlsClientConfig;

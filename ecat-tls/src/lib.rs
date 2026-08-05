@@ -1,5 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use serde::Deserialize;
+use std::time::Duration;
+
+/// 数据库连接默认超时：连接 5s、整体请求 30s，防止后端挂起时请求永久悬挂
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// TLS client configuration for database connections.
 /// All fields optional — omit to skip TLS entirely.
@@ -48,6 +53,8 @@ impl TlsClientConfig {
         }
 
         builder
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| format!("build tls client: {e}"))
     }
@@ -59,6 +66,8 @@ pub fn build_reqwest_client(tls: &Option<TlsClientConfig>) -> Result<reqwest::Cl
     match tls {
         Some(cfg) if cfg.is_enabled() => cfg.build_reqwest_client(),
         _ => reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| format!("build client: {e}")),
     }

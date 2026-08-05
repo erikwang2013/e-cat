@@ -1,4 +1,4 @@
-# e-cat 数据库配置示例 — v2.1.7
+# e-cat 数据库配置示例 — v2.3.0
 #
 # 每个数据库后端都有 XxxConfig + from_config() 方法。
 # username / password / tls 均为可选字段，省略则跳过。
@@ -51,8 +51,8 @@ opensearch:
 # ── 图数据库 ────────────────────────────────────────────────
 neo4j:
   base_url: "http://localhost:7474"
-  username: "neo4j"
-  password: "changeme"
+  # username: "neo4j"         # 可选: 复制本文件后请改成强口令
+  # password: "changeme"      # 可选
 
 nebulagraph:
   base_url: "http://localhost:19669"
@@ -63,20 +63,20 @@ nebulagraph:
 arangodb:
   base_url: "http://localhost:8529"
   db: "mydb"
-  username: "root"
-  password: "changeme"
+  # username: "root"          # 可选: 复制本文件后请改成强口令
+  # password: "changeme"      # 可选
 
 # ── 时序数据库 ──────────────────────────────────────────────
 influxdb:
   base_url: "http://localhost:8086"
   org: "myorg"
   bucket: "mybucket"
-  token: "my-secret-token"
+  # token: "my-secret-token"  # 可选: 复制本文件后请换成真实令牌
 
 iotdb:
   base_url: "http://localhost:18080"
-  username: "root"
-  password: "root"
+  # username: "root"          # 可选: 复制本文件后请改成强口令
+  # password: "root"          # 可选
 
 questdb:
   base_url: "http://localhost:9000"

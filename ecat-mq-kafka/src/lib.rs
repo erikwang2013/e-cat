@@ -37,7 +37,7 @@ impl KafkaMq {
         })
     }
 
-    pub fn from_config(cfg: KafkaConfig) -> Result<Self, MqError> {
+    pub async fn from_config(cfg: KafkaConfig) -> Result<Self, MqError> {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", &cfg.brokers)
             .set("message.timeout.ms", "5000")

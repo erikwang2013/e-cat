@@ -8,6 +8,23 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
 
+/// Errors while constructing or operating the JWT auth layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JwtAuthError {
+    /// The shared secret is shorter than 32 bytes, which is too weak for HS256.
+    WeakKey,
+}
+
+impl std::fmt::Display for JwtAuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WeakKey => write!(f, "JWT secret must be at least 32 bytes for HS256"),
+        }
+    }
+}
+
+impl std::error::Error for JwtAuthError {}
+
 enum JwtSecret {
     Shared(Vec<u8>),
     #[allow(dead_code)]
@@ -22,12 +39,21 @@ pub struct JwtAuthLayer {
 }
 
 impl JwtAuthLayer {
-    pub fn new(secret: impl Into<String>) -> Self {
-        Self {
-            secret: Arc::new(JwtSecret::Shared(secret.into().into_bytes())),
+    /// Create a layer for HS256-signed tokens.
+    ///
+    /// The secret must be at least 32 bytes (the minimum key size HS256
+    /// accepts per RFC 7518); shorter keys are rejected with
+    /// [`JwtAuthError::WeakKey`].
+    pub fn new(secret: impl Into<String>) -> Result<Self, JwtAuthError> {
+        let secret = secret.into();
+        if secret.len() < 32 {
+            return Err(JwtAuthError::WeakKey);
+        }
+        Ok(Self {
+            secret: Arc::new(JwtSecret::Shared(secret.into_bytes())),
             required_claims: vec!["sub".into()],
             header_name: "Authorization".into(),
-        }
+        })
     }
 
     pub fn require_claims(mut self, claims: &[&str]) -> Self {
@@ -104,12 +130,18 @@ where
             ) {
                 Ok(data) => data,
                 Err(e) => {
-                    tracing::warn!(error = %e, "jwt validation failed");
+                    // Distinguish expiry in the logs without leaking
+                    // jsonwebtoken internals to clients.
+                    let expired =
+                        matches!(e.kind(), jsonwebtoken::errors::ErrorKind::ExpiredSignature);
+                    tracing::warn!(
+                        error = %e,
+                        expired,
+                        "jwt validation failed"
+                    );
                     return Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(format!(
-                            r#"{{"error":"invalid token: {e}"}}"#
-                        )))
+                        .body(axum::body::Body::from(r#"{"error":"invalid token"}"#))
                         .unwrap());
                 }
             };

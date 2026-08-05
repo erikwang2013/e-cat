@@ -19,4 +19,4 @@ client.delete("assets", "avatars/1.png").await?;
 
 Implements `StorageClient` from `ecat-data`.
 
-**Notes:** uses path-style addressing (S3 API compatible with MinIO); `tls: true` switches the endpoint scheme to `https`.
+**Notes:** uses path-style addressing (S3 API compatible with MinIO); `tls: true` switches the endpoint scheme to `https`. All operations (including `list`) run with the rust-s3 client's 60-second default request timeout, so a hung server returns an error instead of blocking forever.

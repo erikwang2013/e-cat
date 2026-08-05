@@ -50,9 +50,9 @@
 ```
 客户端请求
   │
-  ├─ HTTP :8000 ────→ axum::Router ──┐
-  │                                   │
-  └─ gRPC :9000 ────→ tonic::Server ─┤
+  ├─ HTTP 0.0.0.0:8000 ──→ axum::Router ──┐
+  │                                        │
+  └─ gRPC 0.0.0.0:9000 ──→ tonic::Server ─┤
                                       │
                               ┌───────┴───────┐
                               │   Middleware   │
@@ -268,7 +268,7 @@ e-cat/
 
 ### 前提条件
 
-- Rust 1.80+（stable 工具链）
+- Rust 1.85+（stable 工具链，edition 2024 要求）
 - [protoc](https://github.com/protocolbuffers/protobuf)（Protocol Buffers 编译器）
 
 ### 安装 CLI
@@ -312,8 +312,8 @@ use ecat_transport_grpc::GrpcServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let http_srv = HttpServer::new(":8000");
-    let grpc_srv = GrpcServer::new(":9000");
+    let http_srv = HttpServer::new("0.0.0.0:8000");
+    let grpc_srv = GrpcServer::new("0.0.0.0:9000");
 
     let app = App::builder()
         .name("my-service")
