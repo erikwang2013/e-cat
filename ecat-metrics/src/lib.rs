@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use axum::Router;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 use prometheus::{Encoder, Registry, TextEncoder};
 use std::sync::OnceLock;
 
@@ -71,6 +71,9 @@ mod tests {
             .unwrap()
             .to_str()
             .unwrap();
-        assert!(ct.starts_with("text/plain"), "got content-type: {ct}");
+        assert_eq!(
+            ct, "text/plain; version=0.0.4; charset=utf-8",
+            "got content-type: {ct}"
+        );
     }
 }

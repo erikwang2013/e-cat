@@ -114,7 +114,9 @@ impl ConsulConfigSource {
             loop {
                 match source.fetch(index.as_deref()).await {
                     Ok((map, new_index)) => {
-                        if index.as_deref() != new_index.as_deref() {
+                        // 首帧（index=None）强制推送：兼容缺失 X-Consul-Index 的服务器，
+                        // 否则 None != None 恒为 false 会丢首帧并形成无退避的紧循环。
+                        if index.as_deref() != new_index.as_deref() || index.is_none() {
                             if tx.send(Ok(map)).await.is_err() {
                                 break; // receiver dropped
                             }
