@@ -19,12 +19,12 @@ pub struct SqlxConfig {
     pub tls: Option<TlsClientConfig>,
 }
 
-
 fn percent_encode(s: &str) -> String {
     s.chars()
         .map(|c| match c {
-            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' =>
-                format!("%{:02X}", c as u8),
+            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' => {
+                format!("%{:02X}", c as u8)
+            }
             _ => c.to_string(),
         })
         .collect()
@@ -50,11 +50,7 @@ impl SqlxClient {
         } else {
             let encoded_user = percent_encode(username);
             let encoded_pass = percent_encode(password);
-            url.replacen(
-                "://",
-                &format!("://{encoded_user}:{encoded_pass}@"),
-                1,
-            )
+            url.replacen("://", &format!("://{encoded_user}:{encoded_pass}@"), 1)
         };
         Self::connect(&url).await
     }
@@ -93,12 +89,11 @@ impl RdbmsClient for SqlxClient {
             return Ok(Vec::new());
         }
 
-        let columns: Vec<String> =
-            rows[0]
-                .columns()
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect();
+        let columns: Vec<String> = rows[0]
+            .columns()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect();
 
         let result = rows
             .iter()
@@ -209,12 +204,11 @@ impl RdbmsClient for SqlxClient {
         if rows.is_empty() {
             return Ok(Vec::new());
         }
-        let columns: Vec<String> =
-            rows[0]
-                .columns()
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect();
+        let columns: Vec<String> = rows[0]
+            .columns()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect();
 
         let result = rows
             .iter()
@@ -301,10 +295,8 @@ mod tests {
 
     #[test]
     fn config_deserialize_basic() {
-        let cfg: SqlxConfig = serde_json::from_str(
-            r#"{"url": "postgres://localhost/db"}"#,
-        )
-        .unwrap();
+        let cfg: SqlxConfig =
+            serde_json::from_str(r#"{"url": "postgres://localhost/db"}"#).unwrap();
         assert_eq!(cfg.url, "postgres://localhost/db");
         assert!(cfg.username.is_none());
         assert!(cfg.password.is_none());

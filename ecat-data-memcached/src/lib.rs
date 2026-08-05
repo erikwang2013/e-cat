@@ -4,8 +4,8 @@ use ecat_data::{Cache, CacheError};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 type CacheEntry = (Vec<u8>, Option<Instant>);
 
@@ -27,7 +27,6 @@ pub struct MemcachedClient {
 }
 
 impl MemcachedClient {
-
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
@@ -36,10 +35,7 @@ impl MemcachedClient {
         }
     }
 
-    pub fn with_auth(
-        _username: impl Into<String>,
-        _password: impl Into<String>,
-    ) -> Self {
+    pub fn with_auth(_username: impl Into<String>, _password: impl Into<String>) -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
             _username: Some(_username.into()),
@@ -65,10 +61,7 @@ impl Default for MemcachedClient {
 #[async_trait]
 impl Cache for MemcachedClient {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, CacheError> {
-        let store = self
-            .store
-            .lock()
-            .await;
+        let store = self.store.lock().await;
         match store.get(key.as_bytes()) {
             Some((val, Some(exp))) if Instant::now() > *exp => Ok(None),
             Some((val, _)) => Ok(Some(val.clone())),
@@ -77,10 +70,7 @@ impl Cache for MemcachedClient {
     }
 
     async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), CacheError> {
-        let mut store = self
-            .store
-            .lock()
-            .await;
+        let mut store = self.store.lock().await;
         let expires = if ttl.is_zero() {
             None
         } else {
@@ -91,10 +81,7 @@ impl Cache for MemcachedClient {
     }
 
     async fn delete(&self, key: &str) -> Result<(), CacheError> {
-        let mut store = self
-            .store
-            .lock()
-            .await;
+        let mut store = self.store.lock().await;
         store.remove(key.as_bytes());
         Ok(())
     }

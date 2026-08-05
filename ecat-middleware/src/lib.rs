@@ -1,12 +1,16 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod logging;
 mod ratelimit;
+#[cfg(feature = "redis")]
+mod ratelimit_redis;
 mod recovery;
 mod timeout;
 mod tracing;
 
 pub use logging::LoggingLayer;
 pub use ratelimit::{MemoryStore, RateLimitLayer, RateLimitStore};
+#[cfg(feature = "redis")]
+pub use ratelimit_redis::RedisRateLimitStore;
 pub use recovery::RecoveryLayer;
 pub use timeout::TimeoutLayer;
 pub use tracing::TracingLayer;

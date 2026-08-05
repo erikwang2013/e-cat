@@ -51,45 +51,37 @@ impl RateLimitStore for MemoryStore {
 }
 
 struct RateLimiter {
-    buckets: Mutex<HashMap<String, (u32, Instant)>>,
+    store: Arc<dyn RateLimitStore>,
     max_requests: u32,
     window: Duration,
 }
 
 impl RateLimiter {
     fn new(max_requests: u32, window: Duration) -> Self {
+        Self::with_store(max_requests, window, Arc::new(MemoryStore::new()))
+    }
+
+    fn with_store(max_requests: u32, window: Duration, store: Arc<dyn RateLimitStore>) -> Self {
         Self {
-            buckets: Mutex::new(HashMap::new()),
+            store,
             max_requests,
             window,
         }
     }
 
     async fn allow(&self, key: &str) -> bool {
-        let mut buckets = self.buckets.lock().await;
-        let now = Instant::now();
-
-        // Periodic cleanup: remove expired entries every ~100 accesses
-        if buckets.len() > 100 {
-            buckets.retain(|_, (_, ts)| now.duration_since(*ts) <= self.window * 2);
-        }
-
-        let entry = buckets.entry(key.to_string()).or_insert((0, now));
-        if now.duration_since(entry.1) > self.window {
-            *entry = (1, now);
-            true
-        } else if entry.0 < self.max_requests {
-            entry.0 += 1;
-            true
-        } else {
-            false
-        }
+        self.store
+            .check(key, self.max_requests, self.window.as_secs())
+            .await
+            .is_ok()
     }
 }
 
 #[derive(Clone)]
 pub struct RateLimitLayer {
     limiter: Arc<RateLimiter>,
+    max_requests: u32,
+    window: Duration,
     key_fn: Arc<dyn Fn(&str) -> String + Send + Sync>,
 }
 
@@ -97,8 +89,21 @@ impl RateLimitLayer {
     pub fn new(max_requests: u32, window: Duration) -> Self {
         Self {
             limiter: Arc::new(RateLimiter::new(max_requests, window)),
+            max_requests,
+            window,
             key_fn: Arc::new(|_| "global".into()),
         }
+    }
+
+    /// Use a shared rate-limit store, e.g. a Redis-backed one
+    /// (see the `redis` feature).
+    pub fn with_store(mut self, store: Arc<dyn RateLimitStore>) -> Self {
+        self.limiter = Arc::new(RateLimiter::with_store(
+            self.max_requests,
+            self.window,
+            store,
+        ));
+        self
     }
 
     /// Set a custom key extraction function (e.g. per-client-IP, per-route).

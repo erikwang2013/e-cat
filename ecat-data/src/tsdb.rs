@@ -48,6 +48,14 @@ impl DataPoint {
 pub trait TsdbClient: Send + Sync {
     async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError>;
     async fn query(&self, query: &str) -> Result<serde_json::Value, TsdbError>;
+
+    /// Delete data using a backend-specific query (e.g. `DELETE FROM ...`).
+    /// Backends that cannot delete return an error.
+    async fn delete(&self, _query: &str) -> Result<(), TsdbError> {
+        Err(TsdbError::Other(
+            "delete not supported by this backend".into(),
+        ))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

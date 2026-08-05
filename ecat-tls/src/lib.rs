@@ -31,18 +31,17 @@ impl TlsClientConfig {
         }
 
         if let Some(ref ca_path) = self.ca_cert {
-            let ca_bytes =
-                std::fs::read(ca_path).map_err(|e| format!("read ca {ca_path}: {e}"))?;
+            let ca_bytes = std::fs::read(ca_path).map_err(|e| format!("read ca {ca_path}: {e}"))?;
             let ca = reqwest::tls::Certificate::from_pem(&ca_bytes)
                 .map_err(|e| format!("parse ca: {e}"))?;
             builder = builder.add_root_certificate(ca);
         }
 
         if let (Some(cert_path), Some(key_path)) = (&self.client_cert, &self.client_key) {
-            let cert_bytes = std::fs::read(cert_path)
-                .map_err(|e| format!("read cert {cert_path}: {e}"))?;
-            let key_bytes = std::fs::read(key_path)
-                .map_err(|e| format!("read key {key_path}: {e}"))?;
+            let cert_bytes =
+                std::fs::read(cert_path).map_err(|e| format!("read cert {cert_path}: {e}"))?;
+            let key_bytes =
+                std::fs::read(key_path).map_err(|e| format!("read key {key_path}: {e}"))?;
             let id = reqwest::tls::Identity::from_pem(&[cert_bytes, key_bytes].concat())
                 .map_err(|e| format!("parse identity: {e}"))?;
             builder = builder.identity(id);
@@ -51,6 +50,29 @@ impl TlsClientConfig {
         builder
             .build()
             .map_err(|e| format!("build tls client: {e}"))
+    }
+}
+
+/// Build a `reqwest::Client` with optional TLS configuration.
+/// Returns a default client when `tls` is `None` or not enabled.
+pub fn build_reqwest_client(tls: &Option<TlsClientConfig>) -> Result<reqwest::Client, String> {
+    match tls {
+        Some(cfg) if cfg.is_enabled() => cfg.build_reqwest_client(),
+        _ => reqwest::Client::builder()
+            .build()
+            .map_err(|e| format!("build client: {e}")),
+    }
+}
+
+/// Apply basic auth to a request builder when both username and password are set.
+pub fn apply_basic_auth(
+    req: reqwest::RequestBuilder,
+    username: &Option<String>,
+    password: &Option<String>,
+) -> reqwest::RequestBuilder {
+    match (username, password) {
+        (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
+        _ => req,
     }
 }
 
@@ -112,7 +134,9 @@ pub fn generate_client_cert(common_name: &str) -> Result<CertPair, String> {
         .push(rcgen::ExtendedKeyUsagePurpose::ClientAuth);
 
     let key = rcgen::KeyPair::generate().map_err(|e| format!("key: {e}"))?;
-    let cert = params.self_signed(&key).map_err(|e| format!("client cert: {e}"))?;
+    let cert = params
+        .self_signed(&key)
+        .map_err(|e| format!("client cert: {e}"))?;
 
     Ok(CertPair {
         cert_pem: cert.pem(),

@@ -35,12 +35,8 @@ impl IotdbClient {
     }
 
     pub fn from_config(cfg: IotdbConfig) -> Result<Self, TsdbError> {
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,

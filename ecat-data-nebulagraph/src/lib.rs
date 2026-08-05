@@ -51,12 +51,8 @@ impl NebulaGraphClient {
     }
 
     pub fn from_config(cfg: NebulaGraphConfig) -> Result<Self, GraphError> {
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| GraphError::Other(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| GraphError::Other(format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -67,10 +63,7 @@ impl NebulaGraphClient {
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match (&self.username, &self.password) {
-            (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
-            _ => req,
-        }
+        ecat_tls::apply_basic_auth(req, &self.username, &self.password)
     }
 }
 
@@ -85,12 +78,16 @@ impl GraphClient for NebulaGraphClient {
             .client
             .post(format!("{}/api/ngql/execute", self.base_url))
             .json(&serde_json::json!({"gql": ngql, "space": self.space}));
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| GraphError::Other(format!("nebula: {e}")))?;
         if !resp.status().is_success() {
             return Err(GraphError::Other(resp.text().await.unwrap_or_default()));
         }
-        resp.json().await
+        resp.json()
+            .await
             .map_err(|e| GraphError::Other(format!("nebula parse: {e}")))
     }
 }

@@ -46,12 +46,8 @@ impl OpenSearchClient {
     }
 
     pub fn from_config(cfg: OpenSearchConfig) -> Result<Self, SearchError> {
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| SearchError::Other(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| SearchError::Other(format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -61,10 +57,7 @@ impl OpenSearchClient {
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match (&self.username, &self.password) {
-            (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
-            _ => req,
-        }
+        ecat_tls::apply_basic_auth(req, &self.username, &self.password)
     }
 }
 
@@ -80,10 +73,16 @@ impl SearchClient for OpenSearchClient {
             .client
             .put(format!("{}/{index}/_doc/{id}", self.base_url))
             .json(doc);
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| SearchError::Other(format!("index: {e}")))?;
         if !resp.status().is_success() {
-            return Err(SearchError::Other(format!("index failed: {}", resp.text().await.unwrap_or_default())));
+            return Err(SearchError::Other(format!(
+                "index failed: {}",
+                resp.text().await.unwrap_or_default()
+            )));
         }
         Ok(())
     }
@@ -97,7 +96,9 @@ impl SearchClient for OpenSearchClient {
             .client
             .post(format!("{}/{index}/_search", self.base_url))
             .json(query);
-        self.apply_auth(req).send().await
+        self.apply_auth(req)
+            .send()
+            .await
             .map_err(|e| SearchError::Other(format!("search: {e}")))?
             .json()
             .await
@@ -108,10 +109,16 @@ impl SearchClient for OpenSearchClient {
         let req = self
             .client
             .delete(format!("{}/{index}/_doc/{id}", self.base_url));
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| SearchError::Other(format!("delete: {e}")))?;
         if !resp.status().is_success() {
-            return Err(SearchError::Other(format!("delete failed: {}", resp.text().await.unwrap_or_default())));
+            return Err(SearchError::Other(format!(
+                "delete failed: {}",
+                resp.text().await.unwrap_or_default()
+            )));
         }
         Ok(())
     }
@@ -134,8 +141,9 @@ mod tests {
     #[test]
     fn config_with_optional_auth() {
         let cfg: OpenSearchConfig = serde_json::from_str(
-            r#"{"base_url":"http://localhost:9200","username":"admin","password":"secret"}"#
-        ).unwrap();
+            r#"{"base_url":"http://localhost:9200","username":"admin","password":"secret"}"#,
+        )
+        .unwrap();
         let client = OpenSearchClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }

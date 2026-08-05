@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.3.0] — 2026-08-06
+
+### Added
+- `ecat-mq-kafka` 真 Kafka 实现（rdkafka，替换内存存根）
+- 消息后端：`ecat-mq-rabbitmq`（lapin）、`ecat-mq-mqtt`（rumqttc）、`ecat-mq-nats`（async-nats）
+- 数据后端：`ecat-data-mongodb`（DocumentClient）、`ecat-data-s3`（StorageClient，rust-s3）、`ecat-data-tdengine`（REST 时序）
+- `ecat-lock` 分布式锁 trait + `ecat-data-redis` 的 `RedisLock`（SET NX PX + token 校验）
+- `ecat-scheduler` tokio 定时任务调度（every / once）
+- `ecat-tracing-otlp` OpenTelemetry OTLP/gRPC 追踪导出
+- `ecat-data` trait 扩展：`DocumentClient`、`StorageClient`；`Cache::increment/ttl/multi_get`、`SearchClient::bulk_index/update`、`TsdbClient::delete` 加法默认方法
+- `ecat-middleware` 限流后端抽象（`RateLimitStore`）+ `RedisRateLimitStore`（可选 feature）
+- CLI：`--version`、`upgrade`（批量更新 ecat-* 依赖）、`run --watch`（notify 文件监听 + 500ms 防抖重启）
+- `.gitlab-ci.yml`（镜像 GitHub Actions CI）
+
+### Changed
+- Workspace 扩展至 55 crates
+- 数据库后端增至 18 个（+MongoDB、S3、TDengine）
+
 ## [2.1.8] — 2026-08-01
 
 ### Added

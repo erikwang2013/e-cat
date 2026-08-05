@@ -27,9 +27,7 @@ impl HealthRegistry {
 
     pub fn with_check(self, check: impl HealthCheck + 'static) -> Self {
         let name = check.name().to_string();
-        self.checks
-            .blocking_write()
-            .insert(name, Box::new(check));
+        self.checks.blocking_write().insert(name, Box::new(check));
         self
     }
 

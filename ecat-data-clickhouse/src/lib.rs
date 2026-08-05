@@ -56,12 +56,8 @@ impl ClickhouseClient {
     }
 
     pub fn from_config(cfg: ClickhouseConfig) -> Result<Self, RdbmsError> {
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -72,10 +68,7 @@ impl ClickhouseClient {
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match (&self.username, &self.password) {
-            (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
-            _ => req,
-        }
+        ecat_tls::apply_basic_auth(req, &self.username, &self.password)
     }
 }
 
@@ -88,7 +81,10 @@ impl RdbmsClient for ClickhouseClient {
             .header("Content-Type", "text/plain; charset=utf-8")
             .query(&[("database", &self.database)])
             .body(sql.to_string());
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| RdbmsError::Database(format!("ch: {e}")))?;
         if !resp.status().is_success() {
             return Err(RdbmsError::Database(resp.text().await.unwrap_or_default()));
@@ -106,9 +102,14 @@ impl RdbmsClient for ClickhouseClient {
                 ("default_format", &"JSONEachRow".to_string()),
             ])
             .body(sql.to_string());
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| RdbmsError::Database(format!("ch query: {e}")))?;
-        let text = resp.text().await
+        let text = resp
+            .text()
+            .await
             .map_err(|e| RdbmsError::Database(format!("ch read: {e}")))?;
         let mut rows = Vec::new();
         for line in text.lines() {
@@ -142,8 +143,9 @@ mod tests {
     #[test]
     fn config_with_optional_auth() {
         let cfg: ClickhouseConfig = serde_json::from_str(
-            r#"{"base_url":"http://localhost:8123","username":"default","password":"secret"}"#
-        ).unwrap();
+            r#"{"base_url":"http://localhost:8123","username":"default","password":"secret"}"#,
+        )
+        .unwrap();
         let client = ClickhouseClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }

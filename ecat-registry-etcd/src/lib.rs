@@ -149,7 +149,6 @@ fn decode_b64_str(s: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| format!("utf8: {e}"))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -15,6 +15,30 @@ pub trait SearchClient: Send + Sync {
         query: &serde_json::Value,
     ) -> Result<serde_json::Value, SearchError>;
     async fn delete(&self, index: &str, id: &str) -> Result<(), SearchError>;
+
+    /// Bulk index documents as `(id, doc)` pairs in one round trip.
+    /// Backends that cannot bulk-index return an error.
+    async fn bulk_index(
+        &self,
+        _index: &str,
+        _docs: &[(String, serde_json::Value)],
+    ) -> Result<(), SearchError> {
+        Err(SearchError::Other(
+            "bulk_index not supported by this backend".into(),
+        ))
+    }
+
+    /// Update an existing document, replacing it with `doc`.
+    async fn update(
+        &self,
+        _index: &str,
+        _id: &str,
+        _doc: &serde_json::Value,
+    ) -> Result<(), SearchError> {
+        Err(SearchError::Other(
+            "update not supported by this backend".into(),
+        ))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

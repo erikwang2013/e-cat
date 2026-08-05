@@ -43,12 +43,8 @@ impl InfluxClient {
 
     pub fn from_config(cfg: InfluxConfig) -> Result<Self, TsdbError> {
         let base = cfg.base_url.clone();
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?;
         Ok(Self {
             write_url: format!("{base}/api/v2/write"),
             query_url: format!("{base}/api/v2/query"),

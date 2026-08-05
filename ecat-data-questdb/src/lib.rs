@@ -46,12 +46,8 @@ impl QuestdbClient {
     }
 
     pub fn from_config(cfg: QuestdbConfig) -> Result<Self, RdbmsError> {
-        let client = match &cfg.tls {
-            Some(tls) if tls.is_enabled() => tls
-                .build_reqwest_client()
-                .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?,
-            _ => reqwest::Client::new(),
-        };
+        let client = ecat_tls::build_reqwest_client(&cfg.tls)
+            .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -61,10 +57,7 @@ impl QuestdbClient {
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match (&self.username, &self.password) {
-            (Some(u), Some(p)) => req.basic_auth(u, Some(p)),
-            _ => req,
-        }
+        ecat_tls::apply_basic_auth(req, &self.username, &self.password)
     }
 }
 
@@ -76,11 +69,16 @@ impl RdbmsClient for QuestdbClient {
             .post(format!("{}/exec", self.base_url))
             .header("Content-Type", "text/plain; charset=utf-8")
             .body(sql.to_string());
-        let resp = self.apply_auth(req).send().await
+        let resp = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?;
         if !resp.status().is_success() {
             return Err(RdbmsError::Database(
-                resp.text().await.unwrap_or_else(|e| format!("questdb: {e}")),
+                resp.text()
+                    .await
+                    .unwrap_or_else(|e| format!("questdb: {e}")),
             ));
         }
         Ok(0)
@@ -93,7 +91,10 @@ impl RdbmsClient for QuestdbClient {
             .header("Content-Type", "text/plain; charset=utf-8")
             .header("Accept", "application/json")
             .body(sql.to_string());
-        let body: serde_json::Value = self.apply_auth(req).send().await
+        let body: serde_json::Value = self
+            .apply_auth(req)
+            .send()
+            .await
             .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?
             .json()
             .await
@@ -102,7 +103,11 @@ impl RdbmsClient for QuestdbClient {
         if let Some(columns) = body.get("columns").and_then(|c| c.as_array()) {
             let cols: Vec<String> = columns
                 .iter()
-                .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                .filter_map(|c| {
+                    c.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect();
             if let Some(dataset) = body.get("dataset").and_then(|d| d.as_array()) {
                 for row in dataset {
@@ -134,8 +139,9 @@ mod tests {
     #[test]
     fn config_with_optional_auth() {
         let cfg: QuestdbConfig = serde_json::from_str(
-            r#"{"base_url":"http://localhost:9000","username":"admin","password":"quest"}"#
-        ).unwrap();
+            r#"{"base_url":"http://localhost:9000","username":"admin","password":"quest"}"#,
+        )
+        .unwrap();
         let client = QuestdbClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
     }

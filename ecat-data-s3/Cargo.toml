@@ -1,0 +1,14 @@
+[package]
+name = "ecat-data-s3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "S3/MinIO object storage client for e-cat"
+
+[dependencies]
+ecat-data = { path = "../ecat-data" }
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rust-s3 = "0.35"

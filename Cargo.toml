@@ -4,6 +4,7 @@ members = [
     "ecat-errors",
     "ecat-metadata",
     "ecat-encoding",
+    "ecat-lock",
     "ecat-logging",
     "ecat-transport",
     "ecat-transport-http",
@@ -30,8 +31,12 @@ members = [
     "ecat-openapi",
     "ecat-bench",
     "ecat-tracing",
+    "ecat-tracing-otlp",
     "ecat-registry-etcd",
     "ecat-mq-kafka",
+    "ecat-mq-rabbitmq",
+    "ecat-mq-mqtt",
+    "ecat-mq-nats",
     "ecat-data-opensearch",
     "ecat-data-influxdb",
     "ecat-transport-ws",
@@ -45,13 +50,17 @@ members = [
     "ecat-data-arangodb",
     "ecat-data-iotdb",
     "ecat-data-questdb",
+    "ecat-data-tdengine",
+    "ecat-data-mongodb",
+    "ecat-data-s3",
     "ecat-tls",
+    "ecat-scheduler",
     "examples/helloworld",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "2.2.1"
+version = "2.3.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erik/e-cat"
@@ -73,3 +82,4 @@ serde_json = "1"
 async-trait = "0.1"
 http = "1"
 thiserror = "2"
+futures-core = "0.3"

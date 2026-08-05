@@ -1,11 +1,13 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_data::{Cache, CacheError};
+use ecat_lock::{DistributedLock, LockError};
 use ecat_tls::TlsClientConfig;
 use redis::AsyncCommands;
 use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
 use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisConfig {
@@ -18,15 +20,23 @@ pub struct RedisConfig {
     pub tls: Option<TlsClientConfig>,
 }
 
-
 fn percent_encode(s: &str) -> String {
     s.chars()
         .map(|c| match c {
-            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' =>
-                format!("%{:02X}", c as u8),
+            ':' | '/' | '@' | '#' | '?' | '&' | '=' | '%' | '+' | ' ' => {
+                format!("%{:02X}", c as u8)
+            }
             _ => c.to_string(),
         })
         .collect()
+}
+
+fn build_url(cfg: &RedisConfig) -> String {
+    if cfg.tls.as_ref().is_some_and(|t| t.is_enabled()) {
+        cfg.url.replacen("redis://", "rediss://", 1)
+    } else {
+        cfg.url.clone()
+    }
 }
 
 pub struct RedisCache {
@@ -44,10 +54,7 @@ impl RedisCache {
         Ok(Self { conn })
     }
 
-    pub async fn connect_with_password(
-        url: &str,
-        password: &str,
-    ) -> Result<Self, CacheError> {
+    pub async fn connect_with_password(url: &str, password: &str) -> Result<Self, CacheError> {
         let url = if url.contains('@') {
             url.to_string()
         } else {
@@ -58,11 +65,7 @@ impl RedisCache {
     }
 
     pub async fn from_config(cfg: RedisConfig) -> Result<Self, CacheError> {
-        let url = if cfg.tls.as_ref().is_some_and(|t| t.is_enabled()) {
-            cfg.url.replacen("redis://", "rediss://", 1)
-        } else {
-            cfg.url
-        };
+        let url = build_url(&cfg);
         match &cfg.password {
             Some(pw) if !pw.is_empty() => Self::connect_with_password(&url, pw).await,
             _ => Self::connect(&url).await,
@@ -87,7 +90,11 @@ impl Cache for RedisCache {
         let mut conn = self.conn.clone();
         let millis = ttl.as_millis();
         if millis > 0 {
-            let ms = if millis > u64::MAX as u128 { u64::MAX } else { millis as u64 };
+            let ms = if millis > u64::MAX as u128 {
+                u64::MAX
+            } else {
+                millis as u64
+            };
             let (): () = conn
                 .pset_ex(key, value, ms)
                 .await
@@ -109,6 +116,85 @@ impl Cache for RedisCache {
     }
 }
 
+/// Distributed lock backed by Redis `SET NX PX`.
+pub struct RedisLock {
+    conn: MultiplexedConnection,
+}
+
+impl RedisLock {
+    pub async fn connect(url: &str) -> Result<Self, LockError> {
+        let client =
+            redis::Client::open(url).map_err(|e| LockError::Other(format!("redis open: {e}")))?;
+        let conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
+        Ok(Self { conn })
+    }
+
+    pub async fn from_config(cfg: RedisConfig) -> Result<Self, LockError> {
+        let url = build_url(&cfg);
+        match &cfg.password {
+            Some(pw) if !pw.is_empty() => {
+                let url = if url.contains('@') {
+                    url
+                } else {
+                    let encoded = percent_encode(pw);
+                    url.replacen("://", &format!("://:{encoded}@"), 1)
+                };
+                Self::connect(&url).await
+            }
+            _ => Self::connect(&url).await,
+        }
+    }
+
+    pub fn from_connection(conn: MultiplexedConnection) -> Self {
+        Self { conn }
+    }
+}
+
+#[async_trait]
+impl DistributedLock for RedisLock {
+    async fn acquire(&self, key: &str, ttl: Duration) -> Result<Option<String>, LockError> {
+        let mut conn = self.conn.clone();
+        let token = Uuid::new_v4().to_string();
+        let acquired: Option<()> = conn
+            .set_options(
+                key,
+                token.as_str(),
+                redis::SetOptions::default()
+                    .conditional_set(redis::ExistenceCheck::NX)
+                    .with_expiration(redis::SetExpiry::PX(ttl.as_millis() as u64)),
+            )
+            .await
+            .map_err(|e| LockError::Other(format!("redis acquire: {e}")))?;
+        if acquired.is_some() {
+            Ok(Some(token))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn release(&self, key: &str, token: &str) -> Result<(), LockError> {
+        let mut conn = self.conn.clone();
+        // Compare-and-delete: only release when the token still matches the holder.
+        let script = r#"
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+        "#;
+        let (): () = redis::Script::new(script)
+            .key(key)
+            .arg(token)
+            .invoke_async(&mut conn)
+            .await
+            .map_err(|e| LockError::Other(format!("redis release: {e}")))?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +202,12 @@ mod tests {
     #[tokio::test]
     async fn connect_fails_bad_url() {
         let result = RedisCache::connect("redis://nonexistent:9999").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn lock_connect_fails_bad_url() {
+        let result = RedisLock::connect("redis://nonexistent:9999").await;
         assert!(result.is_err());
     }
 }

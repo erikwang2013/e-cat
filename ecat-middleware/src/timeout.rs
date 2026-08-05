@@ -79,7 +79,10 @@ mod tests {
         type Error = std::io::Error;
         type Future = Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + Send>>;
 
-        fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Result<(), Self::Error>> {
             std::task::Poll::Ready(Ok(()))
         }
 
@@ -118,7 +121,10 @@ mod tests {
             type Error = std::io::Error;
             type Future = Pin<Box<dyn Future<Output = Result<String, std::io::Error>> + Send>>;
 
-            fn poll_ready(&mut self, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
                 std::task::Poll::Ready(Ok(()))
             }
 

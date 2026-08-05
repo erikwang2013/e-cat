@@ -62,8 +62,7 @@ impl VersionedRouter {
             names: Arc<Vec<String>>,
         }
 
-        let version_names: Arc<Vec<String>> =
-            Arc::new(self.versions.keys().cloned().collect());
+        let version_names: Arc<Vec<String>> = Arc::new(self.versions.keys().cloned().collect());
 
         let mut router = axum::Router::new();
         for (_ver, vr) in self.versions {
@@ -73,23 +72,22 @@ impl VersionedRouter {
         let state = VersionState {
             names: Arc::clone(&version_names),
         };
-        router = router.layer(
-            axum::middleware::from_fn_with_state(
-                state,
-                |State(s): State<VersionState>,
-                 req: axum::http::Request<axum::body::Body>,
-                 next: axum::middleware::Next| async move {
-                    if let Some(ver) = extract_version(req.headers())
-                        && !s.names.contains(&ver) {
-                            return axum::http::Response::builder()
-                                .status(axum::http::StatusCode::NOT_FOUND)
-                                .body(axum::body::Body::from("unknown version"))
-                                .unwrap();
-                        }
-                    next.run(req).await
-                },
-            ),
-        );
+        router = router.layer(axum::middleware::from_fn_with_state(
+            state,
+            |State(s): State<VersionState>,
+             req: axum::http::Request<axum::body::Body>,
+             next: axum::middleware::Next| async move {
+                if let Some(ver) = extract_version(req.headers())
+                    && !s.names.contains(&ver)
+                {
+                    return axum::http::Response::builder()
+                        .status(axum::http::StatusCode::NOT_FOUND)
+                        .body(axum::body::Body::from("unknown version"))
+                        .unwrap();
+                }
+                next.run(req).await
+            },
+        ));
         router
     }
 }

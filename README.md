@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.1.7 · 47 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.0 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -12,7 +12,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                         ecat-cli                             │
-│              (new │ proto │ run │ build)                     │
+│        (new │ proto │ run --watch │ build │ upgrade)         │
 ├──────────────────────────────────────────────────────────────┤
 │                     ecat (应用生命周期)                         │
 │      AppBuilder → App { name, servers, hooks, ... }         │
@@ -93,7 +93,7 @@
 - **分布式追踪**：请求 span、trace_id 注入/提取
 - **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
 - **多协议**：HTTP、gRPC、WebSocket、GraphQL 统一路由
-- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、Redis、OpenSearch、InfluxDB
+- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）
 
 ### Kratos 概念映射
 
@@ -145,8 +145,11 @@
 | 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
 | 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
 | 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
+| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API |
+| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 |
+| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ rust-s3 |
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
 ### 数据库配置示例
 
@@ -196,6 +199,9 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | ArangoDB | `ArangoConfig` | `base_url`, `db`, `username`, `password` | — |
 | IoTDB | `IotdbConfig` | `base_url`, `username`, `password` | — |
 | Memcached | `MemcachedConfig` | `username`?, `password`?（保留字段） | — |
+| TDengine | `TdengineConfig` | `base_url`, `username`, `password`, `database`? | `http://localhost:6041` |
+| MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
+| S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
 > 所有后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证。详见 [数据库配置教程](docs/database-config-tutorial.md)。
 
@@ -244,6 +250,15 @@ e-cat/
 ├── ecat-versioning/            # API 版本路由
 ├── ecat-tls/                   # TLS 证书配置与自动生成
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
+├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
+├── ecat-scheduler/             # tokio 定时任务调度
+├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
+├── ecat-data-tdengine/         # TDengine 时序后端
+├── ecat-data-mongodb/          # MongoDB 文档后端
+├── ecat-data-s3/               # S3 / MinIO 对象存储后端
+├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
+├── ecat-mq-mqtt/               # MQTT 消息后端
+├── ecat-mq-nats/               # NATS 消息后端
 ├── config/                     # 配置示例文件
 ├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
@@ -278,6 +293,12 @@ ecat proto server api/helloworld/helloworld.proto -t internal/service
 
 # 开发模式运行
 ecat run
+
+# 监听 src/ 变更自动重启
+ecat run --watch
+
+# 更新所有 ecat-* 依赖
+ecat upgrade
 ```
 
 访问 `http://localhost:8000/helloworld/ecat`。
@@ -367,6 +388,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 12 | ✅ 完成 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
 | Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
 | Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
+| Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
 
 ## 设计目标
 
