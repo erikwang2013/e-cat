@@ -106,6 +106,9 @@ fn field_type(v: &FieldValue) -> &'static str {
 
 fn field_to_json(v: &FieldValue) -> serde_json::Value {
     match v {
+        // 非有限浮点（NaN/±Inf）无法用 JSON number 表示：serde_json 的 from_f64
+        // 对非有限值返回 None，且 ClickHouse 的 JSONEachRow 也没有 NaN/Inf 字面量。
+        // 因此回退为 0 保证序列化不失败；调用方应在写入前自行清洗 NaN/Inf。
         FieldValue::Float(f) => serde_json::Number::from_f64(*f)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Number(0.into())),
@@ -140,33 +143,34 @@ fn build_create_table(
 fn build_insert_body(points: &[DataPoint], tag_keys: &[String], field_keys: &[String]) -> String {
     // 逐点按 tags → fields → timestamp 顺序手写 JSON 对象，保证输出列序与
     // INSERT 语句列序一致（serde_json 的 Map 默认按 key 排序，不依赖其 preserve_order 特性）。
+    // 键的引号序列化与列序无关且全批一致，预计算一次跨点复用。
+    let tag_quoted: Vec<(String, String)> = tag_keys
+        .iter()
+        .map(|k| (k.clone(), serde_json::to_string(k).unwrap()))
+        .collect();
+    let field_quoted: Vec<(String, String)> = field_keys
+        .iter()
+        .map(|k| (k.clone(), serde_json::to_string(k).unwrap()))
+        .collect();
+    let ts_quoted = serde_json::to_string("timestamp").unwrap();
     let mut out = String::new();
     for p in points {
         let mut parts: Vec<String> = Vec::new();
-        for k in tag_keys {
+        for (k, qk) in &tag_quoted {
             if let Some(v) = p.tags.get(k) {
-                parts.push(format!(
-                    "{}:{}",
-                    serde_json::to_string(k).unwrap(),
-                    serde_json::to_string(v).unwrap()
-                ));
+                parts.push(format!("{qk}:{}", serde_json::to_string(v).unwrap()));
             }
         }
-        for k in field_keys {
+        for (k, qk) in &field_quoted {
             if let Some(v) = p.fields.get(k) {
                 parts.push(format!(
-                    "{}:{}",
-                    serde_json::to_string(k).unwrap(),
+                    "{qk}:{}",
                     serde_json::to_string(&field_to_json(v)).unwrap()
                 ));
             }
         }
         if let Some(ts) = p.timestamp {
-            parts.push(format!(
-                "{}:{}",
-                serde_json::to_string("timestamp").unwrap(),
-                ts
-            ));
+            parts.push(format!("{ts_quoted}:{ts}"));
         }
         out.push('{');
         out.push_str(&parts.join(","));
@@ -281,6 +285,8 @@ impl TsdbClient for ClickhouseClient {
 
             // 建表（每表只建一次，按 client 缓存；CREATE IF NOT EXISTS 幂等）。
             // 锁在 await 前释放（MutexGuard 非 Send，不能跨 await 存活）。
+            // 列类型由首批点的字段类型决定并固定；后续批次若出现同名不同型的字段，
+            // ClickHouse 不会自动 ALTER 列，写入会以服务端错误失败（调用方需保证类型一致）。
             let create = {
                 let created = self.created.lock().unwrap_or_else(|e| e.into_inner());
                 if created.contains(&measurement) {
@@ -342,9 +348,12 @@ impl TsdbClient for ClickhouseClient {
             .post(query, &[("default_format", "JSONEachRow".to_string())])
             .send()
             .await
-            .map_err(|e| TsdbError::Other(format!("ch tsdb query: {e}")))?;
+            .map_err(|e| TsdbError::Other(format!("ch query: {e}")))?;
         if !resp.status().is_success() {
-            return Err(TsdbError::Other(resp.text().await.unwrap_or_default()));
+            return Err(TsdbError::Other(format!(
+                "ch query failed: {}",
+                resp.text().await.unwrap_or_default()
+            )));
         }
         let text = resp
             .text()
@@ -445,5 +454,55 @@ mod tests {
             r#"{"host":"a`b,c","usage":0.5,"timestamp":100}"#
         );
         assert_eq!(lines[1], r#"{"usage":7,"timestamp":200}"#);
+    }
+
+    #[test]
+    fn field_to_json_non_finite_floats_fall_back_to_zero() {
+        assert_eq!(field_to_json(&FieldValue::Float(f64::NAN)), serde_json::json!(0));
+        assert_eq!(
+            field_to_json(&FieldValue::Float(f64::INFINITY)),
+            serde_json::json!(0)
+        );
+        assert_eq!(
+            field_to_json(&FieldValue::Float(f64::NEG_INFINITY)),
+            serde_json::json!(0)
+        );
+        assert_eq!(
+            field_to_json(&FieldValue::Float(0.5)),
+            serde_json::json!(0.5)
+        );
+    }
+
+    #[test]
+    fn build_insert_body_omits_timestamp_key_when_missing() {
+        let points = vec![
+            DataPoint::new("cpu")
+                .with_tag("host", "h1")
+                .with_field("usage", FieldValue::Float(0.5)),
+        ];
+        let body = build_insert_body(&points, &["host".to_string()], &["usage".to_string()]);
+        assert_eq!(body, "{\"host\":\"h1\",\"usage\":0.5}\n");
+    }
+
+    #[test]
+    fn build_insert_body_empty_points_is_empty_string() {
+        let body = build_insert_body(&[], &["host".to_string()], &["usage".to_string()]);
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn build_insert_body_filters_keys_per_point() {
+        // 两个不同 measurement 的点只含各自拥有的键（键过滤按点进行）
+        let points = vec![
+            DataPoint::new("cpu").with_tag("host", "a").with_timestamp(1),
+            DataPoint::new("mem")
+                .with_tag("dc", "x")
+                .with_field("used", FieldValue::Int(5)),
+        ];
+        let body = build_insert_body(&points, &["host".to_string()], &["used".to_string()]);
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], r#"{"host":"a","timestamp":1}"#);
+        assert_eq!(lines[1], r#"{"used":5}"#);
     }
 }
