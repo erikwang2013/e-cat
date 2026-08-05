@@ -1645,7 +1645,10 @@ dependencies = [
 name = "ecat-metrics"
 version = "2.3.1"
 dependencies = [
+ "axum 0.8.9",
  "prometheus",
+ "tokio",
+ "tower 0.5.3",
 ]
 
 [[package]]
@@ -1870,6 +1873,7 @@ version = "2.3.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "ecat-metrics",
  "ecat-transport",
  "tokio",
  "tower 0.5.3",

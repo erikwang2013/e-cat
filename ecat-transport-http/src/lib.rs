@@ -45,10 +45,21 @@ fn normalize_addr(addr: String) -> String {
     }
 }
 
+impl HttpServer {
+    /// 用户 router 与内置 /metrics 端点合并。
+    /// /metrics 为框架保留路径：用户 router 若也定义该路径，merge 会 panic。
+    fn merged_router(&self) -> Router {
+        self.router
+            .clone()
+            .unwrap_or_default()
+            .merge(ecat_metrics::metrics_router())
+    }
+}
+
 #[async_trait::async_trait]
 impl TransportServer for HttpServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let router = self.router.clone().unwrap_or_default();
+        let router = self.merged_router();
         let listener = TcpListener::bind(&self.addr).await?;
         let (tx, mut rx) = watch::channel(());
         *self.shutdown_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
@@ -106,5 +117,22 @@ mod tests {
     fn new_without_router_has_none() {
         let srv = HttpServer::new("0.0.0.0:9000");
         assert!(srv.router.is_none());
+    }
+
+    #[tokio::test]
+    async fn auto_mounts_metrics_endpoint() {
+        use tower::ServiceExt;
+        let srv = HttpServer::new("127.0.0.1:0");
+        let resp = srv
+            .merged_router()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
     }
 }
