@@ -5,6 +5,15 @@ use ecat_config::{ConfigError, ConfigSource};
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// 阻塞查询 wait 参数：服务端最长持有连接等待变更的时长。
+const CONSUL_BLOCK_WAIT: &str = "5m";
+/// 请求超时秒数：须大于 wait（300s），预留 30s 余量。
+const REQUEST_TIMEOUT_SECS: u64 = 330;
+/// watch 出错后的重试间隔秒数。
+const WATCH_RETRY_DELAY_SECS: u64 = 1;
+/// watch mpsc channel 容量。
+const WATCH_CHANNEL_CAPACITY: usize = 8;
+
 #[derive(Clone)]
 pub struct ConsulConfigSource {
     client: reqwest::Client,
@@ -37,9 +46,9 @@ impl ConsulConfigSource {
         let url = format!("{}/v1/kv/{}", self.base_url, self.prefix);
         let mut builder = self.client.get(&url).query(&[("recurse", "true")]);
         if let Some(idx) = index {
-            builder = builder.query(&[("index", idx), ("wait", "5m")]);
+            builder = builder.query(&[("index", idx), ("wait", CONSUL_BLOCK_WAIT)]);
         }
-        builder = builder.timeout(Duration::from_secs(330));
+        builder = builder.timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS));
         if let Some(ref token) = self.token {
             builder = builder.header("X-Consul-Token", token);
         }
@@ -59,6 +68,14 @@ impl ConsulConfigSource {
             .get("x-consul-index")
             .and_then(|h| h.to_str().ok())
             .map(str::to_string);
+
+        // 阻塞查询响应必须携带 X-Consul-Index；缺失时视为错误，
+        // 避免 index 恒为 Some 而 new_index 恒为 None 导致的重复推送/忙等。
+        if index.is_some() && new_index.is_none() {
+            return Err(ConfigError::Other(
+                "consul kv: blocking query response missing X-Consul-Index".to_string(),
+            ));
+        }
 
         let entries: Vec<ConsulKvEntry> = resp
             .json()
@@ -90,7 +107,7 @@ impl ConsulConfigSource {
     pub fn watch(
         &self,
     ) -> tokio::sync::mpsc::Receiver<Result<HashMap<String, serde_json::Value>, ConfigError>> {
-        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        let (tx, rx) = tokio::sync::mpsc::channel(WATCH_CHANNEL_CAPACITY);
         let source = self.clone();
         tokio::spawn(async move {
             let mut index: Option<String> = None;
@@ -108,7 +125,7 @@ impl ConsulConfigSource {
                         if tx.send(Err(e)).await.is_err() {
                             break;
                         }
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        tokio::time::sleep(Duration::from_secs(WATCH_RETRY_DELAY_SECS)).await;
                     }
                 }
             }
@@ -147,6 +164,8 @@ impl ConsulKvEntry {
 mod tests {
     use super::*;
     use axum::extract::State;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::sync::watch;
 
     #[test]
@@ -163,10 +182,8 @@ mod tests {
     }
 
     async fn spawn_mock_consul() -> (String, watch::Sender<(u64, Vec<(String, String)>)>) {
-        let (tx, rx) = watch::channel((
-            1u64,
-            vec![("app/key".to_string(), "{\"a\":1}".to_string())],
-        ));
+        let (tx, rx) =
+            watch::channel((1u64, vec![("app/key".to_string(), "{\"a\":1}".to_string())]));
         let app = axum::Router::new()
             .route("/v1/kv/{prefix}", axum::routing::get(kv_handler))
             .with_state(rx);
@@ -182,7 +199,10 @@ mod tests {
         State(mut rx): State<watch::Receiver<(u64, Vec<(String, String)>)>>,
         axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
     ) -> axum::response::Response {
-        let requested: u64 = params.get("index").and_then(|i| i.parse().ok()).unwrap_or(0);
+        let requested: u64 = params
+            .get("index")
+            .and_then(|i| i.parse().ok())
+            .unwrap_or(0);
         if params.contains_key("index") {
             // 模拟 Consul 阻塞查询：等待状态变化或 1s 超时后返回
             let deadline = tokio::time::sleep(Duration::from_secs(1));
@@ -202,6 +222,10 @@ mod tests {
             }
         }
         let (cur_idx, entries) = rx.borrow().clone();
+        kv_response(cur_idx, &entries)
+    }
+
+    fn kv_response(cur_idx: u64, entries: &[(String, String)]) -> axum::response::Response {
         let body: Vec<serde_json::Value> = entries
             .iter()
             .map(|(k, v)| {
@@ -217,6 +241,30 @@ mod tests {
         resp.headers_mut()
             .insert("X-Consul-Index", cur_idx.to_string().parse().unwrap());
         resp
+    }
+
+    /// 可切换故障的 mock：fail=true 时返回 500，否则返回正常 KV 数据。
+    async fn spawn_mock_consul_fail() -> (String, Arc<AtomicBool>) {
+        let fail = Arc::new(AtomicBool::new(true));
+        let app = axum::Router::new()
+            .route("/v1/kv/{prefix}", axum::routing::get(fail_kv_handler))
+            .with_state(fail.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{addr}"), fail)
+    }
+
+    async fn fail_kv_handler(State(fail): State<Arc<AtomicBool>>) -> axum::response::Response {
+        if fail.load(Ordering::SeqCst) {
+            return axum::http::Response::builder()
+                .status(500)
+                .body(axum::body::Body::from("mock failure"))
+                .unwrap();
+        }
+        kv_response(1u64, &[("app/key".to_string(), "{\"a\":1}".to_string())])
     }
 
     #[tokio::test]
@@ -258,5 +306,28 @@ mod tests {
         // 状态不变：服务器 1s 后返回同 index，不应推送
         let result = tokio::time::timeout(Duration::from_millis(2000), rx.recv()).await;
         assert!(result.is_err(), "no message expected on same index");
+    }
+
+    #[tokio::test]
+    async fn watch_error_then_recovers() {
+        let (base_url, fail) = spawn_mock_consul_fail().await;
+        let source = ConsulConfigSource::new(base_url, "app");
+        let mut rx = source.watch();
+
+        // 服务器 500：应收到 Err，且 channel 未关闭（后台任务仍在运行）
+        let err = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .expect("error frame timed out")
+            .expect("channel closed, task must keep running");
+        assert!(err.is_err(), "expected Err, got {err:?}");
+
+        // 恢复后：1s 退避重试，应收到正常配置帧
+        fail.store(false, Ordering::SeqCst);
+        let ok = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .expect("recovery frame timed out")
+            .expect("channel closed, task must keep running")
+            .expect("expected Ok after recovery");
+        assert_eq!(ok.get("key"), Some(&serde_json::json!({"a": 1})));
     }
 }
