@@ -22,7 +22,11 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        ecat_logging::init();
+        // 用户若已先初始化 OTLP/ecat-tracing 等 subscriber，则不再重复初始化，
+        // 避免 "a global default trace dispatcher has already been set" panic。
+        if !tracing::dispatcher::has_been_set() {
+            ecat_logging::init();
+        }
 
         tracing::info!(
             name = self.name,

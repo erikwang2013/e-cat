@@ -1,13 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-mod context;
-mod request;
-mod response;
-
 use std::path::PathBuf;
-
-pub use context::Context;
-pub use request::Request;
-pub use response::Response;
 
 use async_trait::async_trait;
 

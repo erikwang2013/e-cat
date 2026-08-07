@@ -25,6 +25,18 @@ impl SecurityError {
     }
 }
 
+/// 拦截结果映射为 HTTP 响应：攻击拦截为 403，内部错误为 500。
+impl axum::response::IntoResponse for SecurityError {
+    fn into_response(self) -> axum::response::Response {
+        let status = self.to_http_status();
+        let body = match &self {
+            Self::AttackBlocked(types) => format!(r#"{{"error":"attack blocked","types":"{types}"}}"#),
+            Self::Inner(e) => format!(r#"{{"error":"{e}"}}"#),
+        };
+        (status, body).into_response()
+    }
+}
+
 /// Wraps `security_rust::Scanner` with convenient constructors.
 pub struct SecurityScanner {
     scanner: Scanner,
@@ -305,6 +317,21 @@ mod tests {
         let s = SecurityScanner::new();
         let results = s.scan_parts(&["clean", "<script>x</script>"]);
         assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn attack_blocked_maps_to_403() {
+        use axum::response::IntoResponse;
+        let resp = SecurityError::AttackBlocked("sqli".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn inner_error_maps_to_500() {
+        use axum::response::IntoResponse;
+        let resp =
+            SecurityError::Inner(Box::new(std::io::Error::other("boom"))).into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]

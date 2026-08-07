@@ -72,6 +72,10 @@ where
     }
 
     fn call(&mut self, req: Req) -> Self::Future {
+        // Req 是完全泛型（仅 Send + 'static），无法在编译期读取请求头来填充
+        // trace_id 字段，除非把 impl 特化为 http::Request<B>（会破坏泛型 API）。
+        // 需要 trace_id 时请针对 http::Request<B> 的服务自行用
+        // extract_trace_id()/inject_trace_id() 在调用处维护 span 字段。
         let span = tracing::info_span!(
             "request",
             service = %self.service_name,
@@ -85,22 +89,25 @@ where
 }
 
 /// Extract trace_id from request headers for propagation.
+///
+/// Reads the canonical [`ecat_metadata::TRACE_ID`] header first, then
+/// falls back to the W3C `traceparent` header.
 pub fn extract_trace_id(headers: &http::HeaderMap) -> Option<String> {
     headers
-        .get("x-trace-id")
+        .get(ecat_metadata::TRACE_ID)
         .or_else(|| headers.get("traceparent"))
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
 }
 
 /// Inject trace_id into a header map for downstream calls.
+///
+/// Generates a random 32-hex-char trace id (UUID v4) under the canonical
+/// [`ecat_metadata::TRACE_ID`] header.
 pub fn inject_trace_id(headers: &mut http::HeaderMap) {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-    let mut h = DefaultHasher::new();
-    std::time::Instant::now().hash(&mut h);
-    let trace_id = format!("{:016x}", h.finish());
+    let trace_id = uuid::Uuid::new_v4().simple().to_string();
     if let Ok(v) = http::HeaderValue::from_str(&trace_id) {
-        headers.insert("x-trace-id", v);
+        headers.insert(ecat_metadata::TRACE_ID, v);
     }
 }
 
@@ -120,9 +127,39 @@ mod tests {
     }
 
     #[test]
+    fn extract_prefers_canonical_header_over_traceparent() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(ecat_metadata::TRACE_ID, "abc123".parse().unwrap());
+        headers.insert("traceparent", "tp-000".parse().unwrap());
+        assert_eq!(extract_trace_id(&headers).as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn extract_falls_back_to_traceparent() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            "traceparent",
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(
+            extract_trace_id(&headers).unwrap(),
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        );
+    }
+
+    #[test]
     fn inject_trace_id_adds_header() {
         let mut headers = http::HeaderMap::new();
         inject_trace_id(&mut headers);
-        assert!(headers.get("x-trace-id").is_some());
+        let value = headers
+            .get(ecat_metadata::TRACE_ID)
+            .expect("canonical header set");
+        assert_eq!(value.len(), 32, "32-hex-char trace id");
+        assert!(
+            value.to_str().unwrap().chars().all(|c| c.is_ascii_hexdigit()),
+            "trace id is hex"
+        );
     }
 }

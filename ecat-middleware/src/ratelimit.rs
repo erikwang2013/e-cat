@@ -68,11 +68,36 @@ impl RateLimitStore for MemoryStore {
             *entry = (1, Instant::now());
             return Ok(());
         }
-        if entry.0 >= max {
+        // 与 Redis 实现（ratelimit_redis.rs）一致：先计数（INCR），
+        // 再用 count > max 判断，即每个窗口最多放行 max 次请求。
+        entry.0 += 1;
+        if entry.0 > max {
             return Err("rate limit exceeded".into());
         }
-        entry.0 += 1;
         Ok(())
+    }
+}
+
+/// Error returned when the rate limit is exceeded. Maps to HTTP 429
+/// (Too Many Requests) via `IntoResponse`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RateLimitError(pub String);
+
+impl std::fmt::Display for RateLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for RateLimitError {}
+
+impl axum::response::IntoResponse for RateLimitError {
+    fn into_response(self) -> axum::response::Response {
+        (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            axum::body::Body::from(self.0),
+        )
+            .into_response()
     }
 }
 
@@ -233,7 +258,7 @@ where
         let fut = self.inner.call(req);
         Box::pin(async move {
             if !limiter.allow(&key).await {
-                return Err(Box::new(std::io::Error::other("rate limit exceeded"))
+                return Err(Box::new(RateLimitError("rate limit exceeded".into()))
                     as Box<dyn std::error::Error + Send + Sync>);
             }
             fut.await
@@ -267,6 +292,22 @@ mod tests {
         let rl = RateLimiter::new(1, Duration::from_secs(60));
         assert!(rl.allow("a").await);
         assert!(rl.allow("b").await);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_zero_max_blocks_everything() {
+        let rl = RateLimiter::new(0, Duration::from_secs(60));
+        assert!(!rl.allow("test").await);
+    }
+
+    #[test]
+    fn rate_limit_error_maps_to_429() {
+        use axum::response::IntoResponse;
+        let resp = RateLimitError("rate limit exceeded".into()).into_response();
+        assert_eq!(
+            resp.status(),
+            axum::http::StatusCode::TOO_MANY_REQUESTS
+        );
     }
 
     #[test]

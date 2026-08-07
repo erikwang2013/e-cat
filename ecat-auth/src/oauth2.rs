@@ -21,6 +21,9 @@ pub struct OAuth2Layer {
     /// Shared HTTP client: connections are pooled and reused across requests
     /// instead of being created (and torn down) per request.
     client: reqwest::Client,
+    /// 内省结果缓存：token -> (序列化 claims, 缓存时间)。TTL 内命中，
+    /// 过期后重新 introspection。
+    cache: Arc<tokio::sync::RwLock<HashMap<String, (String, std::time::Instant)>>>,
 }
 
 impl OAuth2Layer {
@@ -50,6 +53,7 @@ impl OAuth2Layer {
             client_secret: client_secret.into(),
             cache_ttl_secs: 300,
             client,
+            cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -128,6 +132,17 @@ where
 }
 
 async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaims, String> {
+    // TTL 内命中缓存，避免每个请求都打 introspection 端点。
+    if config.cache_ttl_secs > 0 {
+        let cache = config.cache.read().await;
+        if let Some((json, cached_at)) = cache.get(token)
+            && cached_at.elapsed() < std::time::Duration::from_secs(config.cache_ttl_secs)
+            && let Ok(claims) = serde_json::from_str::<AuthClaims>(json)
+        {
+            return Ok(claims);
+        }
+    }
+
     let params = [
         ("token", token),
         ("client_id", &config.client_id),
@@ -183,11 +198,99 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
         }
     }
 
-    Ok(AuthClaims {
+    let claims = AuthClaims {
         sub,
         exp: body.get("exp").and_then(|v| v.as_u64()),
         iat: body.get("iat").and_then(|v| v.as_u64()),
         role,
         extra,
-    })
+    };
+
+    if config.cache_ttl_secs > 0 {
+        let mut cache = config.cache.write().await;
+        // 缓存有界：达到上限时先清掉已过期的条目，防止 token 泄漏导致无界增长。
+        if cache.len() >= 4096 {
+            let ttl = std::time::Duration::from_secs(config.cache_ttl_secs);
+            cache.retain(|_, (_, at)| at.elapsed() < ttl);
+        }
+        cache.insert(
+            token.to_string(),
+            (
+                serde_json::to_string(&claims)
+                    .map_err(|e| format!("cache serialize claims: {e}"))?,
+                std::time::Instant::now(),
+            ),
+        );
+    }
+
+    Ok(claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::routing::post;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    async fn spawn_introspection_server(
+        count: &'static AtomicUsize,
+    ) -> String {
+        use axum::Json;
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().route(
+            "/introspect",
+            post(move || async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                Json(serde_json::json!({
+                    "active": true,
+                    "sub": "user-1",
+                    "role": "admin",
+                    "exp": 9999999999u64,
+                }))
+                .into_response()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/introspect")
+    }
+
+    #[tokio::test]
+    async fn introspection_cached_within_ttl() {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let url = spawn_introspection_server(&COUNT).await;
+        let cfg = OAuth2Layer::new(url, "cid", "csecret")
+            .unwrap()
+            .cache_ttl(60);
+
+        let claims1 = introspect_token(&cfg, "tok-1").await.unwrap();
+        let claims2 = introspect_token(&cfg, "tok-1").await.unwrap();
+        assert_eq!(claims1.sub, "user-1");
+        assert_eq!(claims2.sub, "user-1");
+        assert_eq!(COUNT.load(Ordering::SeqCst), 1, "second call hits cache");
+
+        let claims3 = introspect_token(&cfg, "tok-2").await.unwrap();
+        assert_eq!(claims3.role.as_deref(), Some("admin"));
+        assert_eq!(COUNT.load(Ordering::SeqCst), 2, "new token re-introspects");
+    }
+
+    #[tokio::test]
+    async fn introspection_ttl_zero_disables_cache() {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let url = spawn_introspection_server(&COUNT).await;
+        let cfg = OAuth2Layer::new(url, "cid", "csecret")
+            .unwrap()
+            .cache_ttl(0);
+
+        let _ = introspect_token(&cfg, "tok-1").await.unwrap();
+        let _ = introspect_token(&cfg, "tok-1").await.unwrap();
+        assert_eq!(
+            COUNT.load(Ordering::SeqCst),
+            2,
+            "ttl=0 must never cache"
+        );
+    }
 }

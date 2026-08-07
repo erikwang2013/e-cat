@@ -58,16 +58,22 @@ impl ProtoCodec {
 }
 
 impl Codec for ProtoCodec {
+    // Codec trait 对 encode/decode 施加 serde 约束（Serialize / DeserializeOwned），
+    // 而 prost 序列化要求 prost::Message——两个 trait 在泛型层面无法桥接，
+    // 因此 trait 方法只能返回明确错误。真实的 protobuf 编解码请使用
+    // encode_message() / decode_message()（要求 T: prost::Message）。
     fn encode<T: serde::Serialize>(&self, _val: &T) -> Result<Vec<u8>, CodecError> {
         Err(CodecError::Encode(
-            "ProtoCodec: use encode_message() with prost::Message types, or enable 'prost-codec'"
+            "ProtoCodec: Codec trait requires serde bounds, which prost cannot encode generically; \
+             use encode_message() with a prost::Message type"
                 .into(),
         ))
     }
 
     fn decode<T: serde::de::DeserializeOwned>(&self, _data: &[u8]) -> Result<T, CodecError> {
         Err(CodecError::Decode(
-            "ProtoCodec: use decode_message() with prost::Message types, or enable 'prost-codec'"
+            "ProtoCodec: Codec trait requires serde bounds, which prost cannot decode generically; \
+             use decode_message() with a prost::Message type"
                 .into(),
         ))
     }

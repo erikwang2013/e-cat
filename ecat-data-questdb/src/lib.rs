@@ -97,14 +97,30 @@ impl RdbmsClient for QuestdbClient {
             .header("Content-Type", "text/plain; charset=utf-8")
             .header("Accept", "application/json")
             .body(sql.to_string());
-        let body: serde_json::Value = self
+        let resp = self
             .apply_auth(req)
             .send()
             .await
-            .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?
+            .map_err(|e| RdbmsError::Database(format!("questdb: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(RdbmsError::Database(
+                resp.text()
+                    .await
+                    .unwrap_or_else(|e| format!("questdb: {e}")),
+            ));
+        }
+        let body: serde_json::Value = resp
             .json()
             .await
             .map_err(|e| RdbmsError::Database(format!("questdb parse: {e}")))?;
+        // 2xx 响应也可能携带 error 字段（无 columns/dataset 时）
+        if let Some(err) = body
+            .get("error")
+            .and_then(|e| e.as_str())
+            .filter(|e| !e.is_empty())
+        {
+            return Err(RdbmsError::Database(err.to_string()));
+        }
         let mut rows = Vec::new();
         if let Some(columns) = body.get("columns").and_then(|c| c.as_array()) {
             let cols: Vec<String> = columns
@@ -150,5 +166,44 @@ mod tests {
         .unwrap();
         let client = QuestdbClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
+    }
+
+    /// mock QuestDB 的 /exec 端点，返回给定状态码与响应体。
+    async fn spawn_mock_exec(status: u16, body: &'static str) -> String {
+        let app = axum::Router::new().route(
+            "/exec",
+            axum::routing::post(move || async move {
+                (
+                    axum::http::StatusCode::from_u16(status).unwrap(),
+                    axum::response::Response::new(axum::body::Body::from(body)),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn query_returns_err_on_http_400() {
+        let base_url = spawn_mock_exec(
+            400,
+            r#"{"code":"invalid","error":"table not found"}"#,
+        )
+        .await;
+        let client = QuestdbClient::new(base_url);
+        let err = client.query("select * from nope").await.unwrap_err();
+        assert!(err.to_string().contains("table not found"));
+    }
+
+    #[tokio::test]
+    async fn query_returns_err_on_2xx_with_error_field() {
+        let base_url = spawn_mock_exec(200, r#"{"error":"no columns"}"#).await;
+        let client = QuestdbClient::new(base_url);
+        let err = client.query("select 1").await.unwrap_err();
+        assert!(err.to_string().contains("no columns"));
     }
 }

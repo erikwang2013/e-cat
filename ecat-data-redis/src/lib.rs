@@ -113,6 +113,42 @@ impl Cache for RedisCache {
             .await
             .map_err(|e| CacheError::Other(format!("redis del: {e}")))
     }
+
+    async fn increment(&self, key: &str, delta: i64) -> Result<i64, CacheError> {
+        let mut conn = self.conn.clone();
+        conn.incr(key, delta)
+            .await
+            .map_err(|e| CacheError::Other(format!("redis incr: {e}")))
+    }
+
+    async fn ttl(&self, key: &str) -> Result<Option<Duration>, CacheError> {
+        let mut conn = self.conn.clone();
+        let ttl: i64 = conn
+            .ttl(key)
+            .await
+            .map_err(|e| CacheError::Other(format!("redis ttl: {e}")))?;
+        Ok(ttl_to_duration(ttl))
+    }
+
+    async fn multi_get(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>, CacheError> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.conn.clone();
+        conn.mget(keys)
+            .await
+            .map_err(|e| CacheError::Other(format!("redis mget: {e}")))
+    }
+}
+
+/// redis TTL 语义映射：-2 表示键不存在、-1 表示无过期时间，均映射为 None；
+/// 其余为剩余秒数。
+fn ttl_to_duration(ttl: i64) -> Option<Duration> {
+    if ttl < 0 {
+        None
+    } else {
+        Some(Duration::from_secs(ttl as u64))
+    }
 }
 
 /// Distributed lock backed by Redis `SET NX PX`.
@@ -219,5 +255,47 @@ mod tests {
     async fn lock_connect_fails_bad_url() {
         let result = RedisLock::connect("redis://nonexistent:9999").await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn ttl_to_duration_maps_redis_semantics() {
+        assert_eq!(ttl_to_duration(-2), None, "missing key");
+        assert_eq!(ttl_to_duration(-1), None, "no expiry");
+        assert_eq!(ttl_to_duration(0), Some(Duration::ZERO));
+        assert_eq!(ttl_to_duration(120), Some(Duration::from_secs(120)));
+    }
+
+    fn arg_bytes(a: redis::Arg<&[u8]>) -> Vec<u8> {
+        match a {
+            redis::Arg::Simple(bytes) => bytes.to_vec(),
+            redis::Arg::Cursor => b"*".to_vec(),
+        }
+    }
+
+    #[test]
+    fn incrby_cmd_targets_key_and_delta() {
+        let mut cmd = redis::cmd("INCRBY");
+        cmd.arg("rl:key").arg(3i64);
+        let args: Vec<Vec<u8>> = cmd.args_iter().map(arg_bytes).collect();
+        assert_eq!(
+            args,
+            vec![b"INCRBY".to_vec(), b"rl:key".to_vec(), b"3".to_vec()]
+        );
+    }
+
+    #[test]
+    fn mget_cmd_targets_all_keys() {
+        let mut cmd = redis::cmd("MGET");
+        cmd.arg("k1").arg("k2").arg("k3");
+        let args: Vec<Vec<u8>> = cmd.args_iter().map(arg_bytes).collect();
+        assert_eq!(
+            args,
+            vec![
+                b"MGET".to_vec(),
+                b"k1".to_vec(),
+                b"k2".to_vec(),
+                b"k3".to_vec()
+            ]
+        );
     }
 }

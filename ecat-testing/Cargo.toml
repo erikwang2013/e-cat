@@ -9,3 +9,4 @@ description = "Test utilities and helpers for e-cat"
 ecat-transport = { path = "../ecat-transport" }
 tokio.workspace = true
 async-trait.workspace = true
+axum.workspace = true

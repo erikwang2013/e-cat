@@ -23,6 +23,7 @@ pub fn validate_crate_name(name: &str) -> Result<(), String> {
 }
 
 pub fn generate_cargo_toml(name: &str) -> String {
+    let ecat_version = env!("CARGO_PKG_VERSION");
     format!(
         r#"[package]
 name = "{name}"
@@ -30,10 +31,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ecat = "1.0"
-ecat-transport-http = "1.0"
-ecat-middleware = "1.0"
-ecat-logging = "1.0"
+ecat = "{ecat_version}"
+ecat-transport-http = "{ecat_version}"
+ecat-middleware = "{ecat_version}"
+ecat-logging = "{ecat_version}"
 tokio = {{ version = "1", features = ["full"] }}
 tracing = "0.1"
 axum = "0.8"
@@ -113,9 +114,19 @@ mod tests {
     #[test]
     fn cargo_toml_includes_dependencies() {
         let toml = generate_cargo_toml("test-app");
-        assert!(toml.contains("ecat = \"1.0\""));
+        let ecat_version = env!("CARGO_PKG_VERSION");
+        assert!(toml.contains(&format!("ecat = \"{ecat_version}\"")));
+        assert!(toml.contains(&format!("ecat-transport-http = \"{ecat_version}\"")));
         assert!(toml.contains("axum = \"0.8\""));
         assert!(toml.contains("tokio"));
+    }
+
+    #[test]
+    fn cargo_toml_uses_current_ecat_version() {
+        let toml = generate_cargo_toml("test-app");
+        let ecat_version = env!("CARGO_PKG_VERSION");
+        assert!(!toml.contains("ecat = \"1.0\""));
+        assert!(toml.contains(&format!("ecat-logging = \"{ecat_version}\"")));
     }
 
     #[test]

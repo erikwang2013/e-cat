@@ -52,7 +52,7 @@ impl TdengineClient {
 
     fn sql_url(&self) -> String {
         match &self.database {
-            Some(db) => format!("{}/rest/sql/{}", self.base_url, db),
+            Some(db) => format!("{}/rest/sql/{}", self.base_url, percent_encode_segment(db)),
             None => format!("{}/rest/sql", self.base_url),
         }
     }
@@ -73,6 +73,21 @@ impl TdengineClient {
             .await
             .map_err(|e| TsdbError::Other(format!("tdengine parse: {e}")))
     }
+}
+
+/// Percent-encode a single URL path segment (RFC 3986): every byte except
+/// unreserved characters (`A-Z a-z 0-9 - _ . ~`) becomes `%XX`.
+fn percent_encode_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 /// 转义双引号字符串字面量：先转义反斜杠再转义双引号，防止注入逃逸
@@ -165,5 +180,15 @@ mod tests {
     #[test]
     fn client_constructs() {
         let _client = TdengineClient::new("http://localhost:6041", "root", "taosdata");
+    }
+
+    #[test]
+    fn sql_url_encodes_database_segment() {
+        let mut client = TdengineClient::new("http://localhost:6041", "root", "taosdata");
+        client.database = Some("my db/1".into());
+        assert_eq!(
+            client.sql_url(),
+            "http://localhost:6041/rest/sql/my%20db%2F1"
+        );
     }
 }

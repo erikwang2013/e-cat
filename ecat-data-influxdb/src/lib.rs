@@ -160,7 +160,8 @@ impl TsdbClient for InfluxClient {
     }
 
     async fn query(&self, query: &str) -> Result<serde_json::Value, TsdbError> {
-        self.client
+        let resp = self
+            .client
             .post(&self.query_url)
             .header("Authorization", format!("Token {}", self.token))
             .header("Content-Type", "application/vnd.flux")
@@ -168,8 +169,14 @@ impl TsdbClient for InfluxClient {
             .body(query.to_string())
             .send()
             .await
-            .map_err(|e| TsdbError::Other(format!("query: {e}")))?
-            .json()
+            .map_err(|e| TsdbError::Other(format!("query: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(TsdbError::Other(format!(
+                "query failed: {}",
+                resp.text().await.unwrap_or_default()
+            )));
+        }
+        resp.json()
             .await
             .map_err(|e| TsdbError::Other(format!("parse: {e}")))
     }
@@ -205,5 +212,32 @@ mod tests {
         assert_eq!(escape_field_string("say \"hi\""), "say\\ \\\"hi\\\"");
         assert_eq!(escape_field_string("a\\b"), "a\\\\b");
         assert_eq!(escape_field_string("x y,z"), "x\\ y\\,z");
+    }
+
+    /// mock InfluxDB 的 /api/v2/query 端点，返回给定状态码与错误体。
+    async fn spawn_mock_query(status: u16, body: &'static str) -> String {
+        let app = axum::Router::new().route(
+            "/api/v2/query",
+            axum::routing::post(move || async move {
+                (
+                    axum::http::StatusCode::from_u16(status).unwrap(),
+                    axum::response::Response::new(axum::body::Body::from(body)),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn query_returns_err_on_http_400() {
+        let base_url = spawn_mock_query(400, r#"{"error":"invalid flux"}"#).await;
+        let client = InfluxClient::new(base_url, "org", "bucket", "token");
+        let err = client.query("from(bucket: \"x\")").await.unwrap_err();
+        assert!(err.to_string().contains("invalid flux"));
     }
 }

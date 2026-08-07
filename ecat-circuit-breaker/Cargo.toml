@@ -6,5 +6,8 @@ license.workspace = true
 description = "Circuit breaker middleware for e-cat services"
 
 [dependencies]
-tower.workspace = true
+tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.3.2 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.3.3 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -136,7 +136,7 @@ Client Request
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented |
 | Cache | Redis | `ecat-data-redis` | ✅ Implemented |
-| Cache | Memcached | `ecat-data-memcached` | ✅ Implemented (in-memory) |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory only (not for production) |
 | Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented |
 | Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented |
@@ -272,11 +272,11 @@ ecat new helloworld
 cd helloworld
 
 # Add a proto definition
-ecat proto add api/helloworld/helloworld.proto
+ecat proto add proto/service.proto
 
 # Generate client and server code
-ecat proto client api/helloworld/helloworld.proto
-ecat proto server api/helloworld/helloworld.proto -t internal/service
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service
 
 # Run in development mode
 ecat run
@@ -333,7 +333,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 ```rust
 use tower::ServiceBuilder;
 use ecat_middleware::{RecoveryLayer, TracingLayer, LoggingLayer, TimeoutLayer};
+use ecat_circuit_breaker::CircuitBreakerLayer;
+use ecat_security::SecurityLayer;
+use ecat_auth::JwtAuthLayer;
 use std::time::Duration;
+
+// JWT secret must be ≥32 bytes
+let jwt = JwtAuthLayer::new("change-me-32-bytes-minimum-secret").expect("valid jwt secret");
 
 let layer = ServiceBuilder::new()
     .layer(RecoveryLayer)
@@ -341,7 +347,7 @@ let layer = ServiceBuilder::new()
     .layer(LoggingLayer)
     .layer(TimeoutLayer::new(Duration::from_secs(30)))
     .layer(CircuitBreakerLayer::new())
-    .layer(JwtAuthLayer::new("my-secret-key"))
+    .layer(jwt)
     .layer(SecurityLayer::new());
 ```
 
@@ -432,4 +438,4 @@ Your support is welcome!
 
 ## License
 
-MIT
+Apache-2.0

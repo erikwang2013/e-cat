@@ -1,7 +1,9 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_registry::{Registration, Registry, RegistryError, ServiceInfo};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct EtcdRegistry {
@@ -9,6 +11,7 @@ pub struct EtcdRegistry {
     endpoints: Vec<String>,
     prefix: String,
     lease_ttl: u64,
+    keepalives: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
 }
 
 impl EtcdRegistry {
@@ -18,6 +21,7 @@ impl EtcdRegistry {
             endpoints,
             prefix: prefix.into(),
             lease_ttl: 30,
+            keepalives: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -31,6 +35,32 @@ impl EtcdRegistry {
             .first()
             .map(|s| s.as_str())
             .unwrap_or("http://127.0.0.1:2379")
+    }
+
+    /// 后台任务周期调用 lease keepalive，防止注册的租约过期被 etcd 回收。
+    /// 任务句柄按注册 id 保存，deregister 时 abort。
+    fn spawn_keepalive(&self, id: &str, lease_id: i64) {
+        let keepalive_url = format!("{}/v3/lease/keepalive", self.base_url());
+        let client = self.client.clone();
+        let interval_secs = (self.lease_ttl / 3).max(1);
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            // interval 首个 tick 立即触发，先消耗掉，避免注册后立刻续约
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                if let Err(e) = client
+                    .post(&keepalive_url)
+                    .json(&serde_json::json!({"ID": lease_id.to_string()}))
+                    .send()
+                    .await
+                {
+                    eprintln!("etcd lease keepalive failed: {e}");
+                }
+            }
+        });
+        self.keepalives.lock().unwrap().insert(id.to_string(), handle);
     }
 }
 
@@ -60,10 +90,14 @@ impl Registry for EtcdRegistry {
             .send()
             .await
             .map_err(|e| RegistryError::Other(format!("etcd put: {e}")))?;
+        self.spawn_keepalive(&id, lease_id);
         Ok(Registration::new(id, service, Arc::new(self.clone())))
     }
 
     async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
+        if let Some(handle) = self.keepalives.lock().unwrap().remove(id) {
+            handle.abort();
+        }
         // 注册键为 /ecat/services/{id}/{uuid}，用范围删除前缀匹配的所有实例键
         let prefix = format!("/ecat/services/{id}/");
         self.client
@@ -157,6 +191,7 @@ fn decode_b64_str(s: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn etcd_registry_constructs() {
@@ -169,5 +204,59 @@ mod tests {
         let encoded = b64(input);
         let decoded = decode_b64_str(&encoded).unwrap();
         assert_eq!(decoded, input);
+    }
+
+    /// mock etcd 的 lease/kv 端点：记录 keepalive 调用次数。
+    async fn spawn_mock_etcd() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        let keepalives = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ka = keepalives.clone();
+        let app = axum::Router::new()
+            .route(
+                "/v3/lease/grant",
+                axum::routing::post(|| async {
+                    axum::Json(serde_json::json!({"ID": "123"}))
+                }),
+            )
+            .route(
+                "/v3/kv/put",
+                axum::routing::post(|| async { axum::Json(serde_json::json!({"header": {}})) }),
+            )
+            .route(
+                "/v3/lease/keepalive",
+                axum::routing::post(move || async move {
+                    ka.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(serde_json::json!({"result": {"ID": "123"}}))
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{addr}"), keepalives)
+    }
+
+    #[tokio::test]
+    async fn register_keeps_lease_alive_until_deregister() {
+        let (base_url, keepalives) = spawn_mock_etcd().await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat").lease_ttl(3);
+        let registration = reg
+            .register(ServiceInfo::new("svc", "1.0"))
+            .await
+            .unwrap();
+
+        // lease_ttl=3 → 每 1 秒续约一次；等待首个 keepalive 到达
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while keepalives.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("keepalive never arrived");
+        assert!(keepalives.load(Ordering::SeqCst) >= 1);
+        assert!(!reg.keepalives.lock().unwrap().is_empty());
+
+        reg.deregister(&registration.id).await.unwrap();
+        assert!(reg.keepalives.lock().unwrap().is_empty());
     }
 }

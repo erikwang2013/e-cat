@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.2 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.3 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -137,7 +137,7 @@
 | 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
 | 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 |
-| 缓存 | Memcached | `ecat-data-memcached` | ✅ 已实现 |
+| 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 |
 | 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API |
 | 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
@@ -245,7 +245,13 @@ e-cat/
 ├── ecat-graphql/               # GraphQL endpoint
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-memcached/        # Memcached 缓存后端
+├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
+├── ecat-data-neo4j/            # Neo4j 图后端
+├── ecat-data-nebulagraph/      # NebulaGraph 图后端
+├── ecat-data-arangodb/         # ArangoDB 图后端
+├── ecat-data-iotdb/            # IoTDB 时序后端
+├── ecat-data-questdb/          # QuestDB 时序后端
 ├── ecat-transport-ws/          # WebSocket transport
 ├── ecat-versioning/            # API 版本路由
 ├── ecat-tls/                   # TLS 证书配置与自动生成
@@ -285,11 +291,11 @@ ecat new helloworld
 cd helloworld
 
 # 添加 proto 定义
-ecat proto add api/helloworld/helloworld.proto
+ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码
-ecat proto client api/helloworld/helloworld.proto
-ecat proto server api/helloworld/helloworld.proto -t internal/service
+# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service
 
 # 开发模式运行
 ecat run
@@ -340,7 +346,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 ```rust
 use tower::ServiceBuilder;
 use ecat_middleware::{RecoveryLayer, TracingLayer, LoggingLayer, TimeoutLayer};
+use ecat_circuit_breaker::CircuitBreakerLayer;
+use ecat_security::SecurityLayer;
+use ecat_auth::JwtAuthLayer;
 use std::time::Duration;
+
+// JWT 密钥需 ≥32 字节
+let jwt = JwtAuthLayer::new("change-me-32-bytes-minimum-secret").expect("valid jwt secret");
 
 let layer = ServiceBuilder::new()
     .layer(RecoveryLayer)
@@ -348,7 +360,7 @@ let layer = ServiceBuilder::new()
     .layer(LoggingLayer)
     .layer(TimeoutLayer::new(Duration::from_secs(30)))
     .layer(CircuitBreakerLayer::new())
-    .layer(JwtAuthLayer::new("my-secret-key"))
+    .layer(jwt)
     .layer(SecurityLayer::new());
 ```
 
@@ -439,4 +451,4 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 
 ## 许可证
 
-MIT
+Apache-2.0

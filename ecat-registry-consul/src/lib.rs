@@ -57,12 +57,27 @@ impl Registry for ConsulRegistry {
             .to_string();
         let port = endpoint.and_then(|e| extract_port(e));
 
+        // 有地址和端口时注册 HTTP 健康检查，Consul 据此判定实例存活
+        let check = port.map(|p| {
+            // IPv6 地址需加方括号才能组成合法 URL 主机
+            let host = if address.contains(':') {
+                format!("[{address}]")
+            } else {
+                address.clone()
+            };
+            ConsulHealthCheck {
+                http: format!("http://{host}:{p}/health"),
+                interval: "10s".into(),
+                timeout: "3s".into(),
+            }
+        });
+
         let req = ConsulRegisterRequest {
             id: id.clone(),
             name: service.name.clone(),
             address,
             port,
-            check: None,
+            check,
         };
 
         let url = format!("{}/v1/agent/service/register", self.base_url);
@@ -110,8 +125,10 @@ impl Registry for ConsulRegistry {
 
     async fn discover(&self, name: &str) -> Result<Vec<ServiceInfo>, RegistryError> {
         let url = format!(
-            "{}/v1/health/service/{name}?dc={}&passing=true",
-            self.base_url, self.datacenter
+            "{}/v1/health/service/{}?dc={}&passing=true",
+            self.base_url,
+            percent_encode_segment(name),
+            percent_encode_segment(&self.datacenter)
         );
         let mut builder = self.client.get(&url);
         for (k, v) in self.headers() {
@@ -236,6 +253,23 @@ struct ConsulHealthCheck {
     http: String,
     #[serde(rename = "Interval")]
     interval: String,
+    #[serde(rename = "Timeout")]
+    timeout: String,
+}
+
+/// Percent-encode a single URL path segment (RFC 3986): every byte except
+/// unreserved characters (`A-Z a-z 0-9 - _ . ~`) becomes `%XX`.
+fn percent_encode_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 #[derive(Debug, Deserialize)]
@@ -348,5 +382,38 @@ mod tests {
         let reg = ConsulRegistry::new(base_url);
         let services = reg.discover("api").await.unwrap();
         assert_eq!(services[0].endpoints, vec!["http://10.0.0.9:9000"]);
+    }
+
+    #[tokio::test]
+    async fn register_sends_health_check() {
+        let seen = Arc::new(std::sync::Mutex::new(None::<serde_json::Value>));
+        let s = seen.clone();
+        let app = axum::Router::new().route(
+            "/v1/agent/service/register",
+            axum::routing::put(move |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                *s.lock().unwrap() = Some(body);
+                axum::http::StatusCode::OK
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let reg = ConsulRegistry::new(format!("http://{addr}"));
+        let service = ServiceInfo::new("web", "1.0").with_endpoint("http://10.0.0.5:8080");
+        let _registration = reg.register(service).await.unwrap();
+
+        let body = seen.lock().unwrap().take().expect("register body");
+        let check = body.get("Check").expect("health check");
+        assert_eq!(check["HTTP"], "http://10.0.0.5:8080/health");
+        assert_eq!(check["Interval"], "10s");
+        assert_eq!(check["Timeout"], "3s");
+    }
+
+    #[test]
+    fn percent_encode_segment_encodes_reserved_chars() {
+        assert_eq!(percent_encode_segment("api/v2"), "api%2Fv2");
+        assert_eq!(percent_encode_segment("my dc"), "my%20dc");
     }
 }

@@ -1,21 +1,81 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use axum::extract::{Request, State};
+use axum::http::StatusCode;
+use axum::response::Response;
+use axum::Router;
 use ecat_transport::Server;
-use std::sync::Arc;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
+
+#[derive(Debug, Clone)]
+pub struct MockRequest {
+    pub method: String,
+    pub path: String,
+    pub body: String,
+    pub headers: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MockResponse {
+    pub status: u16,
+    pub body: String,
+    pub content_type: &'static str,
+}
+
+impl Default for MockResponse {
+    fn default() -> Self {
+        Self {
+            status: 200,
+            body: String::new(),
+            content_type: "text/plain",
+        }
+    }
+}
+
+struct MockState {
+    running: AtomicBool,
+    response: RwLock<MockResponse>,
+    requests: Mutex<Vec<MockRequest>>,
+}
 
 pub struct MockServer {
-    running: Arc<AtomicBool>,
+    state: Arc<MockState>,
+    handle: Mutex<Option<JoinHandle<()>>>,
+    addr: Mutex<Option<SocketAddr>>,
 }
 
 impl MockServer {
     pub fn new() -> Self {
         Self {
-            running: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(MockState {
+                running: AtomicBool::new(false),
+                response: RwLock::new(MockResponse::default()),
+                requests: Mutex::new(Vec::new()),
+            }),
+            handle: Mutex::new(None),
+            addr: Mutex::new(None),
         }
     }
     pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
+        self.state.running.load(Ordering::SeqCst)
+    }
+    /// Address the mock server is bound to (available after `start`).
+    pub fn url(&self) -> Option<SocketAddr> {
+        *self.addr.lock().unwrap()
+    }
+    /// Preset the response body and status code for subsequent requests.
+    pub fn set_response(&self, status: u16, body: impl Into<String>) {
+        let mut resp = self.state.response.write().unwrap();
+        resp.status = status;
+        resp.body = body.into();
+    }
+    /// Requests received since the server started.
+    pub fn received_requests(&self) -> Vec<MockRequest> {
+        self.state.requests.lock().unwrap().clone()
     }
 }
 
@@ -28,13 +88,59 @@ impl Default for MockServer {
 #[async_trait]
 impl Server for MockServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.running.store(true, Ordering::SeqCst);
+        if self.is_running() {
+            return Ok(());
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let state = Arc::clone(&self.state);
+        let router = Router::new().fallback(handler).with_state(state);
+        let handle = tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        self.state.running.store(true, Ordering::SeqCst);
+        *self.handle.lock().unwrap() = Some(handle);
+        *self.addr.lock().unwrap() = Some(addr);
         Ok(())
     }
     async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.running.store(false, Ordering::SeqCst);
+        if let Some(handle) = self.handle.lock().unwrap().take() {
+            handle.abort();
+        }
+        self.state.running.store(false, Ordering::SeqCst);
         Ok(())
     }
+}
+
+async fn handler(State(state): State<Arc<MockState>>, req: Request) -> Response {
+    let (parts, body) = req.into_parts();
+    let body_bytes = axum::body::to_bytes(body, 1 << 20).await.unwrap_or_default();
+    let mut headers = Vec::new();
+    for (name, value) in &parts.headers {
+        if let Ok(value) = value.to_str() {
+            headers.push((name.as_str().to_string(), value.to_string()));
+        }
+    }
+    state.requests.lock().unwrap().push(MockRequest {
+        method: parts.method.to_string(),
+        path: parts.uri.path().to_string(),
+        body: String::from_utf8_lossy(&body_bytes).into_owned(),
+        headers,
+    });
+    let resp = state.response.read().unwrap().clone();
+    let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let mut builder = Response::builder().status(status);
+    if !resp.content_type.is_empty() {
+        builder = builder.header("content-type", resp.content_type);
+    }
+    builder
+        .body(axum::body::Body::from(resp.body))
+        .unwrap_or_else(|e| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::from(e.to_string()))
+                .unwrap()
+        })
 }
 
 pub struct ChaosConfig {
@@ -123,8 +229,46 @@ mod tests {
         let srv = MockServer::new();
         srv.start().await.unwrap();
         assert!(srv.is_running());
+        assert!(srv.url().is_some());
         srv.stop().await.unwrap();
         assert!(!srv.is_running());
+    }
+
+    async fn http_get(addr: SocketAddr, path: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let req = format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+        stream.write_all(req.as_bytes()).await.unwrap();
+        let mut buf = Vec::new();
+        stream.read_to_end(&mut buf).await.unwrap();
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[tokio::test]
+    async fn mock_server_serves_requests() {
+        let srv = MockServer::new();
+        srv.start().await.unwrap();
+        srv.set_response(200, "hello mock");
+        let raw = http_get(srv.url().unwrap(), "/health").await;
+        assert!(raw.starts_with("HTTP/1.1 200"), "raw: {raw}");
+        assert!(raw.contains("hello mock"));
+        let reqs = srv.received_requests();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].method, "GET");
+        assert_eq!(reqs[0].path, "/health");
+        srv.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn mock_server_custom_status() {
+        let srv = MockServer::new();
+        srv.start().await.unwrap();
+        srv.set_response(404, "not found");
+        let raw = http_get(srv.url().unwrap(), "/missing").await;
+        assert!(raw.starts_with("HTTP/1.1 404"), "raw: {raw}");
+        assert!(raw.contains("not found"));
+        assert_eq!(srv.received_requests().len(), 1);
+        srv.stop().await.unwrap();
     }
 
     #[test]

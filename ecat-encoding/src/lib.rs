@@ -106,6 +106,14 @@ mod tests {
 
     // --- ProtoCodec ---
 
+    #[derive(Clone, PartialEq, prost::Message)]
+    struct ProtoPayload {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        count: u32,
+    }
+
     #[test]
     fn proto_codec_encode_returns_error() {
         let payload = TestPayload {
@@ -113,6 +121,25 @@ mod tests {
             count: 1,
         };
         let result = proto::ProtoCodec.encode(&payload);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn proto_codec_encode_message_roundtrip() {
+        let codec = proto::ProtoCodec;
+        let payload = ProtoPayload {
+            name: "proto-test".into(),
+            count: 42,
+        };
+        let bytes = codec.encode_message(&payload).unwrap();
+        let decoded: ProtoPayload = codec.decode_message(&bytes).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn proto_codec_decode_message_rejects_garbage() {
+        let codec = proto::ProtoCodec;
+        let result: Result<ProtoPayload, _> = codec.decode_message(b"\xff\xff\xff");
         assert!(result.is_err());
     }
 

@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.3.3] — 2026-08-07
+
+### Added
+- mTLS 接入 transport：`HttpServer::tls` / `GrpcServer::tls` 真正生效（tokio-rustls / tonic rustls，支持 CA 校验与强制客户端证书），附自签证书握手测试
+- `ecat-cli` proto 子命令真实实现：`proto add` 创建 proto 文件；`proto client/server` 生成 tonic-build `build.rs` 并自动补齐 Cargo.toml 依赖
+- `ecat run --watch`：unix 下按进程组终止服务（libc::kill），修复服务二进制成孤儿占端口
+- `ecat upgrade`：真实批量升级 ecat-* 依赖版本（改写 Cargo.toml 版本要求 + cargo update）
+- `ecat new` 模板：ecat-* 依赖版本与当前版本一致（原硬编码 1.0）
+- `ecat-testing` MockServer：真实 axum mock（set_response / received_requests），不再仅翻转布尔标志
+- Dockerfile：CMD 改为运行示例服务（helloworld），新增 .dockerignore
+
+### Fixed
+- `ecat` App::run()：已有 tracing subscriber 时跳过 `ecat_logging::init()`，修复与 ecat-tracing / ecat-tracing-otlp 的 init 冲突
+- `ecat-tracing`：inject/extract 头名统一为 `x-ecat-trace-id`（与 ecat-metadata 一致），trace_id 改用 uuid 生成，TracingLayer span 注入 trace_id
+- `ecat-circuit-breaker`：half-open 探活成功后清空滑动窗口，修复闭环后旧失败率立刻再次触发 open
+- `ecat-transport-ws`：实现 stop()（关闭信号 + 等待结束），修复 App 关闭时挂起
+- `ecat-middleware` 限流：内存/Redis store 放行语义统一（`>=` → `>`）；超限响应状态码 429
+- `ecat-security`：攻击拦截响应按 `to_http_status` 映射（403）
+- `ecat-auth` OAuth2：introspect 结果按 cache_ttl 缓存，不再每请求打 introspection
+- `ecat-encoding` ProtoCodec：真实 prost encode/decode（原恒返回 Err）
+- `ecat-transport`：删除无引用的 Request/Response/Context 死代码
+- `ecat-data-redis`：Cache 补齐 increment（INCRBY）/ ttl（TTL）/ multi_get（MGET）
+- `ecat-registry-etcd`：注册后后台 keepalive 续约（lease_ttl/3 周期），修复 30s 注册自动失效；deregister 取消续约
+- `ecat-registry-consul`：register 附带 HTTP 健康检查（/health，10s 间隔）；discover 路径参数 URL 编码
+- `ecat-data-influxdb` / `ecat-data-questdb`：query 增加 HTTP 状态码检查，错误不再静默吞掉
+- `ecat-data-nebulagraph`：params 非空返回明确错误（不再静默丢弃）
+- `ecat-data-tdengine` / `ecat-data-arangodb`：URL 路径段 percent-encoding
+- `ecat-events`：remote 模式真实订阅——后台消费循环按事件类型分发到本地 handler（无回环重复）
+- `ecat-graphql`：轻量解析器重写（嵌套字段/括号配对/字符串字面量/指令跳过），失败返回明确错误
+- `ecat-bench`：修复请求数整除截断与空样本 p50/p99 越界 panic
+
+### Docs
+- README×2 同步 v2.3.3；许可证统一 Apache-2.0（与全部 Cargo.toml 一致）
+- README 中间件示例修复（补 CircuitBreakerLayer / SecurityLayer 导入、JWT 密钥 ≥32 字节）
+- 数据库表：Memcached 标注 ⚠️ 内存实现（非生产）
+- 项目结构树补齐 6 个数据后端 crate
+- CLI 快速开始对齐 proto/ 目录实际行为
+- Helm `appVersion` 同步 2.3.3
+- 支付码图片底部边界扩展并添加水印 https://erik.xyz
+
 ## [2.3.2] — 2026-08-07
 
 ### Fixed

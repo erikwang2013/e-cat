@@ -56,6 +56,13 @@ impl SlidingWindow {
             self.window_start = Instant::now();
         }
     }
+
+    /// 清空窗口计数并重置窗口起点。
+    fn clear(&mut self) {
+        self.successes = 0;
+        self.failures = 0;
+        self.window_start = Instant::now();
+    }
 }
 
 struct BreakerInner {
@@ -219,6 +226,8 @@ where
                         tracing::info!("circuit breaker: half-open → closed");
                         breaker.state = State::Closed;
                         breaker.opened_at = None;
+                        // 清空窗口，否则旧的高失败率会立即再次触发 open。
+                        breaker.window.clear();
                     } else {
                         tracing::warn!("circuit breaker: half-open → open (probe failed)");
                         breaker.state = State::Open;
@@ -272,5 +281,66 @@ mod tests {
         w.record(false);
         assert_eq!(w.total(), 3);
         assert!((w.failure_ratio() - 1.0 / 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn sliding_window_clear_resets_counters() {
+        let mut w = SlidingWindow::new(Duration::from_secs(60));
+        w.record(false);
+        w.record(false);
+        assert_eq!(w.failure_ratio(), 1.0);
+        w.clear();
+        assert_eq!(w.total(), 0);
+        assert_eq!(w.failure_ratio(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn half_open_success_resets_window_so_breaker_stays_closed() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tower::ServiceExt;
+
+        // 50% 失败率即 open；窗口足够短以便触发 open → half-open → closed 流程。
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(10))
+            .open_duration(Duration::from_millis(10))
+            .half_open_probes(3);
+
+        let healthy = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&healthy);
+        let svc_fn = tower::service_fn(move |_: String| {
+            let flag = Arc::clone(&flag);
+            async move {
+                if flag.load(Ordering::SeqCst) {
+                    Ok::<String, std::io::Error>("ok".to_string())
+                } else {
+                    Err(std::io::Error::other("fail"))
+                }
+            }
+        });
+        let svc = layer.layer(svc_fn);
+
+        // 5 次失败 → closed → open
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        {
+            let b = svc.breaker.lock().unwrap();
+            assert_eq!(b.state, State::Open);
+        }
+
+        // 等待 open 超时进入 half-open，然后成功探活。
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        healthy.store(true, Ordering::SeqCst);
+        let _ = svc.clone().oneshot("x".to_string()).await;
+        {
+            let mut b = svc.breaker.lock().unwrap();
+            assert_eq!(b.state, State::Closed);
+            assert_eq!(
+                b.window.total(),
+                0,
+                "window must be cleared after half-open success"
+            );
+        }
     }
 }

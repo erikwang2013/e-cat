@@ -1289,6 +1289,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
  "tower 0.5.3",
  "tracing",
 ]
@@ -1304,6 +1305,7 @@ dependencies = [
 name = "ecat-circuit-breaker"
 version = "2.3.3"
 dependencies = [
+ "tokio",
  "tower 0.5.3",
  "tracing",
 ]
@@ -1313,6 +1315,7 @@ name = "ecat-cli"
 version = "2.3.3"
 dependencies = [
  "clap",
+ "libc",
  "notify",
  "serde_json",
 ]
@@ -1410,6 +1413,7 @@ name = "ecat-data-influxdb"
 version = "2.3.3"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
  "ecat-tls",
  "reqwest",
@@ -1500,6 +1504,7 @@ name = "ecat-data-questdb"
 version = "2.3.3"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
  "ecat-tls",
  "reqwest",
@@ -1776,6 +1781,7 @@ name = "ecat-registry-etcd"
 version = "2.3.3"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "base64",
  "ecat-registry",
  "reqwest",
@@ -1810,6 +1816,7 @@ name = "ecat-testing"
 version = "2.3.3"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-transport",
  "tokio",
 ]
@@ -1828,10 +1835,12 @@ dependencies = [
 name = "ecat-tracing"
 version = "2.3.3"
 dependencies = [
+ "ecat-metadata",
  "http 1.4.2",
  "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1866,8 +1875,12 @@ name = "ecat-transport-grpc"
 version = "2.3.3"
 dependencies = [
  "async-trait",
+ "ecat-tls",
  "ecat-transport",
+ "rustls",
+ "rustls-pemfile",
  "tokio",
+ "tokio-rustls",
  "tonic",
 ]
 
@@ -1878,8 +1891,12 @@ dependencies = [
  "async-trait",
  "axum 0.8.9",
  "ecat-metrics",
+ "ecat-tls",
  "ecat-transport",
+ "rustls",
+ "rustls-pemfile",
  "tokio",
+ "tokio-rustls",
  "tower 0.5.3",
  "tracing",
 ]
@@ -5770,8 +5787,10 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
+ "rustls-pemfile",
  "socket2 0.5.10",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tower 0.4.13",
  "tower-layer",

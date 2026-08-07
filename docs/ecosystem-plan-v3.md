@@ -1,5 +1,7 @@
 # e-cat 生态规划 v3 — 最终评估
 
+> **更新（2026-08-07, v2.3.3）**: 剩余缺口 #1「mTLS 接入 transport」已完成——`HttpServer::tls` / `GrpcServer::tls` 基于 tokio-rustls / tonic rustls 真实生效（支持 CA 校验与强制客户端证书）；缺口 #2（Redis 限流）、#3（GitLab CI）此前已随 v2.3.0 完成。规划所列缺口至此全部落地。
+
 **版本:** 2.1.7  
 **日期:** 2026-08-01  
 **crate 总数:** 47 · 全部规划已完成

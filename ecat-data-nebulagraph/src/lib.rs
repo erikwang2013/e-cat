@@ -72,8 +72,13 @@ impl GraphClient for NebulaGraphClient {
     async fn execute(
         &self,
         ngql: &str,
-        _params: &serde_json::Value,
+        params: &serde_json::Value,
     ) -> Result<serde_json::Value, GraphError> {
+        if !params.is_null() {
+            return Err(GraphError::Other(
+                "params not supported".to_string(),
+            ));
+        }
         let req = self
             .client
             .post(format!("{}/api/ngql/execute", self.base_url))
@@ -108,5 +113,15 @@ mod tests {
         ).unwrap();
         let client = NebulaGraphClient::from_config(cfg).unwrap();
         assert!(client.username.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_rejects_params() {
+        let client = NebulaGraphClient::new("http://localhost:19669", "test_space");
+        let err = client
+            .execute("SHOW SPACES", &serde_json::json!({"limit": 5}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("params not supported"));
     }
 }

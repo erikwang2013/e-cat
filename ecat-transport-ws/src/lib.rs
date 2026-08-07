@@ -16,6 +16,8 @@ pub struct WsServer {
     addr: String,
     path: String,
     handler: Option<WsHandler>,
+    shutdown_tx: std::sync::Mutex<Option<tokio::sync::watch::Sender<()>>>,
+    serve_task: std::sync::Mutex<Option<tokio::task::JoinHandle<std::io::Result<()>>>>,
 }
 
 impl WsServer {
@@ -24,6 +26,8 @@ impl WsServer {
             addr: addr.into(),
             path: "/ws".into(),
             handler: None,
+            shutdown_tx: std::sync::Mutex::new(None),
+            serve_task: std::sync::Mutex::new(None),
         }
     }
 
@@ -52,11 +56,39 @@ impl TransportServer for WsServer {
         );
 
         let listener = TcpListener::bind(&self.addr).await?;
-        axum::serve(listener, app).await?;
+        let (tx, mut rx) = tokio::sync::watch::channel(());
+        *self.shutdown_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        let shutdown_signal = async move {
+            let _ = rx.changed().await;
+        };
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_signal)
+                .await
+        });
+        *self.serve_task.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
         Ok(())
     }
 
     async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(tx) = self
+            .shutdown_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            let _ = tx.send(());
+        }
+        let handle = self
+            .serve_task
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(handle) = handle {
+            handle
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)??;
+        }
         Ok(())
     }
 }
