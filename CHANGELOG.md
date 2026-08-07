@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.2] — 2026-08-07
+
+### Fixed
+- `ecat-mq` InMemoryMq：`poll_recv` 改用 `Arc<Notify>` 唤醒（`OwnedNotified`），修复空队列时的忙等自旋
+- `ecat-middleware` 限流：默认 key 优先取 `ConnectInfo` 客户端地址，不再信任可伪造的转发头
+- `ecat-transport-http`：用户 router 与内置 `/metrics` 路径冲突时捕获 panic 并降级为用户路由（原直接 panic）
+- `ecat-data-sqlx`：Blob/BYTEA 列以 base64 字符串返回（原静默变 Null）；NaN/Inf 浮点转为字符串；Any 驱动不支持时间类型，fetch 时报错而非静默（调用方需 CAST 成文本）
+- `ecat-data-clickhouse`：`write` 按 measurement 分组改为引用传递，消除全量点克隆
+- `ecat-config-remote`：watch 首帧强制推送（兼容缺 X-Consul-Index 服务器）；缺 index 时 1s 退避防紧循环；阻塞查询响应缺失 X-Consul-Index 视为错误
+- `ecat-registry-consul`：discover 支持 IPv6 地址（方括号）与 `https` service tag 自动切换 scheme
+
 ## [2.3.1] — 2026-08-06
 
 ### Fixed

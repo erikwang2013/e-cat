@@ -115,13 +115,18 @@ impl ConsulConfigSource {
                 match source.fetch(index.as_deref()).await {
                     Ok((map, new_index)) => {
                         // 首帧（index=None）强制推送：兼容缺失 X-Consul-Index 的服务器，
-                        // 否则 None != None 恒为 false 会丢首帧并形成无退避的紧循环。
-                        if index.as_deref() != new_index.as_deref() || index.is_none() {
-                            if tx.send(Ok(map)).await.is_err() {
-                                break; // receiver dropped
-                            }
+                        // 否则 None != None 恒为 false 会丢首帧。
+                        if (index.as_deref() != new_index.as_deref() || index.is_none())
+                            && tx.send(Ok(map)).await.is_err()
+                        {
+                            break; // receiver dropped
                         }
                         index = new_index;
+                        // 服务器不发送 X-Consul-Index 时无法做阻塞查询：fetch 立即返回
+                        // 且 index 恒为 None，不加退避就会高速重复推送（紧循环）。
+                        if index.is_none() {
+                            tokio::time::sleep(Duration::from_secs(WATCH_RETRY_DELAY_SECS)).await;
+                        }
                     }
                     Err(e) => {
                         if tx.send(Err(e)).await.is_err() {
@@ -170,6 +175,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::sync::watch;
 
+    /// mock Consul 的 watch 状态：(index, KV entries)
+    type MockConsulState = (u64, Vec<(String, String)>);
+
     #[test]
     fn consul_source_constructs() {
         let _src = ConsulConfigSource::new("http://consul:8500", "app/config").token("secret");
@@ -183,7 +191,7 @@ mod tests {
         assert_eq!(String::from_utf8(result).unwrap(), "hello");
     }
 
-    async fn spawn_mock_consul() -> (String, watch::Sender<(u64, Vec<(String, String)>)>) {
+    async fn spawn_mock_consul() -> (String, watch::Sender<MockConsulState>) {
         let (tx, rx) =
             watch::channel((1u64, vec![("app/key".to_string(), "{\"a\":1}".to_string())]));
         let app = axum::Router::new()
@@ -198,7 +206,7 @@ mod tests {
     }
 
     async fn kv_handler(
-        State(mut rx): State<watch::Receiver<(u64, Vec<(String, String)>)>>,
+        State(mut rx): State<watch::Receiver<MockConsulState>>,
         axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
     ) -> axum::response::Response {
         let requested: u64 = params
@@ -292,7 +300,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(second.get("key2"), Some(&serde_json::json!({"b": 2})));
-        assert!(second.get("key").is_none());
+        assert!(!second.contains_key("key"));
     }
 
     #[tokio::test]
@@ -308,6 +316,68 @@ mod tests {
         // 状态不变：服务器 1s 后返回同 index，不应推送
         let result = tokio::time::timeout(Duration::from_millis(2000), rx.recv()).await;
         assert!(result.is_err(), "no message expected on same index");
+    }
+
+    /// 不发送 X-Consul-Index 的 mock：模拟不支持索引的服务器。
+    async fn spawn_mock_consul_no_index() -> String {
+        let app =
+            axum::Router::new().route("/v1/kv/{prefix}", axum::routing::get(no_index_kv_handler));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    async fn no_index_kv_handler() -> axum::response::Response {
+        // 只有 body，没有任何 X-Consul-Index 响应头
+        kv_response_without_index(1u64, &[("app/key".to_string(), "{\"a\":1}".to_string())])
+    }
+
+    fn kv_response_without_index(
+        _cur_idx: u64,
+        entries: &[(String, String)],
+    ) -> axum::response::Response {
+        let body: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|(k, v)| {
+                serde_json::json!({
+                    "Key": k,
+                    "Value": base64::engine::general_purpose::STANDARD.encode(v),
+                })
+            })
+            .collect();
+        axum::response::Response::new(axum::body::Body::from(
+            serde_json::to_string(&body).unwrap(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn watch_without_index_first_frame_then_backoff() {
+        let base_url = spawn_mock_consul_no_index().await;
+        let source = ConsulConfigSource::new(base_url, "app");
+        let mut rx = source.watch();
+
+        // 首帧必须推送（否则数据永远拿不到）
+        let first = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .expect("first frame timed out")
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.get("key"), Some(&serde_json::json!({"a": 1})));
+
+        // 缺 X-Consul-Index 时应有 1s 退避：500ms 内不应有第二帧（紧循环保护）
+        let result = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await;
+        assert!(result.is_err(), "no message expected during backoff");
+
+        // 退避后应收到第二帧（轮询语义：服务器数据仍在推送）
+        let second = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .expect("second frame timed out")
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.get("key"), Some(&serde_json::json!({"a": 1})));
     }
 
     #[tokio::test]

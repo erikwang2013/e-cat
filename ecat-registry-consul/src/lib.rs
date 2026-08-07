@@ -139,7 +139,20 @@ impl Registry for ConsulRegistry {
             .into_iter()
             .map(|e| {
                 let addr = e.service.address.as_deref().unwrap_or(&e.node.address);
-                let endpoint = format!("http://{addr}:{}", e.service.port);
+                // IPv6 字面量需加方括号才能组成合法 URL 主机
+                let host = if addr.contains(':') {
+                    format!("[{addr}]")
+                } else {
+                    addr.to_string()
+                };
+                // 服务带 "https" tag 时用 https 协议；Consul 无原生协议字段，
+                // 以显式 tag 为准（缺省 http）。
+                let scheme = if e.service.tags.iter().any(|t| t == "https") {
+                    "https"
+                } else {
+                    "http"
+                };
+                let endpoint = format!("{scheme}://{host}:{}", e.service.port);
                 // Consul has no native version field; parse it from a
                 // "version=x" service tag when present, else leave it empty.
                 let version = e
@@ -167,6 +180,11 @@ impl Registry for ConsulRegistry {
             .await
             .map_err(|e| RegistryError::Other(format!("consul list: {e}")))?;
 
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RegistryError::Other(format!("consul list failed: {body}")));
+        }
+
         let services: HashMap<String, ConsulServiceEntry> = resp
             .json()
             .await
@@ -177,19 +195,23 @@ impl Registry for ConsulRegistry {
 }
 
 fn extract_host(endpoint: &str) -> &str {
-    endpoint
+    let rest = endpoint
         .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .split(':')
-        .next()
-        .unwrap_or("127.0.0.1")
+        .trim_start_matches("https://");
+    // IPv6 字面量形如 [::1]:8080：取方括号内部分
+    if let Some(rest) = rest.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or("127.0.0.1");
+    }
+    rest.split(':').next().unwrap_or("127.0.0.1")
 }
 
 fn extract_port(endpoint: &str) -> Option<u32> {
     endpoint
         .rsplit(':')
         .next()
-        .and_then(|p| p.trim_end_matches('/').parse().ok())
+        // 丢弃路径段（如 :8080/health），仅保留端口数字
+        .and_then(|p| p.split('/').next())
+        .and_then(|p| p.parse().ok())
 }
 
 // ── Consul API types ──
@@ -263,5 +285,68 @@ mod tests {
     fn consul_registry_clone() {
         let reg = ConsulRegistry::new("http://localhost:8500");
         let _reg2 = reg.clone();
+    }
+
+    #[test]
+    fn extract_host_ipv4() {
+        assert_eq!(extract_host("http://10.0.0.5:8080"), "10.0.0.5");
+        assert_eq!(extract_host("https://example.com:443"), "example.com");
+        assert_eq!(extract_host("http://10.0.0.5:8080/health"), "10.0.0.5");
+    }
+
+    #[test]
+    fn extract_host_ipv6_literal() {
+        assert_eq!(extract_host("http://[::1]:8080"), "::1");
+        assert_eq!(extract_host("https://[2001:db8::1]:443"), "2001:db8::1");
+        assert_eq!(extract_host("http://[::1]"), "::1");
+    }
+
+    #[test]
+    fn extract_port_ipv6() {
+        assert_eq!(extract_port("http://[::1]:8080"), Some(8080));
+        assert_eq!(extract_port("http://[::1]:8080/health"), Some(8080));
+        assert_eq!(extract_port("http://[::1]"), None);
+    }
+
+    /// mock Consul 的 /v1/health/service/<name> 端点，返回给定 JSON 文本。
+    async fn spawn_mock_health(body: &'static str) -> String {
+        let app = axum::Router::new().route(
+            "/v1/health/service/{name}",
+            axum::routing::get(move || async move {
+                axum::response::Response::new(axum::body::Body::from(body))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn discover_uses_https_tag_and_brackets_ipv6() {
+        let body = r#"[
+            {"Node":{"Address":"10.0.0.5"},
+             "Service":{"Service":"web","Address":"2001:db8::1","Port":8443,"Tags":["version=2.0","https"]}}
+        ]"#;
+        let base_url = spawn_mock_health(body).await;
+        let reg = ConsulRegistry::new(base_url);
+        let services = reg.discover("web").await.unwrap();
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].endpoints, vec!["https://[2001:db8::1]:8443"]);
+        assert_eq!(services[0].version, "2.0");
+    }
+
+    #[tokio::test]
+    async fn discover_defaults_to_http() {
+        let body = r#"[
+            {"Node":{"Address":"10.0.0.5"},
+             "Service":{"Service":"api","Address":"10.0.0.9","Port":9000,"Tags":[]}}
+        ]"#;
+        let base_url = spawn_mock_health(body).await;
+        let reg = ConsulRegistry::new(base_url);
+        let services = reg.discover("api").await.unwrap();
+        assert_eq!(services[0].endpoints, vec!["http://10.0.0.9:9000"]);
     }
 }

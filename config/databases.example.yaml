@@ -1,4 +1,4 @@
-# e-cat 数据库配置示例 — v2.3.1
+# e-cat 数据库配置示例 — v2.3.2
 #
 # 每个数据库后端都有 XxxConfig + from_config() 方法。
 # username / password / tls 均为可选字段，省略则跳过。

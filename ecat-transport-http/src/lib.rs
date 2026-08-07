@@ -47,12 +47,21 @@ fn normalize_addr(addr: String) -> String {
 
 impl HttpServer {
     /// 用户 router 与内置 /metrics 端点合并。
-    /// /metrics 为框架保留路径：用户 router 若也定义该路径，merge 会 panic。
+    /// /metrics 为框架保留路径：用户 router 若也定义该路径，merge 会 panic，
+    /// 此时捕获 panic、记录 warn 并降级为用户 router（不挂 /metrics）。
     fn merged_router(&self) -> Router {
-        self.router
-            .clone()
-            .unwrap_or_default()
-            .merge(ecat_metrics::metrics_router())
+        let user = self.router.clone().unwrap_or_default();
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            user.clone().merge(ecat_metrics::metrics_router())
+        })) {
+            Ok(merged) => merged,
+            Err(_) => {
+                tracing::warn!(
+                    "user router defines /metrics; serving user route, framework metrics disabled"
+                );
+                user
+            }
+        }
     }
 }
 
@@ -134,5 +143,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn user_metrics_route_wins_without_panic() {
+        use tower::ServiceExt;
+        async fn user_metrics() -> impl IntoResponse {
+            "user-metrics"
+        }
+        let router = Router::new().route("/metrics", get(user_metrics));
+        let srv = HttpServer::new("127.0.0.1:0").router(router);
+        let resp = srv
+            .merged_router()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+        assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "user-metrics");
     }
 }

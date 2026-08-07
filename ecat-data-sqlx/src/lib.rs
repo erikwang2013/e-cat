@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use base64::Engine as _;
 use ecat_data::{RdbmsClient, RdbmsError, Row, TransactionInner};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
@@ -69,6 +70,64 @@ impl SqlxClient {
     }
 }
 
+/// 单格类型转换链：bool → i64 → i32 → f64（NaN/Inf 转字符串）→ String →
+/// Blob（base64）。此前 Blob/BYTEA 列会静默落到 Null。
+/// 注意：sqlx Any 驱动不支持时间类型，timestamp 列会在 fetch 时直接报错
+/// （AnyDriverError），不会静默——调用方可自行 CAST 成文本。
+fn cell_to_json(row: &AnyRow, col: &str) -> serde_json::Value {
+    row.try_get::<bool, _>(col)
+        .map(serde_json::Value::Bool)
+        .or_else(|_| {
+            row.try_get::<i64, _>(col)
+                .map(|n| serde_json::Value::Number(n.into()))
+        })
+        .or_else(|_| {
+            row.try_get::<i32, _>(col)
+                .map(|n| serde_json::Value::Number((n as i64).into()))
+        })
+        .or_else(|_| {
+            row.try_get::<f64, _>(col)
+                .ok()
+                .and_then(|n| {
+                    if n.is_finite() {
+                        serde_json::Number::from_f64(n).map(serde_json::Value::Number)
+                    } else if n.is_nan() {
+                        Some(serde_json::Value::String("NaN".into()))
+                    } else if n > 0.0 {
+                        Some(serde_json::Value::String("Infinity".into()))
+                    } else {
+                        Some(serde_json::Value::String("-Infinity".into()))
+                    }
+                })
+                .ok_or(())
+        })
+        .or_else(|_| row.try_get::<String, _>(col).map(serde_json::Value::String))
+        .or_else(|_| {
+            row.try_get::<Vec<u8>, _>(col).map(|b| {
+                serde_json::Value::String(base64::engine::general_purpose::STANDARD.encode(b))
+            })
+        })
+        .unwrap_or(serde_json::Value::Null)
+}
+
+fn rows_to_result(rows: Vec<AnyRow>) -> Vec<Row> {
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    let columns: Vec<String> = rows[0]
+        .columns()
+        .iter()
+        .map(|c| c.name().to_string())
+        .collect();
+    rows.iter()
+        .map(|row| {
+            let values: Vec<serde_json::Value> =
+                columns.iter().map(|col| cell_to_json(row, col)).collect();
+            Row::new(columns.clone(), values)
+        })
+        .collect()
+}
+
 #[async_trait]
 impl RdbmsClient for SqlxClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
@@ -84,64 +143,7 @@ impl RdbmsClient for SqlxClient {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| RdbmsError::Database(e.to_string()))?;
-
-        if rows.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect();
-
-        let result = rows
-            .iter()
-            .map(|row| {
-                let values: Vec<serde_json::Value> = columns
-                    .iter()
-                    .map(|col| {
-                        // Try common DB types: bool → i64 → f64 → String → Null
-                        row.try_get::<bool, _>(col.as_str())
-                            .map(serde_json::Value::Bool)
-                            .or_else(|_| {
-                                row.try_get::<i64, _>(col.as_str())
-                                    .map(|n| serde_json::Value::Number(n.into()))
-                            })
-                            .or_else(|_| {
-                                row.try_get::<i32, _>(col.as_str())
-                                    .map(|n| serde_json::Value::Number((n as i64).into()))
-                            })
-                            .or_else(|_| {
-                                row.try_get::<f64, _>(col.as_str())
-                                    .ok()
-                                    .and_then(|n| {
-                                        if n.is_finite() {
-                                            serde_json::Number::from_f64(n)
-                                                .map(serde_json::Value::Number)
-                                        } else if n.is_nan() {
-                                            Some(serde_json::Value::String("NaN".into()))
-                                        } else if n > 0.0 {
-                                            Some(serde_json::Value::String("Infinity".into()))
-                                        } else {
-                                            Some(serde_json::Value::String("-Infinity".into()))
-                                        }
-                                    })
-                                    .ok_or(())
-                            })
-                            .or_else(|_| {
-                                row.try_get::<String, _>(col.as_str())
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null)
-                    })
-                    .collect();
-
-                Row::new(columns.clone(), values)
-            })
-            .collect();
-
-        Ok(result)
+        Ok(rows_to_result(rows))
     }
 
     async fn execute_with(
@@ -200,60 +202,7 @@ impl RdbmsClient for SqlxClient {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| RdbmsError::Database(e.to_string()))?;
-
-        if rows.is_empty() {
-            return Ok(Vec::new());
-        }
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect();
-
-        let result = rows
-            .iter()
-            .map(|row| {
-                let values: Vec<serde_json::Value> = columns
-                    .iter()
-                    .map(|col| {
-                        row.try_get::<bool, _>(col.as_str())
-                            .map(serde_json::Value::Bool)
-                            .or_else(|_| {
-                                row.try_get::<i64, _>(col.as_str())
-                                    .map(|n| serde_json::Value::Number(n.into()))
-                            })
-                            .or_else(|_| {
-                                row.try_get::<i32, _>(col.as_str())
-                                    .map(|n| serde_json::Value::Number((n as i64).into()))
-                            })
-                            .or_else(|_| {
-                                row.try_get::<f64, _>(col.as_str())
-                                    .ok()
-                                    .and_then(|n| {
-                                        if n.is_finite() {
-                                            serde_json::Number::from_f64(n)
-                                                .map(serde_json::Value::Number)
-                                        } else if n.is_nan() {
-                                            Some(serde_json::Value::String("NaN".into()))
-                                        } else if n > 0.0 {
-                                            Some(serde_json::Value::String("Infinity".into()))
-                                        } else {
-                                            Some(serde_json::Value::String("-Infinity".into()))
-                                        }
-                                    })
-                                    .ok_or(())
-                            })
-                            .or_else(|_| {
-                                row.try_get::<String, _>(col.as_str())
-                                    .map(serde_json::Value::String)
-                            })
-                            .unwrap_or(serde_json::Value::Null)
-                    })
-                    .collect();
-                Row::new(columns.clone(), values)
-            })
-            .collect();
-        Ok(result)
+        Ok(rows_to_result(rows))
     }
 
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {

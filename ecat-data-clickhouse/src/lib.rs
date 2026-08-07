@@ -140,7 +140,7 @@ fn build_create_table(
     )
 }
 
-fn build_insert_body(points: &[DataPoint], tag_keys: &[String], field_keys: &[String]) -> String {
+fn build_insert_body(points: &[&DataPoint], tag_keys: &[String], field_keys: &[String]) -> String {
     // 逐点按 tags → fields → timestamp 顺序手写 JSON 对象，保证输出列序与
     // INSERT 语句列序一致（serde_json 的 Map 默认按 key 排序，不依赖其 preserve_order 特性）。
     // 键的引号序列化与列序无关且全批一致，预计算一次跨点复用。
@@ -248,18 +248,15 @@ impl RdbmsClient for ClickhouseClient {
 #[async_trait]
 impl TsdbClient for ClickhouseClient {
     async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError> {
-        // 按 measurement 分组，保持首见顺序（克隆点数以匹配 build_insert_body 的 &[DataPoint] 签名）
-        let mut order: Vec<String> = Vec::new();
-        let mut groups: std::collections::HashMap<String, Vec<DataPoint>> =
+        // 按 measurement 分组，保持首见顺序；分组只存引用，避免克隆整点
+        let mut order: Vec<&str> = Vec::new();
+        let mut groups: std::collections::HashMap<&str, Vec<&DataPoint>> =
             std::collections::HashMap::new();
         for p in points {
-            if !groups.contains_key(&p.measurement) {
-                order.push(p.measurement.clone());
+            if !groups.contains_key(p.measurement.as_str()) {
+                order.push(&p.measurement);
             }
-            groups
-                .entry(p.measurement.clone())
-                .or_default()
-                .push(p.clone());
+            groups.entry(&p.measurement).or_default().push(p);
         }
 
         for measurement in order {
@@ -289,10 +286,10 @@ impl TsdbClient for ClickhouseClient {
             // ClickHouse 不会自动 ALTER 列，写入会以服务端错误失败（调用方需保证类型一致）。
             let create = {
                 let created = self.created.lock().unwrap_or_else(|e| e.into_inner());
-                if created.contains(&measurement) {
+                if created.contains(measurement) {
                     None
                 } else {
-                    Some(build_create_table(&measurement, &tag_keys, &field_cols))
+                    Some(build_create_table(measurement, &tag_keys, &field_cols))
                 }
             };
             if let Some(create) = create {
@@ -311,7 +308,7 @@ impl TsdbClient for ClickhouseClient {
                 self.created
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
-                    .insert(measurement.clone());
+                    .insert(measurement.to_string());
             }
 
             let body = build_insert_body(pts, &tag_keys, &field_keys);
@@ -324,7 +321,7 @@ impl TsdbClient for ClickhouseClient {
             // JSONEachRow 数据随请求体放在语句之后（ClickHouse HTTP 接口标准用法）
             let insert = format!(
                 "INSERT INTO {} ({}) FORMAT JSONEachRow\n{}",
-                quote_ident(&measurement),
+                quote_ident(measurement),
                 cols.join(", "),
                 body
             );

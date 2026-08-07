@@ -76,9 +76,19 @@ impl RateLimitStore for MemoryStore {
     }
 }
 
-/// Default key extraction: first hop of `X-Forwarded-For`, falling back to
-/// `X-Real-IP`, then to a shared `"global"` bucket when neither is present.
+/// Default key extraction: real peer address from `ConnectInfo` (axum::serve
+/// 从 TCP 连接填充，客户端无法伪造), falling back to the first hop of
+/// `X-Forwarded-For`, then `X-Real-IP`, then a shared `"global"` bucket.
+///
+/// Headers are spoofable by direct clients and are only consulted when no
+/// trusted source address is available (e.g. tests or non-axum services).
 fn default_key_fn<B>(req: &http::Request<B>) -> String {
+    if let Some(axum::extract::ConnectInfo(addr)) = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
+        return addr.ip().to_string();
+    }
     for name in ["x-forwarded-for", "x-real-ip"] {
         if let Some(hop) = req
             .headers()
@@ -292,5 +302,19 @@ mod tests {
     fn default_key_fn_global_without_ip_headers() {
         let req = http::Request::builder().body(()).unwrap();
         assert_eq!(default_key_fn(&req), "global");
+    }
+
+    #[test]
+    fn default_key_fn_prefers_connect_info_over_spoofed_header() {
+        let mut req = http::Request::builder()
+            .header("x-forwarded-for", "6.6.6.6")
+            .body(())
+            .unwrap();
+        req.extensions_mut()
+            .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                [1, 2, 3, 4],
+                5555,
+            ))));
+        assert_eq!(default_key_fn(&req), "1.2.3.4");
     }
 }
