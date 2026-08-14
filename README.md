@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.2 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.3 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -451,8 +451,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ## 已知限制
 
-- **GraphQL 解析（ecat-graphql）**：`execute` 仅将 variables 传给 resolver，字段参数与嵌套 selection 不传递——含嵌套字段参数的复杂查询暂不支持，请将所需数据放入顶层查询参数。
-- **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；解析出的 claims（sub/role 等）仍以明文存于 FIFO 有界缓存（默认 10_000）。
+- **GraphQL 解析（ecat-graphql）**：支持字段参数与嵌套 selection（`query_field`/`mutation_field` 富 resolver 可访问 `args`/`variables`/`selection`）；仍不支持别名、fragment 与多顶层字段，请勿将其暴露为通用 GraphQL 端点。
+- **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；缓存值经白名单过滤（默认保留 sub/exp/iat/role + extra 的 iss/aud/scope/roles，`cache_claims_whitelist` 可配置；miss 时仍返回完整 claims，仅缓存值过滤）；TTL 过期条目在写入时主动清除（默认 TTL 300s）。
 - **Kafka offset（ecat-mq-kafka）**：默认 `enable.auto.commit=false` 且无手动 commit——进程重启后从分区末尾（latest）重读，停机期间产生的消息会被跳过；需显式配置 `auto_commit=true` 才具备 at-least-once 语义（重启从最近提交点继续）。
 
 ## 设计目标

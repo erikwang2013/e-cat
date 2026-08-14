@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.4.2 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.4.3 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -439,8 +439,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ## Known Limitations
 
-- **GraphQL resolution (ecat-graphql)**: `execute` passes only variables to resolvers; field arguments and nested selections are not forwarded — queries with nested field arguments are not yet supported; put required data in top-level query arguments.
-- **OAuth2 introspection cache (ecat-auth)**: the cache key is a SHA-256 hash of the token (no plaintext token stored); parsed claims (sub/role, etc.) are still stored in plaintext in the FIFO bounded cache (default 10_000).
+- **GraphQL resolution (ecat-graphql)**: field arguments and nested selections are supported (`query_field`/`mutation_field` rich resolvers receive `args`/`variables`/`selection`); aliases, fragments and multiple top-level fields are still rejected — do not expose it as a general-purpose GraphQL endpoint.
+- **OAuth2 introspection cache (ecat-auth)**: the cache key is a SHA-256 hash of the token (no plaintext token stored); cached values are whitelist-filtered (default keeps sub/exp/iat/role plus extra iss/aud/scope/roles, configurable via `cache_claims_whitelist`; misses still return full claims, only cached values are filtered); expired entries are actively purged on write (default TTL 300s).
 - **Kafka offset handling (ecat-mq-kafka)**: `enable.auto.commit=false` by default with no manual commit — after a restart the consumer re-reads from the partition end (latest), skipping messages produced while down; explicitly set `auto_commit=true` for at-least-once semantics (resumes from the last committed point).
 
 ## Design Goals

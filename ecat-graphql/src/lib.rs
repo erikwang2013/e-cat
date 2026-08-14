@@ -4,8 +4,13 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde::Deserialize;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+mod parser;
+
+pub use parser::{FieldNode, Operation, SelectionSet};
 
 type Resolver = Arc<
     dyn Fn(
@@ -16,9 +21,31 @@ type Resolver = Arc<
         + Sync,
 >;
 
+/// 富 resolver 请求上下文：字段参数、原始 variables 与嵌套 selection 树。
+#[derive(Debug, Clone)]
+pub struct FieldRequest {
+    pub args: Map<String, Value>,
+    pub variables: Value,
+    pub selection: Option<SelectionSet>,
+}
+
+/// 富 resolver trait：可访问字段参数与嵌套 selection（经
+/// [`GraphQLSchema::query_field`] / [`GraphQLSchema::mutation_field`] 注册）。
+/// async fn in trait 非 dyn-compatible，故用 #[async_trait] 换取对象安全
+/// （可存入 `FieldHandler::Rich` 的 `Arc<dyn GraphQLField>`）。
+#[async_trait::async_trait]
+pub trait GraphQLField: Send + Sync {
+    async fn resolve(&self, req: FieldRequest) -> Result<Value, String>;
+}
+
+enum FieldHandler {
+    Legacy(Resolver),
+    Rich(Arc<dyn GraphQLField>),
+}
+
 pub struct GraphQLSchema {
-    query_resolvers: HashMap<String, Resolver>,
-    mutation_resolvers: HashMap<String, Resolver>,
+    query_resolvers: HashMap<String, FieldHandler>,
+    mutation_resolvers: HashMap<String, FieldHandler>,
 }
 
 impl GraphQLSchema {
@@ -30,12 +57,13 @@ impl GraphQLSchema {
     }
 
     pub fn query(mut self, name: impl Into<String>, r: Resolver) -> Self {
-        self.query_resolvers.insert(name.into(), r);
+        self.query_resolvers.insert(name.into(), FieldHandler::Legacy(r));
         self
     }
 
     pub fn mutation(mut self, name: impl Into<String>, r: Resolver) -> Self {
-        self.mutation_resolvers.insert(name.into(), r);
+        self.mutation_resolvers
+            .insert(name.into(), FieldHandler::Legacy(r));
         self
     }
 
@@ -51,6 +79,24 @@ impl GraphQLSchema {
         + 'static,
     ) -> Self {
         self.query(name, Arc::new(f))
+    }
+
+    /// 注册富 query resolver：接收 `FieldRequest`（参数 + 嵌套 selection）。
+    pub fn query_field(mut self, name: impl Into<String>, f: impl GraphQLField + 'static) -> Self {
+        self.query_resolvers
+            .insert(name.into(), FieldHandler::Rich(Arc::new(f)));
+        self
+    }
+
+    /// 注册富 mutation resolver：接收 `FieldRequest`（参数 + 嵌套 selection）。
+    pub fn mutation_field(
+        mut self,
+        name: impl Into<String>,
+        f: impl GraphQLField + 'static,
+    ) -> Self {
+        self.mutation_resolvers
+            .insert(name.into(), FieldHandler::Rich(Arc::new(f)));
+        self
     }
 }
 
@@ -93,7 +139,7 @@ async fn execute(
     let trimmed = query.trim();
     let mut errors = Vec::new();
 
-    let field = match extract_field(trimmed) {
+    let field = match parser::parse_query(trimmed, variables) {
         Ok(f) => f,
         Err(e) => {
             errors.push(e);
@@ -101,240 +147,365 @@ async fn execute(
         }
     };
 
-    let (resolvers, field) = if trimmed.starts_with("mutation") {
-        (&schema.mutation_resolvers, field)
+    let (resolvers, field_name) = if field.operation == Operation::Mutation {
+        (&schema.mutation_resolvers, &field.name)
     } else {
-        (&schema.query_resolvers, field)
+        (&schema.query_resolvers, &field.name)
     };
 
-    if field.is_empty() {
-        errors.push("empty query field".into());
-    } else if let Some(resolver) = resolvers.get(&field) {
-        match resolver(variables.clone()).await {
-            Ok(data) => {
-                let mut result = serde_json::Map::new();
-                result.insert(field, data);
-                return Ok(serde_json::Value::Object(result));
+    match resolvers.get(field_name) {
+        Some(FieldHandler::Legacy(resolver)) => {
+            let vars = match merge_args(variables, &field.args) {
+                Ok(v) => v,
+                Err(e) => {
+                    errors.push(e);
+                    return Err(errors);
+                }
+            };
+            match resolver(vars).await {
+                Ok(data) => {
+                    let mut result = serde_json::Map::new();
+                    result.insert(field.name.clone(), data);
+                    return Ok(serde_json::Value::Object(result));
+                }
+                Err(e) => errors.push(e),
             }
-            Err(e) => errors.push(e),
         }
-    } else {
-        errors.push(format!("unknown field: {field}"));
+        Some(FieldHandler::Rich(r)) => {
+            let req = FieldRequest {
+                args: field.args,
+                variables: variables.clone(),
+                selection: field.selection,
+            };
+            match r.resolve(req).await {
+                Ok(data) => {
+                    let mut result = serde_json::Map::new();
+                    result.insert(field.name.clone(), data);
+                    return Ok(serde_json::Value::Object(result));
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+        None => errors.push(format!("unknown field: {field_name}")),
     }
 
     Err(errors)
 }
 
-fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-/// 跳过空白与 `#` 注释。
-fn skip_ws(b: &[u8], i: &mut usize) {
-    while *i < b.len() && (b[*i].is_ascii_whitespace() || b[*i] == b'#') {
-        if b[*i] == b'#' {
-            while *i < b.len() && b[*i] != b'\n' {
-                *i += 1;
+/// Legacy resolver 的参数合并：字段参数并入 variables（同名时参数胜出）。
+/// 无参数时与旧行为逐字节一致（直接克隆 variables）。
+fn merge_args(variables: &Value, args: &Map<String, Value>) -> Result<Value, String> {
+    if args.is_empty() {
+        return Ok(variables.clone());
+    }
+    match variables {
+        Value::Object(m) => {
+            let mut merged = m.clone();
+            for (k, v) in args {
+                merged.insert(k.clone(), v.clone());
             }
-        } else {
-            *i += 1;
+            Ok(Value::Object(merged))
         }
+        Value::Null => Ok(Value::Object(args.clone())),
+        _ => Err("variables must be a JSON object when field arguments are present".into()),
     }
-}
-
-/// 跳过字符串字面量（单/双引号，支持反斜杠转义与三引号块字符串）。
-fn skip_string(b: &[u8], i: &mut usize) -> Result<(), String> {
-    let quote = b[*i];
-    *i += 1;
-    // 三引号块字符串
-    if *i + 1 < b.len() && b[*i] == quote && b[*i + 1] == quote {
-        *i += 2;
-        while *i < b.len() {
-            if b[*i] == quote {
-                if *i + 2 < b.len() && b[*i + 1] == quote && b[*i + 2] == quote {
-                    *i += 3;
-                    return Ok(());
-                }
-                *i += 1;
-            } else {
-                *i += 1;
-            }
-        }
-        return Err("unterminated string literal".into());
-    }
-    while *i < b.len() {
-        match b[*i] {
-            b'\\' => {
-                if *i + 1 < b.len() {
-                    *i += 2;
-                } else {
-                    return Err("unterminated string literal".into());
-                }
-            }
-            c if c == quote => {
-                *i += 1;
-                return Ok(());
-            }
-            _ => *i += 1,
-        }
-    }
-    Err("unterminated string literal".into())
-}
-
-/// 跳过平衡的括号组；字符串内的括号/大括号不算结构字符。
-fn skip_parens(b: &[u8], i: &mut usize) -> Result<(), String> {
-    let mut depth = 0usize;
-    while *i < b.len() {
-        match b[*i] {
-            b'(' => {
-                depth += 1;
-                *i += 1;
-            }
-            b')' => {
-                depth -= 1;
-                *i += 1;
-                if depth == 0 {
-                    return Ok(());
-                }
-            }
-            b'"' | b'\'' => skip_string(b, i)?,
-            _ => *i += 1,
-        }
-    }
-    Err("unbalanced parentheses".into())
-}
-
-/// 轻量提取首个顶层选择集的字段名。支持操作关键字、操作名、变量定义、
-/// 指令与嵌套字段（括号配对、字符串常量忽略），失败返回明确错误。
-fn extract_field(query: &str) -> Result<String, String> {
-    let b = query.as_bytes();
-    let mut i = 0;
-    let n = b.len();
-
-    skip_ws(b, &mut i);
-
-    // 可选操作关键字：query / mutation / subscription
-    for kw in ["query".as_bytes(), "mutation".as_bytes(), "subscription".as_bytes()] {
-        if b[i..].starts_with(kw) {
-            let after = i + kw.len();
-            if after >= n || b[after].is_ascii_whitespace() || b[after] == b'(' || b[after] == b'{' {
-                i = after;
-                break;
-            }
-        }
-    }
-    skip_ws(b, &mut i);
-
-    // 可选操作名
-    if i < n && is_ident_byte(b[i]) {
-        while i < n && is_ident_byte(b[i]) {
-            i += 1;
-        }
-        skip_ws(b, &mut i);
-    }
-
-    // 可选变量定义（(...)）与指令（@name(...)）
-    loop {
-        if i < n && b[i] == b'(' {
-            skip_parens(b, &mut i)?;
-            skip_ws(b, &mut i);
-        } else if i < n && b[i] == b'@' {
-            i += 1;
-            while i < n && is_ident_byte(b[i]) {
-                i += 1;
-            }
-            skip_ws(b, &mut i);
-            if i < n && b[i] == b'(' {
-                skip_parens(b, &mut i)?;
-                skip_ws(b, &mut i);
-            }
-        } else {
-            break;
-        }
-    }
-
-    if i >= n || b[i] != b'{' {
-        return Err("expected '{' before selection".into());
-    }
-    i += 1;
-    skip_ws(b, &mut i);
-
-    if i + 2 < n && &b[i..i + 3] == b"..." {
-        return Err("fragment spreads are not supported".into());
-    }
-
-    let start = i;
-    while i < n && is_ident_byte(b[i]) {
-        i += 1;
-    }
-    if i == start {
-        return Err("expected field name".into());
-    }
-    Ok(String::from_utf8_lossy(&b[start..i]).into_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
 
-    #[test]
-    fn extract_field_simple() {
-        assert_eq!(extract_field("{ hello }").unwrap(), "hello");
-        assert_eq!(extract_field("query { hello }").unwrap(), "hello");
-        assert_eq!(extract_field("mutation { x }").unwrap(), "x");
+    struct EchoField;
+
+    #[async_trait::async_trait]
+    impl GraphQLField for EchoField {
+        async fn resolve(&self, req: FieldRequest) -> Result<Value, String> {
+            Ok(serde_json::json!({
+                "args": req.args,
+                "variables": req.variables,
+                "has_selection": req.selection.is_some(),
+            }))
+        }
     }
 
     #[test]
-    fn extract_field_nested_and_args() {
-        assert_eq!(
-            extract_field("query GetUser { user(id: 1) { name } }").unwrap(),
-            "user"
-        );
-        assert_eq!(
-            extract_field("mutation ($v: Int!) { create(a: $v) { id } }").unwrap(),
-            "create"
-        );
-        assert_eq!(
-            extract_field("query { hello(name: \"a{b}\") }").unwrap(),
-            "hello"
-        );
-        assert_eq!(
-            extract_field("{ field(a: \"}\", b: \"(\") }").unwrap(),
-            "field"
-        );
-        assert_eq!(
-            extract_field("query @skip(if: false) { hello }").unwrap(),
-            "hello"
-        );
-    }
-
-    #[test]
-    fn extract_field_errors_are_explicit() {
-        assert!(extract_field("{").is_err());
-        assert!(extract_field("").is_err());
-        assert!(extract_field("query").is_err());
-        assert!(extract_field("{ ...frag }").is_err());
-        assert!(extract_field("{ \"not a field\" }").is_err());
-    }
-
-    #[test]
-    fn extract_field_ignores_braces_in_strings() {
-        // 变量定义默认值字符串里的括号/大括号不得干扰解析
-        assert_eq!(
-            extract_field("query ($v: String = \"a(b) { } c\") { hello }").unwrap(),
-            "hello"
-        );
-        assert_eq!(
-            extract_field("mutation { set(desc: \"a{b}c\") }").unwrap(),
-            "set"
-        );
-    }
-
-    #[test]
-    fn schema_and_router_builds() {
-        let schema = GraphQLSchema::new().query_fn("ping", |_vars| {
-            Box::pin(async { Ok(serde_json::json!("pong")) })
+    fn legacy_resolver_receives_merged_args() {
+        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
+            Box::pin(async move { Ok(vars) })
         });
-        let _router = graphql_router(schema);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vars = serde_json::json!({"id": 1});
+        let data = rt
+            .block_on(execute(&schema, "{ echo(id: 2, name: \"x\") }", &vars))
+            .unwrap();
+        assert_eq!(
+            data["echo"],
+            serde_json::json!({"id": 2, "name": "x"})
+        );
+    }
+
+    #[test]
+    fn legacy_resolver_without_args_is_unchanged() {
+        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
+            Box::pin(async move { Ok(vars) })
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vars = serde_json::json!({"a": 1});
+        let data = rt
+            .block_on(execute(&schema, "{ echo }", &vars))
+            .unwrap();
+        assert_eq!(data["echo"], serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn legacy_resolver_args_override_same_named_variables() {
+        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
+            Box::pin(async move { Ok(vars) })
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vars = serde_json::json!({"id": 1});
+        let data = rt
+            .block_on(execute(&schema, "{ echo(id: 9) }", &vars))
+            .unwrap();
+        assert_eq!(data["echo"]["id"], 9);
+    }
+
+    #[test]
+    fn legacy_resolver_args_with_null_variables() {
+        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
+            Box::pin(async move { Ok(vars) })
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt
+            .block_on(execute(&schema, "{ echo(id: 1) }", &Value::Null))
+            .unwrap();
+        assert_eq!(data["echo"], serde_json::json!({"id": 1}));
+    }
+
+    #[test]
+    fn legacy_resolver_errors_on_non_object_variables_with_args() {
+        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
+            Box::pin(async move { Ok(vars) })
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err = rt
+            .block_on(execute(&schema, "{ echo(id: 1) }", &serde_json::json!(5)))
+            .unwrap_err();
+        assert!(
+            err.iter().any(|e| e.contains("variables must be a JSON object")),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn rich_resolver_receives_full_request() {
+        let schema = GraphQLSchema::new().query_field("user", EchoField);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vars = serde_json::json!({"env": "prod"});
+        let data = rt
+            .block_on(execute(
+                &schema,
+                "{ user(id: 7) { name } }",
+                &vars,
+            ))
+            .unwrap();
+        // Rich resolver 收到原样 variables 与解析后的 args，二者不合并
+        assert_eq!(data["user"]["args"]["id"], 7);
+        assert_eq!(data["user"]["variables"], serde_json::json!({"env": "prod"}));
+        assert_eq!(data["user"]["has_selection"], true);
+    }
+
+    #[test]
+    fn rich_resolver_without_selection() {
+        let schema = GraphQLSchema::new().query_field("ping", EchoField);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt
+            .block_on(execute(&schema, "{ ping }", &Value::Null))
+            .unwrap();
+        assert_eq!(data["ping"]["has_selection"], false);
+        assert!(data["ping"]["args"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unknown_field_and_resolver_error_go_to_errors() {
+        let schema = GraphQLSchema::new().query_field("boom", ResolveErr);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err = rt
+            .block_on(execute(&schema, "{ nope }", &Value::Null))
+            .unwrap_err();
+        assert!(err.iter().any(|e| e.contains("unknown field: nope")));
+
+        let err = rt
+            .block_on(execute(&schema, "{ boom }", &Value::Null))
+            .unwrap_err();
+        assert!(err.iter().any(|e| e == "resolver exploded"));
+    }
+
+    struct ResolveErr;
+
+    #[async_trait::async_trait]
+    impl GraphQLField for ResolveErr {
+        async fn resolve(&self, _req: FieldRequest) -> Result<Value, String> {
+            Err("resolver exploded".into())
+        }
+    }
+
+    #[test]
+    fn mutation_dispatches_to_mutation_resolvers() {
+        let schema = GraphQLSchema::new().query_fn("write", |_v| {
+            Box::pin(async { Ok(serde_json::json!("query")) })
+        });
+        let schema = schema.mutation_field("write", MutWrite);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt
+            .block_on(execute(
+                &schema,
+                "mutation { write(id: 3) }",
+                &Value::Null,
+            ))
+            .unwrap();
+        assert_eq!(data["write"]["id"], 3);
+    }
+
+    struct MutWrite;
+
+    #[async_trait::async_trait]
+    impl GraphQLField for MutWrite {
+        async fn resolve(&self, req: FieldRequest) -> Result<Value, String> {
+            Ok(serde_json::json!({"id": req.args["id"]}))
+        }
+    }
+
+    #[test]
+    fn subscription_dispatches_to_query_resolvers() {
+        let schema = GraphQLSchema::new().query_fn("sub", |_v| {
+            Box::pin(async { Ok(serde_json::json!("query")) })
+        });
+        let schema = schema.mutation_field("sub", MutWrite);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt
+            .block_on(execute(&schema, "subscription { sub }", &Value::Null))
+            .unwrap();
+        assert_eq!(data["sub"], "query");
+    }
+
+    fn router() -> Router {
+        graphql_router(
+            GraphQLSchema::new()
+                .query_fn("hello", |_v| Box::pin(async { Ok(serde_json::json!("world")) }))
+                .query_field("user", EchoField),
+        )
+    }
+
+    #[tokio::test]
+    async fn router_serves_simple_query() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/graphql")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"{ hello }"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["data"]["hello"], "world");
+    }
+
+    #[tokio::test]
+    async fn router_serves_query_with_args_and_nested_selection() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/graphql")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"query":"{ user(id: 7, env: $e) { name } }","variables":{"e":"prod"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["data"]["user"]["args"]["id"], 7);
+        assert_eq!(v["data"]["user"]["args"]["env"], "prod");
+        assert_eq!(
+            v["data"]["user"]["variables"],
+            serde_json::json!({"e": "prod"})
+        );
+        assert_eq!(v["data"]["user"]["has_selection"], true);
+    }
+
+    #[tokio::test]
+    async fn router_returns_400_with_errors() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/graphql")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"{ nope }"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_slice(&body).unwrap();
+        assert!(v["errors"][0].as_str().unwrap().contains("unknown field"));
+    }
+
+    #[tokio::test]
+    async fn router_returns_400_on_parse_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/graphql")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"{ a b }"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            v["errors"][0]
+                .as_str()
+                .unwrap()
+                .contains("multiple top-level fields")
+        );
+    }
+
+    #[test]
+    fn schema_field_name_conflict_latest_wins() {
+        let schema = GraphQLSchema::new()
+            .query_fn("f", |_v| Box::pin(async { Ok(serde_json::json!("legacy")) }))
+            .query_field("f", EchoField);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt
+            .block_on(execute(&schema, "{ f(a: 1) }", &Value::Null))
+            .unwrap();
+        assert_eq!(data["f"]["args"]["a"], 1);
     }
 }

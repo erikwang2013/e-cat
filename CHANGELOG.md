@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.4.3] — 2026-08-14
+
+### Added
+- `ecat-graphql` 字段参数与嵌套 selection 支持：`FieldRequest`（args/variables/selection）与 `GraphQLField` 富 resolver（`query_field` / `mutation_field` 注册）；两阶段手写解析器（字面量参数、`$var` 解引用、嵌套 selection 树、MAX_DEPTH=32）；legacy resolver 自动获得字段参数（合并进 variables），无参时逐字节兼容旧行为
+- `ecat-auth` OAuth2 内省缓存加固：claims 白名单过滤（默认缓存 sub/exp/iat/role + extra 的 iss/aud/scope/roles，`cache_claims_whitelist` 可配置、"*" 逃生门；miss 仍返回完整 claims）；TTL 过期条目写路径主动清除（`purge_expired`）
+- CI：`.github/workflows/ci.yml` 新增独立 cargo-audit 闸门 job（预编译 musl 二进制 + `--deny warnings` + `.cargo/audit.toml` 8 项已评估 ignore）
+
+### Fixed
+- `ecat-data-s3` quick-xml 0.32.0→0.41.0：修复 2 个高危 CVE（RUSTSEC-2026-0194/0195），`parse_list_xml` 适配新事件模型（文本追加累积 + 实体 GeneralRef 还原）
+- CI 原 cargo-audit 步骤失效：`--deny medium` 为 cargo-audit ≥0.20 已废弃语法（被 continue-on-error 掩盖），改为 `--deny warnings` 并移除 continue-on-error
+
+### Docs
+- docs/dependency-cve-tracking.md：CI 接入说明、新增 protobuf / instant 评估、各条目补 RUSTSEC 编号
+- README×2：Known Limitations 更新（GraphQL 支持字段参数与嵌套 selection；OAuth2 缓存白名单过滤 + TTL 清除）
+
 ## [2.4.2] — 2026-08-14
 
 ### Added
