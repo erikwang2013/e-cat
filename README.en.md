@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.4.1 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.4.2 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -151,6 +151,8 @@ Client Request
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
 > All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+
+> **Constructor naming convention**: message-queue crates (`ecat-mq-*`) use `connect` as the primary constructor (`KafkaMq::connect(brokers)`, `MqttMq::connect(url)`, …) and additionally offer `from_config`; data-backend crates (`ecat-data-*`) mostly use `new`, except `ecat-data-redis` / `ecat-data-sqlx` (which use `connect`) and `ecat-data-mongodb` / `ecat-data-s3` (which only offer `from_config`). This is an existing convention, not enforced — unification would be breaking and is deferred; it may be revisited in the 3.0 window.
 
 ### Messaging Backends (4 MQ)
 
@@ -462,6 +464,7 @@ prost is the most widely used protobuf implementation in the Rust community, gen
 - [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final evaluation)
 - [Audit Report r5](docs/audit-report-2026-08-01-r5.md) (2026-08-01)
 - [Database Config Tutorial](docs/database-config-tutorial.md)
+- [Dependency CVE Tracking](docs/dependency-cve-tracking.md)
 - [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md)
 - [Config Example](config/databases.example.yaml)
 

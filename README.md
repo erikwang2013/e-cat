@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.1 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.2 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -150,6 +150,8 @@
 | 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+
+> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
 
 ### 数据库配置示例
 
@@ -474,6 +476,7 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 - [生态规划 v3](docs/ecosystem-plan-v3.md)（最终评估）
 - [审计报告 r5](docs/audit-report-2026-08-01-r5.md)（2026-08-01）
 - [数据库配置教程](docs/database-config-tutorial.md)
+- [依赖 CVE 跟踪](docs/dependency-cve-tracking.md)
 - [TLS 证书认证教程](docs/tls-certificate-tutorial.md)
 - [配置示例文件](config/databases.example.yaml)
 

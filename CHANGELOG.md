@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.4.2] — 2026-08-14
+
+### Added
+- `ecat-middleware` M3 `ValidateLayer`：请求校验中间件——`RequestValidator` trait（`validate(&Request) -> Result<(), ValidateError>`）、`ValidateError`（支持自定义 HTTP 状态码，默认 400）、`ValidateLayer::from_fn` 闭包入口（`FnValidator` 包装）；校验失败短路返回错误响应，不进入内层服务
+- `ecat-middleware` M4 CORS：`cors` feature 引入 `tower-http`（optional，0.6 线）并 re-export `AllowOrigin` / `Any` / `CorsLayer`
+- 示例补齐 U2（3 个）：`examples/databases`（多数据库后端连接）、`examples/middleware`（中间件组合）、`examples/websocket`（WebSocket）
+- `ecat-bench`：新增 `http_bench.rs` 正式 bench 示例——bare（裸 axum）/ metrics（+MetricsLayer）/ full（+MetricsLayer+TracingLayer+LoggingLayer）三端点对比，输出 requests/QPS/p50/p99 及相对 bare 的开销；`BENCH_TOTAL` / `BENCH_CONCURRENCY` / `BENCH_WARMUP` / `BENCH_BASE_URL` 环境变量可调
+
+### Fixed
+- `ecat-metrics` MetricsLayer 挂载缺陷：`Service::Error` 由 `Box<dyn Error>` 改为透传 `S::Error`——修复 axum `Router::layer` 的 `Into<Infallible>` 约束失败（错误类型不匹配导致 layer 无法挂载）
+- `ecat-middleware` ValidateLayer 同款两处：`Service::Error` 透传 `S::Error`；`FnValidator` 手动实现 `Clone`（泛型闭包无法自动 derive）
+
+### Docs
+- 新增 docs/dependency-cve-tracking.md：依赖 CVE 跟踪表（rustls-webpki 0.102.8 RUSTSEC-2026-0049 系列、rdkafka-sys cJSON CVE-2025-57052、rustls-pemfile / rsa 低危）+ 跟踪原则
+- README×2：构造器命名约定注（`ecat-mq-*` 用 connect、`ecat-data-*` 多数 new，redis/sqlx 例外 connect、mongodb/s3 仅 from_config；既有约定不强制统一，3.0 窗口可评估）
+
 ## [2.4.1] — 2026-08-14
 
 ### Added

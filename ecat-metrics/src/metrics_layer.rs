@@ -111,11 +111,13 @@ where
     B: Send + 'static,
 {
     type Response = axum::http::Response<D>;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    // 透传 inner 错误（tower-http 同款模式）：挂 axum Router 时
+    // Error 自动为 Infallible（Router::layer 要求 Error: Into<Infallible>）。
+    type Error = S::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: axum::http::Request<B>) -> Self::Future {
@@ -135,7 +137,7 @@ where
             request_duration()
                 .with_label_values(&[&method, &path, &status])
                 .observe(start.elapsed().as_secs_f64());
-            result.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            result
         })
     }
 }

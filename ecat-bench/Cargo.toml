@@ -7,3 +7,11 @@ description = "Benchmarking utilities for e-cat services"
 
 [dependencies]
 tokio.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde.workspace = true
+tower.workspace = true
+ecat-middleware = { path = "../ecat-middleware" }
+ecat-metrics = { path = "../ecat-metrics" }
