@@ -16,10 +16,16 @@ const INTROSPECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1
 /// 无限占用内存（S2 DoS）。
 const CACHE_CAPACITY: usize = 10_000;
 
+/// 默认缓存 claims 白名单：除结构化字段（sub/exp/iat/role，始终保留）外，
+/// extra 仅以下标准非敏感字段落缓存；email/phone 等 PII 与自定义敏感字段
+/// 默认不缓存（任务 #36）。
+const DEFAULT_CLAIMS_WHITELIST: &[&str] = &["iss", "aud", "scope", "roles"];
+
 /// 内省结果缓存：token -> (claims, 缓存时间)。TTL 内命中直接返回 claims
 /// （避免每请求反序列化 JSON），过期后重新 introspection。
 /// FIFO 有界：达到容量上限时逐出最旧条目；order 与 entries 一一对应，
-/// 每个 key 只入队一次。
+/// 每个 key 只入队一次。过期条目由 purge_expired 在写入路径上时间淘汰，
+/// 不残留内存。
 struct IntrospectCache {
     entries: HashMap<String, (AuthClaims, std::time::Instant)>,
     order: VecDeque<String>,
@@ -32,6 +38,28 @@ impl IntrospectCache {
             order: VecDeque::new(),
         }
     }
+
+    /// TTL 时间淘汰：清除所有过期条目（调用方需持有写锁）。
+    fn purge_expired(&mut self, ttl: std::time::Duration) {
+        self.entries
+            .retain(|_, (_, cached_at)| cached_at.elapsed() < ttl);
+        self.order.retain(|k| self.entries.contains_key(k));
+    }
+}
+
+/// 按白名单过滤缓存 claims：结构化字段（sub/exp/iat/role）始终保留；
+/// extra 仅保留白名单内字段；白名单含 "*" 时保留全部 extra。
+/// 仅作用于缓存值，introspection 直接返回的 claims 不受影响。
+fn filter_claims(claims: AuthClaims, whitelist: &[String]) -> AuthClaims {
+    if whitelist.iter().any(|k| k == "*") {
+        return claims;
+    }
+    let extra = claims
+        .extra
+        .into_iter()
+        .filter(|(k, _)| whitelist.iter().any(|w| w == k))
+        .collect();
+    AuthClaims { extra, ..claims }
 }
 
 /// 内省缓存 key：token 的 SHA-256 hex。缓存中不保存明文 token，
@@ -49,6 +77,8 @@ pub struct OAuth2Layer {
     client_secret: String,
     cache_ttl_secs: u64,
     cache_capacity: usize,
+    /// 缓存 claims 白名单：extra 中仅白名单字段落缓存（任务 #36）。
+    claims_whitelist: Vec<String>,
     /// Shared HTTP client: connections are pooled and reused across requests
     /// instead of being created (and torn down) per request.
     client: reqwest::Client,
@@ -82,6 +112,10 @@ impl OAuth2Layer {
             client_secret: client_secret.into(),
             cache_ttl_secs: 300,
             cache_capacity: CACHE_CAPACITY,
+            claims_whitelist: DEFAULT_CLAIMS_WHITELIST
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             client,
             cache: Arc::new(tokio::sync::RwLock::new(IntrospectCache::new())),
         })
@@ -94,6 +128,17 @@ impl OAuth2Layer {
 
     pub fn cache_capacity(mut self, n: usize) -> Self {
         self.cache_capacity = n.max(1);
+        self
+    }
+
+    /// 配置缓存 claims 白名单：extra 中仅列出的字段落缓存（默认
+    /// iss/aud/scope/roles）。传入 "*" 表示缓存全部 extra 字段（逃生门）。
+    /// 结构化字段 sub/exp/iat/role 不受白名单影响，始终保留。
+    pub fn cache_claims_whitelist(
+        mut self,
+        keys: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.claims_whitelist = keys.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -243,6 +288,8 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
 
     if config.cache_ttl_secs > 0 {
         let mut cache = config.cache.write().await;
+        // TTL 时间淘汰：先清除过期条目，避免其残留内存（任务 #36）。
+        cache.purge_expired(std::time::Duration::from_secs(config.cache_ttl_secs));
         // 新 key 且容量已满：FIFO 逐出最旧条目（order 与 entries 一一对应，
         // 每个 key 只入队一次，不产生重复条目）。
         if !cache.entries.contains_key(&key) {
@@ -253,150 +300,19 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
             }
             cache.order.push_back(key.clone());
         }
+        // 只缓存白名单 claims：敏感/非常规字段不落缓存（任务 #36）。
         cache.entries.insert(
             key,
-            (claims.clone(), std::time::Instant::now()),
+            (
+                filter_claims(claims.clone(), &config.claims_whitelist),
+                std::time::Instant::now(),
+            ),
         );
     }
 
     Ok(claims)
 }
 
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::routing::post;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    async fn spawn_introspection_server(
-        count: &'static AtomicUsize,
-    ) -> String {
-        use axum::Json;
-        use axum::response::IntoResponse;
-        let app = axum::Router::new().route(
-            "/introspect",
-            post(move || async move {
-                count.fetch_add(1, Ordering::SeqCst);
-                Json(serde_json::json!({
-                    "active": true,
-                    "sub": "user-1",
-                    "role": "admin",
-                    "exp": 9999999999u64,
-                }))
-                .into_response()
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}/introspect")
-    }
-
-    #[tokio::test]
-    async fn introspection_cached_within_ttl() {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let url = spawn_introspection_server(&COUNT).await;
-        let cfg = OAuth2Layer::new(url, "cid", "csecret")
-            .unwrap()
-            .cache_ttl(60);
-
-        let claims1 = introspect_token(&cfg, "tok-1").await.unwrap();
-        let claims2 = introspect_token(&cfg, "tok-1").await.unwrap();
-        assert_eq!(claims1.sub, "user-1");
-        assert_eq!(claims2.sub, "user-1");
-        assert_eq!(COUNT.load(Ordering::SeqCst), 1, "second call hits cache");
-
-        let claims3 = introspect_token(&cfg, "tok-2").await.unwrap();
-        assert_eq!(claims3.role.as_deref(), Some("admin"));
-        assert_eq!(COUNT.load(Ordering::SeqCst), 2, "new token re-introspects");
-    }
-
-    /// S2 回归：缓存必须被容量上限约束。容量满后按 FIFO 逐出最旧条目，
-    /// 海量唯一 token 不会让缓存无限增长。
-    #[tokio::test]
-    async fn cache_evicts_oldest_at_capacity() {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let url = spawn_introspection_server(&COUNT).await;
-        let cfg = OAuth2Layer::new(url, "cid", "csecret")
-            .unwrap()
-            .cache_ttl(3600)
-            .cache_capacity(3);
-
-        for token in ["tok-1", "tok-2", "tok-3", "tok-4"] {
-            introspect_token(&cfg, token).await.unwrap();
-        }
-        assert_eq!(COUNT.load(Ordering::SeqCst), 4);
-
-        // 容量 3：tok-1 最先被逐出，缓存大小不超过上限。
-        {
-            let cache = cfg.cache.read().await;
-            assert_eq!(cache.entries.len(), 3);
-            assert!(!cache.entries.contains_key(&cache_key("tok-1")));
-            assert!(cache.entries.contains_key(&cache_key("tok-2")));
-        }
-
-        // 被逐出的 tok-1 需重新 introspection；随后 tok-2 按 FIFO 被挤出。
-        introspect_token(&cfg, "tok-1").await.unwrap();
-        assert_eq!(COUNT.load(Ordering::SeqCst), 5);
-        assert!(!cfg.cache.read().await.entries.contains_key(&cache_key("tok-2")));
-    }
-
-    /// S2 增强：缓存 key 为 token 的 SHA-256 hash，而非明文 token——
-    /// 内存中不保存凭据明文（转储/取证不泄露 token）；缓存命中
-    /// 行为不变（由 introspection_cached_within_ttl 覆盖）。
-    #[tokio::test]
-    async fn cache_keys_are_token_hashes_not_plaintext() {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let url = spawn_introspection_server(&COUNT).await;
-        let cfg = OAuth2Layer::new(url, "cid", "csecret")
-            .unwrap()
-            .cache_ttl(60);
-
-        introspect_token(&cfg, "tok-1").await.unwrap();
-        let cache = cfg.cache.read().await;
-        assert!(
-            !cache.entries.contains_key("tok-1"),
-            "raw token must not be used as cache key"
-        );
-        assert!(
-            cache.entries.contains_key(&cache_key("tok-1")),
-            "hashed token must be the cache key"
-        );
-    }
-
-    /// P1 优化：缓存直接保存 AuthClaims 结构体，命中路径不再每请求
-    /// serde_json 反序列化。
-    #[tokio::test]
-    async fn cache_stores_claims_without_json_roundtrip() {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let url = spawn_introspection_server(&COUNT).await;
-        let cfg = OAuth2Layer::new(url, "cid", "csecret")
-            .unwrap()
-            .cache_ttl(60);
-
-        introspect_token(&cfg, "tok-1").await.unwrap();
-        let cache = cfg.cache.read().await;
-        let (claims, _) = cache.entries.get(&cache_key("tok-1")).expect("token cached");
-        assert_eq!(claims.sub, "user-1");
-        assert_eq!(claims.role.as_deref(), Some("admin"));
-    }
-
-    #[tokio::test]
-    async fn introspection_ttl_zero_disables_cache() {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let url = spawn_introspection_server(&COUNT).await;
-        let cfg = OAuth2Layer::new(url, "cid", "csecret")
-            .unwrap()
-            .cache_ttl(0);
-
-        let _ = introspect_token(&cfg, "tok-1").await.unwrap();
-        let _ = introspect_token(&cfg, "tok-1").await.unwrap();
-        assert_eq!(
-            COUNT.load(Ordering::SeqCst),
-            2,
-            "ttl=0 must never cache"
-        );
-    }
-}
+mod tests;
