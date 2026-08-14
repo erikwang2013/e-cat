@@ -3,12 +3,14 @@ use async_trait::async_trait;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
 use rdkafka::Message;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{BaseConsumer, Consumer};
+use futures_util::StreamExt;
+use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::Deserialize;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct KafkaConfig {
@@ -68,10 +70,11 @@ impl MessageQueue for KafkaMq {
             .set("bootstrap.servers", &self.brokers)
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "latest");
-        if let Some(group) = &self.group_id {
-            config.set("group.id", group);
-        }
-        let consumer: BaseConsumer = config
+        config.set(
+            "group.id",
+            consumer_group_id(self.group_id.as_deref(), topic),
+        );
+        let consumer: StreamConsumer = config
             .create()
             .map_err(|e| MqError::Other(format!("kafka consumer: {e}")))?;
         consumer
@@ -80,15 +83,16 @@ impl MessageQueue for KafkaMq {
 
         let (tx, rx) = mpsc::channel::<Vec<u8>>(1024);
         tokio::spawn(async move {
-            loop {
-                if let Some(Ok(msg)) = consumer.poll(Duration::from_millis(100))
-                    && let Some(payload) = msg.payload()
+            // StreamConsumer 由 tokio 驱动：消息到达立即唤醒，空闲时挂起，
+            // 无固定 poll/sleep 延迟，也不阻塞 tokio worker 线程。
+            let mut stream = consumer.stream();
+            while let Some(msg) = stream.next().await {
+                let Ok(msg) = msg else { continue };
+                if let Some(payload) = msg.payload()
                     && tx.send(payload.to_vec()).await.is_err()
                 {
                     break;
                 }
-                // Yield the worker thread between polls.
-                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         });
         Ok(Box::new(KafkaStream { rx }))
@@ -111,6 +115,13 @@ impl MessageStream for KafkaStream {
 
 impl Unpin for KafkaStream {}
 
+fn consumer_group_id(group_id: Option<&str>, topic: &str) -> String {
+    match group_id {
+        Some(g) => format!("{g}-{topic}"),
+        None => format!("ecat-mq-{}", Uuid::new_v4()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,8 +136,50 @@ mod tests {
         assert_eq!(cfg.group_id.as_deref(), Some("my-group"));
     }
 
+    #[test]
+    fn group_id_without_configured_group_is_random_and_unique() {
+        let a = consumer_group_id(None, "user.created");
+        let b = consumer_group_id(None, "user.created");
+        assert_ne!(a, b);
+        assert!(a.starts_with("ecat-mq-"), "got: {a}");
+        // 不同 topic 同样各得独立消费组
+        assert_ne!(consumer_group_id(None, "order.paid"), a);
+    }
+
+    #[test]
+    fn group_id_derives_configured_group_per_topic() {
+        assert_eq!(
+            consumer_group_id(Some("my-group"), "user.created"),
+            "my-group-user.created"
+        );
+        // 同一 (group, topic) 幂等 → 多实例/多订阅共享消费组负载均衡
+        assert_eq!(
+            consumer_group_id(Some("my-group"), "user.created"),
+            consumer_group_id(Some("my-group"), "user.created")
+        );
+        // 不同 topic 必须隔离，避免同组 roundrobin 把消息分给错误订阅者
+        assert_ne!(
+            consumer_group_id(Some("my-group"), "user.created"),
+            consumer_group_id(Some("my-group"), "order.paid")
+        );
+    }
+
     #[tokio::test]
     async fn producer_constructs() {
         let _mq = KafkaMq::connect("localhost:9092").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stream_consumer_constructs_with_derived_group() {
+        // 锁定订阅路径构造：无配置 group_id 时也能创建 StreamConsumer（
+        // rdkafka create() 只校验配置不连 broker），避免回归到 INVALID_ARG。
+        let mut config = ClientConfig::new();
+        config
+            .set("bootstrap.servers", "localhost:9092")
+            .set("enable.auto.commit", "false")
+            .set("auto.offset.reset", "latest")
+            .set("group.id", consumer_group_id(None, "test.topic"));
+        let consumer: StreamConsumer = config.create().unwrap();
+        consumer.subscribe(&["test.topic"]).unwrap();
     }
 }

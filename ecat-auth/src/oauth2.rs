@@ -2,7 +2,7 @@
 use super::claims::AuthClaims;
 use super::helpers::extract_bearer;
 use http::{Request, Response, StatusCode};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -12,18 +12,39 @@ use tower::{Layer, Service};
 /// HTTP timeout for token introspection requests.
 const INTROSPECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// 内省缓存容量上限：达到后按 FIFO 逐出最旧条目，防止海量唯一 token
+/// 无限占用内存（S2 DoS）。
+const CACHE_CAPACITY: usize = 10_000;
+
+/// 内省结果缓存：token -> (claims, 缓存时间)。TTL 内命中直接返回 claims
+/// （避免每请求反序列化 JSON），过期后重新 introspection。
+/// FIFO 有界：达到容量上限时逐出最旧条目；order 与 entries 一一对应，
+/// 每个 key 只入队一次。
+struct IntrospectCache {
+    entries: HashMap<String, (AuthClaims, std::time::Instant)>,
+    order: VecDeque<String>,
+}
+
+impl IntrospectCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct OAuth2Layer {
     introspection_url: String,
     client_id: String,
     client_secret: String,
     cache_ttl_secs: u64,
+    cache_capacity: usize,
     /// Shared HTTP client: connections are pooled and reused across requests
     /// instead of being created (and torn down) per request.
     client: reqwest::Client,
-    /// 内省结果缓存：token -> (序列化 claims, 缓存时间)。TTL 内命中，
-    /// 过期后重新 introspection。
-    cache: Arc<tokio::sync::RwLock<HashMap<String, (String, std::time::Instant)>>>,
+    cache: Arc<tokio::sync::RwLock<IntrospectCache>>,
 }
 
 impl OAuth2Layer {
@@ -52,13 +73,19 @@ impl OAuth2Layer {
             client_id: client_id.into(),
             client_secret: client_secret.into(),
             cache_ttl_secs: 300,
+            cache_capacity: CACHE_CAPACITY,
             client,
-            cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            cache: Arc::new(tokio::sync::RwLock::new(IntrospectCache::new())),
         })
     }
 
     pub fn cache_ttl(mut self, secs: u64) -> Self {
         self.cache_ttl_secs = secs;
+        self
+    }
+
+    pub fn cache_capacity(mut self, n: usize) -> Self {
+        self.cache_capacity = n.max(1);
         self
     }
 }
@@ -135,11 +162,10 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
     // TTL 内命中缓存，避免每个请求都打 introspection 端点。
     if config.cache_ttl_secs > 0 {
         let cache = config.cache.read().await;
-        if let Some((json, cached_at)) = cache.get(token)
+        if let Some((claims, cached_at)) = cache.entries.get(token)
             && cached_at.elapsed() < std::time::Duration::from_secs(config.cache_ttl_secs)
-            && let Ok(claims) = serde_json::from_str::<AuthClaims>(json)
         {
-            return Ok(claims);
+            return Ok(claims.clone());
         }
     }
 
@@ -208,18 +234,19 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
 
     if config.cache_ttl_secs > 0 {
         let mut cache = config.cache.write().await;
-        // 缓存有界：达到上限时先清掉已过期的条目，防止 token 泄漏导致无界增长。
-        if cache.len() >= 4096 {
-            let ttl = std::time::Duration::from_secs(config.cache_ttl_secs);
-            cache.retain(|_, (_, at)| at.elapsed() < ttl);
+        // 新 key 且容量已满：FIFO 逐出最旧条目（order 与 entries 一一对应，
+        // 每个 key 只入队一次，不产生重复条目）。
+        if !cache.entries.contains_key(token) {
+            if cache.entries.len() >= config.cache_capacity
+                && let Some(oldest) = cache.order.pop_front()
+            {
+                cache.entries.remove(&oldest);
+            }
+            cache.order.push_back(token.to_string());
         }
-        cache.insert(
+        cache.entries.insert(
             token.to_string(),
-            (
-                serde_json::to_string(&claims)
-                    .map_err(|e| format!("cache serialize claims: {e}"))?,
-                std::time::Instant::now(),
-            ),
+            (claims.clone(), std::time::Instant::now()),
         );
     }
 
@@ -275,6 +302,53 @@ mod tests {
         let claims3 = introspect_token(&cfg, "tok-2").await.unwrap();
         assert_eq!(claims3.role.as_deref(), Some("admin"));
         assert_eq!(COUNT.load(Ordering::SeqCst), 2, "new token re-introspects");
+    }
+
+    /// S2 回归：缓存必须被容量上限约束。容量满后按 FIFO 逐出最旧条目，
+    /// 海量唯一 token 不会让缓存无限增长。
+    #[tokio::test]
+    async fn cache_evicts_oldest_at_capacity() {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let url = spawn_introspection_server(&COUNT).await;
+        let cfg = OAuth2Layer::new(url, "cid", "csecret")
+            .unwrap()
+            .cache_ttl(3600)
+            .cache_capacity(3);
+
+        for token in ["tok-1", "tok-2", "tok-3", "tok-4"] {
+            introspect_token(&cfg, token).await.unwrap();
+        }
+        assert_eq!(COUNT.load(Ordering::SeqCst), 4);
+
+        // 容量 3：tok-1 最先被逐出，缓存大小不超过上限。
+        {
+            let cache = cfg.cache.read().await;
+            assert_eq!(cache.entries.len(), 3);
+            assert!(!cache.entries.contains_key("tok-1"));
+            assert!(cache.entries.contains_key("tok-2"));
+        }
+
+        // 被逐出的 tok-1 需重新 introspection；随后 tok-2 按 FIFO 被挤出。
+        introspect_token(&cfg, "tok-1").await.unwrap();
+        assert_eq!(COUNT.load(Ordering::SeqCst), 5);
+        assert!(!cfg.cache.read().await.entries.contains_key("tok-2"));
+    }
+
+    /// P1 优化：缓存直接保存 AuthClaims 结构体，命中路径不再每请求
+    /// serde_json 反序列化。
+    #[tokio::test]
+    async fn cache_stores_claims_without_json_roundtrip() {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let url = spawn_introspection_server(&COUNT).await;
+        let cfg = OAuth2Layer::new(url, "cid", "csecret")
+            .unwrap()
+            .cache_ttl(60);
+
+        introspect_token(&cfg, "tok-1").await.unwrap();
+        let cache = cfg.cache.read().await;
+        let (claims, _) = cache.entries.get("tok-1").expect("token cached");
+        assert_eq!(claims.sub, "user-1");
+        assert_eq!(claims.role.as_deref(), Some("admin"));
     }
 
     #[tokio::test]

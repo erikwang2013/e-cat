@@ -9,6 +9,17 @@ pub trait Server: Send + Sync {
     async fn stop(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
+/// 将空 host 的地址（":8000"）规范化为 IPv4 通配（"0.0.0.0:8000"），
+/// 避免解析到 IPv6 [::] 而在无 IPv6 环境绑定失败。供各 transport
+/// （http/grpc/ws）在构造时统一调用，保证行为一致。
+pub fn normalize_addr(addr: String) -> String {
+    if addr.starts_with(':') {
+        format!("0.0.0.0{addr}")
+    } else {
+        addr
+    }
+}
+
 // ── mTLS Configuration ──
 
 #[derive(Clone)]
@@ -39,6 +50,18 @@ impl TlsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_addr_adds_ipv4_wildcard() {
+        assert_eq!(normalize_addr(":8000".into()), "0.0.0.0:8000");
+    }
+
+    #[test]
+    fn normalize_addr_leaves_hosted_addrs_alone() {
+        assert_eq!(normalize_addr("127.0.0.1:8000".into()), "127.0.0.1:8000");
+        assert_eq!(normalize_addr("[::1]:8000".into()), "[::1]:8000");
+        assert_eq!(normalize_addr("example.com:8000".into()), "example.com:8000");
+    }
 
     struct TestServer;
 

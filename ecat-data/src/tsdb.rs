@@ -63,3 +63,71 @@ pub enum TsdbError {
     #[error("tsdb error: {0}")]
     Other(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn datapoint_builder_accumulates_metadata() {
+        let dp = DataPoint::new("cpu")
+            .with_tag("host", "h1")
+            .with_tag("env", "prod")
+            .with_field("usage", FieldValue::Float(0.85))
+            .with_field("count", FieldValue::Int(3))
+            .with_field("active", FieldValue::Bool(true))
+            .with_field("name", FieldValue::String("web".into()))
+            .with_timestamp(1_700_000_000_000);
+        assert_eq!(dp.measurement, "cpu");
+        assert_eq!(dp.tags.len(), 2);
+        assert_eq!(dp.tags.get("host").map(String::as_str), Some("h1"));
+        assert_eq!(dp.fields.len(), 4);
+        assert!(
+            matches!(dp.fields.get("usage"), Some(FieldValue::Float(v)) if (v - 0.85).abs() < 1e-9)
+        );
+        assert!(matches!(dp.fields.get("count"), Some(FieldValue::Int(3))));
+        assert!(matches!(dp.fields.get("active"), Some(FieldValue::Bool(true))));
+        assert!(matches!(
+            dp.fields.get("name"),
+            Some(FieldValue::String(s)) if s == "web"
+        ));
+        assert_eq!(dp.timestamp, Some(1_700_000_000_000));
+    }
+
+    #[test]
+    fn datapoint_defaults_are_empty() {
+        let dp = DataPoint::new("mem");
+        assert!(dp.tags.is_empty());
+        assert!(dp.fields.is_empty());
+        assert_eq!(dp.timestamp, None);
+    }
+
+    #[test]
+    fn datapoint_overwrites_existing_tag() {
+        let dp = DataPoint::new("cpu").with_tag("host", "a").with_tag("host", "b");
+        assert_eq!(dp.tags.get("host").map(String::as_str), Some("b"));
+        assert_eq!(dp.tags.len(), 1);
+    }
+
+    struct NoDeleteClient;
+
+    #[async_trait]
+    impl TsdbClient for NoDeleteClient {
+        async fn write(&self, _points: &[DataPoint]) -> Result<(), TsdbError> {
+            Ok(())
+        }
+        async fn query(&self, _query: &str) -> Result<serde_json::Value, TsdbError> {
+            Ok(serde_json::Value::Null)
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_defaults_to_not_supported_error() {
+        let client = NoDeleteClient;
+        let err = client.delete("DROP TABLE t").await.unwrap_err();
+        assert!(
+            err.to_string().contains("delete not supported"),
+            "unexpected error: {err}"
+        );
+    }
+}

@@ -16,6 +16,9 @@ pub struct TlsClientConfig {
     pub client_cert: Option<String>,
     #[serde(default)]
     pub client_key: Option<String>,
+    /// 跳过服务器证书校验（danger_accept_invalid_certs）。仅限测试/开发环境，
+    /// 生产配置请勿开启。与 ca_cert 互斥：同时配置时构建客户端会报错，
+    /// 防止误配静默关闭证书校验。
     #[serde(default)]
     pub skip_verify: Option<bool>,
 }
@@ -29,6 +32,16 @@ impl TlsClientConfig {
     }
 
     pub fn build_reqwest_client(&self) -> Result<reqwest::Client, String> {
+        // S5：skip_verify 与 ca_cert 是矛盾配置（跳过校验却配置信任锚），
+        // 构建时拒绝，防止误配静默关闭证书校验。
+        if self.skip_verify == Some(true) && self.ca_cert.is_some() {
+            return Err(
+                "skip_verify=true cannot be combined with ca_cert: certificate verification \
+                 would be disabled while a trust anchor is configured"
+                    .into(),
+            );
+        }
+
         let mut builder = reqwest::Client::builder().use_rustls_tls();
 
         if self.skip_verify == Some(true) {
@@ -189,5 +202,31 @@ mod tests {
         )
         .unwrap();
         assert!(cfg.is_enabled());
+    }
+
+    /// S5：skip_verify 单独设置即视为 TLS 启用（显式跳过校验的合法用法）。
+    #[test]
+    fn skip_verify_alone_enables_tls() {
+        let cfg: TlsClientConfig = serde_json::from_str(r#"{"skip_verify": true}"#).unwrap();
+        assert!(cfg.is_enabled());
+        assert!(
+            cfg.build_reqwest_client().is_ok(),
+            "skip_verify alone must build a client"
+        );
+    }
+
+    /// S5：skip_verify 与 ca_cert 同时配置是矛盾配置（校验被跳过却配置信任锚），
+    /// 构建客户端必须报错，防止误配静默关闭证书校验。
+    #[test]
+    fn skip_verify_conflicts_with_ca_cert() {
+        let cfg: TlsClientConfig = serde_json::from_str(
+            r#"{"skip_verify": true, "ca_cert": "/nonexistent/ca.pem"}"#,
+        )
+        .unwrap();
+        let err = cfg.build_reqwest_client().unwrap_err();
+        assert!(
+            err.contains("skip_verify"),
+            "expected skip_verify conflict error, got: {err}"
+        );
     }
 }

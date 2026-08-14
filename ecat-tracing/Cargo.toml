@@ -12,3 +12,6 @@ http.workspace = true
 tower.workspace = true
 uuid = { version = "1", features = ["v4"] }
 ecat-metadata = { path = "../ecat-metadata" }
+
+[dev-dependencies]
+tokio.workspace = true

@@ -1,22 +1,13 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::Router;
-use ecat_transport::{Server as TransportServer, TlsConfig};
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, OnceLock};
-use tokio::net::{TcpListener, TcpStream};
+use ecat_transport::{normalize_addr, Server as TransportServer, TlsConfig};
+use std::sync::{Arc, Mutex};
+use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-/// 安装默认 rustls CryptoProvider（ring）。
-/// 同时编译 aws-lc-rs 与 ring features 时，rustls 无法自动选择 provider，
-/// 构造 ClientConfig/ServerConfig 会 panic；此处用 OnceLock 保证只安装一次。
-fn ensure_crypto_provider() {
-    static ONCE: OnceLock<()> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let _ = rustls::crypto::CryptoProvider::install_default(
-            rustls::crypto::ring::default_provider(),
-        );
-    });
-}
+mod tls_listener;
+
+use tls_listener::build_server_config;
 
 pub struct HttpServer {
     addr: String,
@@ -48,16 +39,6 @@ impl HttpServer {
     }
 }
 
-/// 将空 host 的地址（":8000"）规范化为 IPv4 通配（"0.0.0.0:8000"），
-/// 避免解析到 IPv6 [::] 而在无 IPv6 环境绑定失败。
-fn normalize_addr(addr: String) -> String {
-    if addr.starts_with(':') {
-        format!("0.0.0.0{addr}")
-    } else {
-        addr
-    }
-}
-
 impl HttpServer {
     /// 用户 router 与内置 /metrics 端点合并。
     /// /metrics 为框架保留路径：用户 router 若也定义该路径，merge 会 panic，
@@ -78,82 +59,6 @@ impl HttpServer {
     }
 }
 
-/// 从 TlsConfig 构建 rustls 服务端配置：加载 cert/key，ca_cert_path +
-/// require_client_auth 时要求并校验客户端证书（mTLS）。
-fn build_server_config(
-    tls: &TlsConfig,
-) -> Result<rustls::ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
-    ensure_crypto_provider();
-    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-        &tls.cert_path,
-    )?))
-    .collect::<Result<Vec<_>, _>>()?;
-    if certs.is_empty() {
-        return Err(format!("no certificates found in {}", tls.cert_path.display()).into());
-    }
-    let key = rustls_pemfile::private_key(&mut std::io::BufReader::new(std::fs::File::open(
-        &tls.key_path,
-    )?))?
-    .ok_or_else(|| format!("no private key found in {}", tls.key_path.display()))?;
-
-    let builder = rustls::ServerConfig::builder();
-    let config = if tls.require_client_auth {
-        let ca_path = tls
-            .ca_cert_path
-            .as_ref()
-            .ok_or("require_client_auth requires ca_cert_path")?;
-        let ca_certs = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-            ca_path,
-        )?))
-        .collect::<Result<Vec<_>, _>>()?;
-        if ca_certs.is_empty() {
-            return Err(format!("no CA certificates found in {}", ca_path.display()).into());
-        }
-        let mut roots = rustls::RootCertStore::empty();
-        roots.add_parsable_certificates(ca_certs);
-        let verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(roots)).build()?;
-        builder.with_client_cert_verifier(verifier)
-    } else {
-        builder.with_no_client_auth()
-    };
-    let mut server_config = config.with_single_cert(certs, key)?;
-    server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-    Ok(server_config)
-}
-
-/// axum::serve::Listener：在 TCP 连接上完成 rustls 握手后交给 axum。
-struct TlsListener {
-    listener: TcpListener,
-    acceptor: tokio_rustls::TlsAcceptor,
-}
-
-impl axum::serve::Listener for TlsListener {
-    type Io = tokio_rustls::server::TlsStream<TcpStream>;
-    type Addr = SocketAddr;
-
-    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
-        loop {
-            let (stream, addr) = match self.listener.accept().await {
-                Ok(pair) => pair,
-                Err(e) => {
-                    tracing::warn!(error = %e, "tcp accept failed");
-                    continue;
-                }
-            };
-            match self.acceptor.accept(stream).await {
-                Ok(tls) => return (tls, addr),
-                Err(e) => {
-                    tracing::warn!(error = %e, "tls handshake failed");
-                }
-            }
-        }
-    }
-
-    fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        self.listener.local_addr()
-    }
-}
-
 #[async_trait::async_trait]
 impl TransportServer for HttpServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -166,10 +71,10 @@ impl TransportServer for HttpServer {
         };
         if let Some(tls) = &self.tls_config {
             let server_config = build_server_config(tls)?;
-            let tls_listener = TlsListener {
+            let tls_listener = tls_listener::TlsListener::new(
                 listener,
-                acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(server_config)),
-            };
+                tokio_rustls::TlsAcceptor::from(Arc::new(server_config)),
+            );
             axum::serve(tls_listener, router)
                 .with_graceful_shutdown(shutdown_signal)
                 .await?;
@@ -198,6 +103,8 @@ impl TransportServer for HttpServer {
 mod tests {
     use super::*;
     use axum::{response::IntoResponse, routing::get};
+    use tokio::net::TcpStream;
+    use tls_listener::ensure_crypto_provider;
 
     async fn health() -> impl IntoResponse {
         "ok"
@@ -453,6 +360,61 @@ mod tests {
         );
 
         drop(tls);
+        server.stop().await.unwrap();
+        let _ = task.await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// S1 DoS 回归：慢速/僵尸 TLS 连接（只建 TCP、不发 ClientHello）不得阻塞
+    /// accept 循环——有效客户端必须在僵尸连接存活期间快速完成握手并得到 200。
+    /// 修复前握手在 accept() 内同步完成，axum::serve 串行调用 accept()，
+    /// 一个僵尸连接就会卡住整个 accept 循环。
+    #[tokio::test]
+    async fn zombie_handshake_does_not_block_accept_loop() {
+        let dir = std::env::temp_dir().join(format!("ecat-http-zombie-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let srv = ecat_tls::generate_server_cert("localhost").unwrap();
+        let (cert_path, key_path) = write_pem_files(&dir, "server", &srv);
+
+        let port = free_port().await;
+        let server = Arc::new(
+            HttpServer::new(format!("127.0.0.1:{port}"))
+                .router(Router::new().route("/health", get(health)))
+                .tls(TlsConfig::new(cert_path, key_path)),
+        );
+        let task = tokio::spawn({
+            let server = Arc::clone(&server);
+            async move { server.start().await }
+        });
+
+        // 僵尸连接：等服务绑定后建立 TCP 连接，不发任何数据并保持打开。
+        let zombie = loop {
+            match TcpStream::connect(("127.0.0.1", port)).await {
+                Ok(stream) => break stream,
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+            }
+        };
+        // 让 accept 循环先接到僵尸连接（修复前会卡在它的握手上）。
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // 有效客户端必须不被僵尸阻塞：握手 + 请求在 3s 内完成并返回 200。
+        let body = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                let tls = tls_client(&srv.cert_pem, None, port)
+                    .await
+                    .expect("valid client tls handshake failed");
+                request_over_tls(tls).await
+            },
+        )
+        .await
+        .expect("valid client blocked by zombie handshake");
+        assert!(
+            body.contains("200 OK"),
+            "unexpected response: {body:?}"
+        );
+
+        drop(zombie);
         server.stop().await.unwrap();
         let _ = task.await;
         let _ = std::fs::remove_dir_all(&dir);

@@ -80,10 +80,11 @@ impl VersionedRouter {
                 if let Some(ver) = extract_version(req.headers())
                     && !s.names.contains(&ver)
                 {
-                    return axum::http::Response::builder()
-                        .status(axum::http::StatusCode::NOT_FOUND)
-                        .body(axum::body::Body::from("unknown version"))
-                        .unwrap();
+                    // 直接构造响应，避免 builder+unwrap（http::Error 无意义的生产 panic 面）
+                    let mut resp =
+                        axum::http::Response::new(axum::body::Body::from("unknown version"));
+                    *resp.status_mut() = axum::http::StatusCode::NOT_FOUND;
+                    return resp;
                 }
                 next.run(req).await
             },
@@ -149,5 +150,31 @@ mod tests {
             "application/json; version=\"v2\"".parse().unwrap(),
         );
         assert_eq!(extract_version(&headers), Some("v2".into()));
+    }
+
+    /// N6：header 策略下未知版本必须 404（覆盖原 builder+unwrap 的生产路径），
+    /// 已知版本与无版本头正常放行。
+    #[tokio::test]
+    async fn header_strategy_rejects_unknown_version() {
+        use tower::ServiceExt;
+
+        let router = VersionedRouter::new(VersionStrategy::Header)
+            .add_version("v1", axum::Router::new().route("/health", get(health)))
+            .build();
+        let req = axum::http::Request::builder()
+            .uri("/health")
+            .header("Accept", "application/json; version=\"v9\"")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+
+        let ok_req = axum::http::Request::builder()
+            .uri("/health")
+            .header("Accept", "application/json; version=\"v1\"")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let ok_resp = router.oneshot(ok_req).await.unwrap();
+        assert_eq!(ok_resp.status(), axum::http::StatusCode::OK);
     }
 }

@@ -56,12 +56,12 @@ pub struct TracingService<S> {
     service_name: String,
 }
 
-impl<S, Req> Service<Req> for TracingService<S>
+impl<S, B> Service<http::Request<B>> for TracingService<S>
 where
-    S: Service<Req> + Send + 'static,
+    S: Service<http::Request<B>> + Send + 'static,
     S::Future: Send + 'static,
     S::Error: std::error::Error + Send + Sync + 'static,
-    Req: Send + 'static,
+    B: Send + 'static,
 {
     type Response = S::Response;
     type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -71,15 +71,18 @@ where
         self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
     }
 
-    fn call(&mut self, req: Req) -> Self::Future {
-        // Req 是完全泛型（仅 Send + 'static），无法在编译期读取请求头来填充
-        // trace_id 字段，除非把 impl 特化为 http::Request<B>（会破坏泛型 API）。
-        // 需要 trace_id 时请针对 http::Request<B> 的服务自行用
-        // extract_trace_id()/inject_trace_id() 在调用处维护 span 字段。
+    fn call(&mut self, req: http::Request<B>) -> Self::Future {
+        // 从请求头提取 trace_id（canonical x-ecat-trace-id 优先，traceparent
+        // 兜底），记录到 span 字段；请求无 trace id 时留空字段。
+        let trace_id = extract_trace_id(req.headers());
         let span = tracing::info_span!(
             "request",
             service = %self.service_name,
+            trace_id = tracing::field::Empty,
         );
+        if let Some(id) = trace_id {
+            span.record("trace_id", id);
+        }
         let fut = self.inner.call(req);
         Box::pin(async move {
             let _guard = span.enter();
@@ -102,9 +105,15 @@ pub fn extract_trace_id(headers: &http::HeaderMap) -> Option<String> {
 
 /// Inject trace_id into a header map for downstream calls.
 ///
-/// Generates a random 32-hex-char trace id (UUID v4) under the canonical
+/// Carries forward an existing upstream trace id (canonical header first,
+/// then W3C `traceparent`) so the trace chain is preserved across services;
+/// only when no upstream trace id is present does it generate a random
+/// 32-hex-char trace id (UUID v4) under the canonical
 /// [`ecat_metadata::TRACE_ID`] header.
 pub fn inject_trace_id(headers: &mut http::HeaderMap) {
+    if extract_trace_id(headers).is_some() {
+        return;
+    }
     let trace_id = uuid::Uuid::new_v4().simple().to_string();
     if let Ok(v) = http::HeaderValue::from_str(&trace_id) {
         headers.insert(ecat_metadata::TRACE_ID, v);
@@ -161,5 +170,109 @@ mod tests {
             value.to_str().unwrap().chars().all(|c| c.is_ascii_hexdigit()),
             "trace id is hex"
         );
+    }
+
+    /// N4：上游 canonical trace_id 已存在时沿用，不覆盖生成新 UUID。
+    #[test]
+    fn inject_preserves_existing_trace_id() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(ecat_metadata::TRACE_ID, "abc123".parse().unwrap());
+        inject_trace_id(&mut headers);
+        assert_eq!(
+            headers
+                .get(ecat_metadata::TRACE_ID)
+                .expect("canonical header set")
+                .to_str()
+                .unwrap(),
+            "abc123"
+        );
+    }
+
+    /// N4：上游只有 traceparent 时沿用链路（extract 的兜底语义），
+    /// 不覆盖 canonical header，也不打断链路。
+    #[test]
+    fn inject_preserves_upstream_traceparent() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("traceparent", "tp-000".parse().unwrap());
+        inject_trace_id(&mut headers);
+        assert!(
+            headers.get(ecat_metadata::TRACE_ID).is_none(),
+            "must not generate a fresh trace id when upstream traceparent exists"
+        );
+        assert_eq!(
+            headers.get("traceparent").unwrap().to_str().unwrap(),
+            "tp-000"
+        );
+    }
+
+    #[derive(Clone)]
+    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// N4：request span 必须记录 trace_id 字段（与 CHANGELOG 2.3.3 声明一致，
+    /// 头名 x-ecat-trace-id 与 ecat-metadata 一致）。
+    #[tokio::test]
+    async fn span_records_trace_id() {
+        use tower::ServiceExt;
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let writer = CaptureWriter(std::sync::Arc::clone(&buf));
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let svc = TracingLayer::new("svc").layer(tower::service_fn(
+            |_req: http::Request<()>| async move {
+                Ok::<_, std::convert::Infallible>(http::Response::new(()))
+            },
+        ));
+        svc.oneshot(
+            http::Request::builder()
+                .header(ecat_metadata::TRACE_ID, "abc123")
+                .body(())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let out = String::from_utf8(buf.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            .unwrap();
+        assert!(
+            out.contains("trace_id=\"abc123\""),
+            "span must record trace_id, got: {out}"
+        );
+    }
+
+    /// N4：无 trace id 请求头时 span 正常创建（trace_id 为空字段）。
+    #[tokio::test]
+    async fn span_works_without_trace_id() {
+        use tower::ServiceExt;
+
+        let svc = TracingLayer::new("svc").layer(tower::service_fn(
+            |_req: http::Request<()>| async move {
+                Ok::<_, std::convert::Infallible>(http::Response::new(()))
+            },
+        ));
+        let resp = svc
+            .oneshot(http::Request::builder().body(()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::OK);
     }
 }

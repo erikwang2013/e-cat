@@ -7,6 +7,8 @@ description = "Periodic and one-shot task scheduler for e-cat"
 
 [dependencies]
 tokio.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
+tracing-subscriber.workspace = true

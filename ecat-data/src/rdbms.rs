@@ -120,3 +120,105 @@ pub enum RdbmsError {
     #[error("configuration error: {0}")]
     Config(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn row_get_returns_value_by_column() {
+        let row = Row::new(
+            vec!["id".into(), "name".into()],
+            vec![serde_json::json!(1), serde_json::json!("alice")],
+        );
+        assert_eq!(row.get("name"), Some(&serde_json::json!("alice")));
+        assert_eq!(row.get("missing"), None);
+    }
+
+    #[test]
+    fn row_get_uses_first_matching_column() {
+        let row = Row::new(
+            vec!["a".into(), "a".into()],
+            vec![serde_json::json!(1), serde_json::json!(2)],
+        );
+        assert_eq!(row.get("a"), Some(&serde_json::json!(1)));
+    }
+
+    #[derive(Clone, Default)]
+    struct Tracked {
+        commits: Arc<AtomicUsize>,
+        rollbacks: Arc<AtomicUsize>,
+    }
+
+    struct TrackingInner {
+        track: Tracked,
+    }
+
+    #[async_trait]
+    impl TransactionInner for TrackingInner {
+        async fn commit(&mut self) -> Result<(), RdbmsError> {
+            self.track.commits.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        async fn rollback(&mut self) -> Result<(), RdbmsError> {
+            self.track.rollbacks.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn commit_delegates_to_inner() {
+        let track = Tracked::default();
+        let tx = Transaction::with_inner(Box::new(TrackingInner { track: track.clone() }));
+        tx.commit().await.unwrap();
+        assert_eq!(track.commits.load(Ordering::SeqCst), 1);
+        assert_eq!(track.rollbacks.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn rollback_delegates_to_inner() {
+        let track = Tracked::default();
+        let tx = Transaction::with_inner(Box::new(TrackingInner { track: track.clone() }));
+        tx.rollback().await.unwrap();
+        assert_eq!(track.rollbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(track.commits.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn commit_without_inner_succeeds() {
+        let tx = Transaction::new();
+        tx.commit().await.unwrap();
+    }
+
+    struct RawOnlyClient;
+
+    #[async_trait]
+    impl RdbmsClient for RawOnlyClient {
+        async fn execute(&self, _sql: &str) -> Result<u64, RdbmsError> {
+            Ok(0)
+        }
+        async fn query(&self, _sql: &str) -> Result<Vec<Row>, RdbmsError> {
+            Ok(vec![])
+        }
+        async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+            Ok(Transaction::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn parameterized_ops_default_to_not_supported_error() {
+        let client = RawOnlyClient;
+        let err = client.execute_with("SELECT 1", &[]).await.unwrap_err();
+        assert!(
+            err.to_string().contains("parameterized execute not supported"),
+            "got: {err}"
+        );
+        let err = client.query_with("SELECT 1", &[]).await.unwrap_err();
+        assert!(
+            err.to_string().contains("parameterized query not supported"),
+            "got: {err}"
+        );
+    }
+}

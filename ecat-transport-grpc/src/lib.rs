@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use ecat_transport::{Server as TransportServer, TlsConfig};
+use ecat_transport::{normalize_addr, Server as TransportServer, TlsConfig};
 use std::io;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -17,7 +17,9 @@ pub struct GrpcServer {
 impl GrpcServer {
     pub fn new(addr: impl Into<String>) -> Self {
         Self {
-            addr: addr.into(),
+            // 空 host（如 ":50051"）会解析到 IPv6 通配 [::]，在无 IPv6 环境
+            // 绑定失败；规范化为 IPv4 通配 "0.0.0.0"
+            addr: normalize_addr(addr.into()),
             routes: None,
             shutdown_tx: Mutex::new(None),
             tls_config: None,
@@ -224,6 +226,13 @@ mod tests {
     #[test]
     fn new_sets_addr() {
         let srv = GrpcServer::new("0.0.0.0:50051");
+        assert_eq!(srv.addr, "0.0.0.0:50051");
+    }
+
+    /// N3：空 host 地址（":50051"）必须规范化为 IPv4 通配，与 HttpServer 一致。
+    #[test]
+    fn new_normalizes_empty_host_addr() {
+        let srv = GrpcServer::new(":50051");
         assert_eq!(srv.addr, "0.0.0.0:50051");
     }
 

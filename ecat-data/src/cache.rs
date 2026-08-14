@@ -36,3 +36,35 @@ pub enum CacheError {
     #[error("cache error: {0}")]
     Other(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 只实现核心三操作的后端：可选操作必须走默认实现的报错路径。
+    struct MinimalCache;
+
+    #[async_trait]
+    impl Cache for MinimalCache {
+        async fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, CacheError> {
+            Ok(None)
+        }
+        async fn set(&self, _key: &str, _value: &[u8], _ttl: Duration) -> Result<(), CacheError> {
+            Ok(())
+        }
+        async fn delete(&self, _key: &str) -> Result<(), CacheError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn optional_ops_default_to_not_supported_error() {
+        let cache = MinimalCache;
+        let err = cache.increment("k", 1).await.unwrap_err();
+        assert!(err.to_string().contains("increment not supported"), "got: {err}");
+        let err = cache.ttl("k").await.unwrap_err();
+        assert!(err.to_string().contains("ttl not supported"), "got: {err}");
+        let err = cache.multi_get(&["a", "b"]).await.unwrap_err();
+        assert!(err.to_string().contains("multi_get not supported"), "got: {err}");
+    }
+}
