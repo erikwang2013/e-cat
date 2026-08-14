@@ -85,7 +85,7 @@ Client Request
 - **API-first**: Protobuf-defined APIs, error codes, and metadata; prost + tonic-build code generation
 - **Dual protocol**: HTTP (axum) and gRPC (tonic) sharing one tower::Layer middleware chain
 - **Pluggable**: Registry, Config, Logging, Encoding via trait abstractions, production-ready defaults
-- **Middleware**: Built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security layers, composed with tower::ServiceBuilder
+- **Middleware**: Built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, and CORS (cors feature) layers, composed with tower::ServiceBuilder
 - **Lifecycle**: Builder pattern, concurrent servers, SIGTERM/SIGINT handling, start/stop hooks
 - **Type-safe**: Protobuf-based error codes with compile-time HTTP status mapping
 - **Observable**: tracing + OpenTelemetry (OTLP) + Prometheus + Health endpoints (/health, /ready)
@@ -382,6 +382,20 @@ let app = Router::new().route("/hello", get(hello)).layer(MetricsLayer::new());
 use ecat_middleware::RetryLayer;
 let retry = RetryLayer::new(3, Duration::from_secs(1), Duration::from_secs(30)); // 3 total attempts incl. first
 // Custom retry rule: RetryLayer::new(3, ...).with_rule(MyRule)  // decide by status code / response content
+
+// Validation: check headers/params before routing; short-circuits with a JSON error (400 by default, with_status can set 422 etc.)
+use ecat_middleware::{ValidateLayer, ValidateError};
+let validate = ValidateLayer::from_fn(|req: &http::Request<axum::body::Body>| {
+    if req.headers().contains_key("x-api-key") {
+        Ok(())
+    } else {
+        Err(ValidateError::new("missing x-api-key").with_status(422))
+    }
+});
+
+// CORS: requires the "cors" feature on ecat-middleware
+use ecat_middleware::{CorsLayer, AllowOrigin};
+let cors = CorsLayer::new().allow_origin(AllowOrigin::any());
 ```
 
 ### Error Handling
@@ -421,6 +435,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 13 | ✅ Done | Data backends (etcd / Kafka / OpenSearch / InfluxDB / ES / ClickHouse / Memcached / Neo4j / NebulaGraph / ArangoDB / IoTDB / QuestDB) |
 | Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
 | Phase 15 | ✅ Done | Ecosystem v2 (real Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / distributed lock / scheduler / CLI watch+upgrade) |
+| Phase 16 | ✅ Done | Maintenance v2.4 (M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 aggregation crate ecat / U2 examples / OAuth2 token hash / CVE tracking) |
 
 ## Known Limitations
 

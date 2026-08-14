@@ -82,7 +82,7 @@
 - **API-first**：Protobuf 定义 API、错误码、元数据；prost + tonic-build 代码生成
 - **双协议支持**：HTTP（axum）和 gRPC（tonic）共用同一套 tower::Layer 中间件
 - **可插拔架构**：Registry、Config、Logging、Encoding 全部通过 trait 抽象，默认提供生产可用实现
-- **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security；通过 tower::ServiceBuilder 组合
+- **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、MetricsLayer、RetryLayer、ValidateLayer、CORS（cors feature）；通过 tower::ServiceBuilder 组合
 - **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
 - **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
 - **可观测性**：tracing + Prometheus + Health 端点（/health、/ready）
@@ -394,6 +394,20 @@ let app = Router::new().route("/hello", get(hello)).layer(MetricsLayer::new());
 use ecat_middleware::RetryLayer;
 let retry = RetryLayer::new(3, Duration::from_secs(1), Duration::from_secs(30)); // 含首次共 3 次尝试
 // 自定义重试规则：RetryLayer::new(3, ...).with_rule(MyRule)  // 按状态码/响应内容判定
+
+// 校验：路由前校验 header/参数，失败短路返回 JSON 错误（默认 400，with_status 可改 422 等）
+use ecat_middleware::{ValidateLayer, ValidateError};
+let validate = ValidateLayer::from_fn(|req: &http::Request<axum::body::Body>| {
+    if req.headers().contains_key("x-api-key") {
+        Ok(())
+    } else {
+        Err(ValidateError::new("missing x-api-key").with_status(422))
+    }
+});
+
+// CORS：ecat-middleware 需启用 "cors" feature
+use ecat_middleware::{CorsLayer, AllowOrigin};
+let cors = CorsLayer::new().allow_origin(AllowOrigin::any());
 ```
 
 ### 错误处理
@@ -433,6 +447,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
 | Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
 | Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
+| Phase 16 | ✅ 完成 | 维护强化 v2.4（M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 聚合 crate ecat / U2 examples / OAuth2 token hash / CVE 跟踪） |
 
 ## 已知限制
 
