@@ -8,6 +8,7 @@ pub struct BenchResult {
     pub total_duration: Duration,
     pub avg_latency_us: f64,
     pub p50_latency_us: f64,
+    pub p95_latency_us: f64,
     pub p99_latency_us: f64,
     pub throughput_rps: f64,
 }
@@ -20,6 +21,7 @@ impl BenchResult {
         println!("  throughput: {:.0} req/s", self.throughput_rps);
         println!("  avg:        {:.0} µs", self.avg_latency_us);
         println!("  p50:        {:.0} µs", self.p50_latency_us);
+        println!("  p95:        {:.0} µs", self.p95_latency_us);
         println!("  p99:        {:.0} µs", self.p99_latency_us);
     }
 }
@@ -55,6 +57,7 @@ where
             total_duration: Duration::ZERO,
             avg_latency_us: 0.0,
             p50_latency_us: 0.0,
+            p95_latency_us: 0.0,
             p99_latency_us: 0.0,
             throughput_rps: 0.0,
         };
@@ -112,6 +115,11 @@ where
         0.0
     };
     let p50 = if count > 0 { latencies[count / 2] } else { 0.0 };
+    let p95 = if count > 0 {
+        latencies[(count as f64 * 0.95) as usize]
+    } else {
+        0.0
+    };
     let p99 = if count > 0 {
         latencies[(count as f64 * 0.99) as usize]
     } else {
@@ -124,6 +132,7 @@ where
         total_duration,
         avg_latency_us: avg,
         p50_latency_us: p50,
+        p95_latency_us: p95,
         p99_latency_us: p99,
         throughput_rps: count as f64 / total_duration.as_secs_f64(),
     }
@@ -153,6 +162,7 @@ mod tests {
         let result = run_bench("rem", 3, 10, || async {}).await;
         assert_eq!(result.total_requests, 10);
         assert!(result.p50_latency_us >= 0.0);
+        assert!(result.p95_latency_us >= 0.0);
         assert!(result.p99_latency_us >= 0.0);
     }
 
@@ -161,6 +171,7 @@ mod tests {
         let result = run_bench("over", 10, 3, || async {}).await;
         assert_eq!(result.total_requests, 3);
         assert!(result.p50_latency_us >= 0.0);
+        assert!(result.p95_latency_us >= 0.0);
     }
 
     #[tokio::test]
@@ -168,6 +179,7 @@ mod tests {
         let result = run_bench("zero", 4, 0, || async {}).await;
         assert_eq!(result.total_requests, 0);
         assert_eq!(result.p50_latency_us, 0.0);
+        assert_eq!(result.p95_latency_us, 0.0);
         assert_eq!(result.p99_latency_us, 0.0);
     }
 
@@ -243,9 +255,32 @@ mod tests {
             total_duration: Duration::from_secs(1),
             avg_latency_us: 500.0,
             p50_latency_us: 450.0,
+            p95_latency_us: 700.0,
             p99_latency_us: 900.0,
             throughput_rps: 100.0,
         };
         r.print();
+    }
+
+    /// P3：p95 介于 p50 与 p99 之间（确定性延迟下三分位一致）。
+    #[tokio::test]
+    async fn p95_between_p50_and_p99() {
+        let result = run_bench("pct", 1, 20, || async {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        })
+        .await;
+        assert_eq!(result.total_requests, 20);
+        assert!(
+            result.p50_latency_us <= result.p95_latency_us,
+            "p95 must be >= p50: p50={} p95={}",
+            result.p50_latency_us,
+            result.p95_latency_us
+        );
+        assert!(
+            result.p95_latency_us <= result.p99_latency_us,
+            "p95 must be <= p99: p95={} p99={}",
+            result.p95_latency_us,
+            result.p99_latency_us
+        );
     }
 }

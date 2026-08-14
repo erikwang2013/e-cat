@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.0.0] — 2026-08-14
+
+### Breaking
+- `ecat-mq` MessageStream Bytes 化：`poll_recv` 返回 `Vec<u8>` → `bytes::Bytes`（新增 `bytes = "1"` 依赖）；`publish(&[u8])` 签名不变零迁移。mqtt/nats 原生 Bytes 零拷贝透传、rabbitmq Vec→Bytes 所有权转移；`ecat-events` Handler 消费路径同步 Bytes 化，消除每消息拷贝
+- `from_config` 签名统一：12 个数据 crate 统一为 `Result<Self, XxxError>`（保留领域错误）；`ecat-data-memcached` 由 `Self` → `Result<Self, CacheError>`（恒 Ok，唯一功能性破坏），redis/sqlx/mongodb 核实已符合
+- workspace 依赖同步：`workspace.dependencies` 15 处 `ecat-*` 版本统一 3.0.0（修复 v2.4.3 发布时的遗漏）
+
+### Added
+- `ecat-bench` BenchResult 新增 `pub p95_latency_us`：p95 计算与 p50/p99 同公式（count*0.95 索引界内、空样本 0.0）、`print` 与 `http_bench compare` 补 p95 行、不变式测试 p95_between_p50_and_p99
+
 ## [2.4.3] — 2026-08-14
 
 ### Added

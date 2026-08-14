@@ -7,6 +7,7 @@ description = "Event bus abstraction for e-cat"
 
 [dependencies]
 ecat-mq = { path = "../ecat-mq" }
+bytes.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 serde.workspace = true

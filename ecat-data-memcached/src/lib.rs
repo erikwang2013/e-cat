@@ -64,12 +64,14 @@ impl MemcachedClient {
         }
     }
 
-    pub fn from_config(cfg: MemcachedConfig) -> Self {
-        Self {
+    /// 与 workspace 其它数据后端一致：返回 `Result<Self, CacheError>`。
+    /// 内存实现不会失败，恒为 `Ok`。
+    pub fn from_config(cfg: MemcachedConfig) -> Result<Self, CacheError> {
+        Ok(Self {
             store: Mutex::new(HashMap::new()),
             _username: cfg.username,
             _password: cfg.password,
-        }
+        })
     }
 }
 
@@ -157,5 +159,20 @@ mod tests {
         c.set("x", b"y", Duration::from_secs(60)).await.unwrap();
         c.delete("x").await.unwrap();
         assert_eq!(c.get("x").await.unwrap(), None);
+    }
+
+    #[test]
+    fn from_config_returns_ok_and_works() {
+        let c = MemcachedClient::from_config(MemcachedConfig {
+            username: Some("u".into()),
+            password: Some("p".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            c.set("cfg", b"v", Duration::from_secs(60)).await.unwrap();
+            assert_eq!(c.get("cfg").await.unwrap(), Some(b"v".to_vec()));
+        });
     }
 }

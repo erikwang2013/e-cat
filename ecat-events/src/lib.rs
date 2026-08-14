@@ -1,4 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use bytes::Bytes;
 use ecat_mq::MessageQueue;
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
@@ -7,7 +8,7 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
 type Handler = Arc<
-    dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+    dyn Fn(Bytes) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
         + Send
         + Sync,
 >;
@@ -46,7 +47,7 @@ impl EventBus {
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
         let event_name = std::any::type_name::<E>().to_string();
-        let handler: Handler = Arc::new(move |data: Vec<u8>| {
+        let handler: Handler = Arc::new(move |data: Bytes| {
             let event: E = match serde_json::from_slice(&data) {
                 Ok(e) => e,
                 Err(err) => {
@@ -141,8 +142,9 @@ impl EventBus {
         event: &E,
     ) -> Result<(), EventBusError> {
         let event_name = std::any::type_name::<E>().to_string();
-        let payload =
-            serde_json::to_vec(event).map_err(|e| EventBusError(format!("serialize: {e}")))?;
+        let payload = Bytes::from(
+            serde_json::to_vec(event).map_err(|e| EventBusError(format!("serialize: {e}")))?,
+        );
 
         if let Some(ref mq) = self.mq {
             // 远程模式：只发布到 mq，本地 handler 由消费任务回环分发，
@@ -172,6 +174,7 @@ pub struct EventBusError(String);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
     use ecat_mq::{MessageStream, MqError};
     use serde::Deserialize;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -191,7 +194,7 @@ mod tests {
     struct EndingStream;
 
     impl MessageStream for EndingStream {
-        fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+        fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
             Poll::Ready(None)
         }
     }
@@ -238,7 +241,7 @@ mod tests {
     struct PanicStream;
 
     impl MessageStream for PanicStream {
-        fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+        fn poll_recv(&mut self, _cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
             panic!("simulated consumer panic")
         }
     }

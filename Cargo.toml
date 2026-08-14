@@ -63,7 +63,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "2.4.3"
+version = "3.0.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erik/e-cat"
@@ -72,6 +72,7 @@ documentation = "https://docs.rs/e-cat"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
+bytes = "1"
 prost = "0.13"
 prost-types = "0.13"
 tonic = "0.12"
@@ -88,18 +89,18 @@ http = "1"
 thiserror = "2"
 futures-core = "0.3"
 sha2 = "0.10"
-ecat-transport = { version = "2.4.2", path = "ecat-transport" }
-ecat-transport-http = { version = "2.4.2", path = "ecat-transport-http" }
-ecat-transport-grpc = { version = "2.4.2", path = "ecat-transport-grpc" }
-ecat-logging = { version = "2.4.2", path = "ecat-logging" }
-ecat-errors = { version = "2.4.2", path = "ecat-errors" }
-ecat-middleware = { version = "2.4.2", path = "ecat-middleware" }
-ecat-auth = { version = "2.4.2", path = "ecat-auth" }
-ecat-client = { version = "2.4.2", path = "ecat-client" }
-ecat-events = { version = "2.4.2", path = "ecat-events" }
-ecat-metrics = { version = "2.4.2", path = "ecat-metrics" }
-ecat-tracing = { version = "2.4.2", path = "ecat-tracing" }
-ecat-circuit-breaker = { version = "2.4.2", path = "ecat-circuit-breaker" }
-ecat-registry-consul = { version = "2.4.2", path = "ecat-registry-consul" }
-ecat-config-remote = { version = "2.4.2", path = "ecat-config-remote" }
-ecat-data-redis = { version = "2.4.2", path = "ecat-data-redis" }
+ecat-transport = { version = "3.0.0", path = "ecat-transport" }
+ecat-transport-http = { version = "3.0.0", path = "ecat-transport-http" }
+ecat-transport-grpc = { version = "3.0.0", path = "ecat-transport-grpc" }
+ecat-logging = { version = "3.0.0", path = "ecat-logging" }
+ecat-errors = { version = "3.0.0", path = "ecat-errors" }
+ecat-middleware = { version = "3.0.0", path = "ecat-middleware" }
+ecat-auth = { version = "3.0.0", path = "ecat-auth" }
+ecat-client = { version = "3.0.0", path = "ecat-client" }
+ecat-events = { version = "3.0.0", path = "ecat-events" }
+ecat-metrics = { version = "3.0.0", path = "ecat-metrics" }
+ecat-tracing = { version = "3.0.0", path = "ecat-tracing" }
+ecat-circuit-breaker = { version = "3.0.0", path = "ecat-circuit-breaker" }
+ecat-registry-consul = { version = "3.0.0", path = "ecat-registry-consul" }
+ecat-config-remote = { version = "3.0.0", path = "ecat-config-remote" }
+ecat-data-redis = { version = "3.0.0", path = "ecat-data-redis" }

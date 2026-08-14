@@ -14,7 +14,7 @@
 //   metrics  + MetricsLayer（M1，指标记录）
 //   full     + MetricsLayer + TracingLayer + LoggingLayer（近似 helloworld 生产栈）
 //
-// 输出每个端点的 requests/QPS/p50/p99，以及与 bare 的 QPS/p99 开销对比。
+// 输出每个端点的 requests/QPS/p50/p95/p99，以及与 bare 的 QPS/p95/p99 开销对比。
 use axum::{Json, Router, routing::get};
 use ecat_bench::{run_bench_with_warmup, BenchResult};
 use ecat_middleware::{LoggingLayer, TracingLayer};
@@ -95,10 +95,16 @@ async fn bench_endpoint(
 
 fn compare(name: &str, r: &BenchResult, bare: &BenchResult) {
     let qps = (r.throughput_rps / bare.throughput_rps - 1.0) * 100.0;
+    let p95 = (r.p95_latency_us / bare.p95_latency_us - 1.0) * 100.0;
     let p99 = (r.p99_latency_us / bare.p99_latency_us - 1.0) * 100.0;
     println!(
-        "  {name}: QPS {qps:+.1}% (bare {:.0} -> {:.0}), p99 {p99:+.1}% (bare {:.0}us -> {:.0}us)",
-        bare.throughput_rps, r.throughput_rps, bare.p99_latency_us, r.p99_latency_us
+        "  {name}: QPS {qps:+.1}% (bare {:.0} -> {:.0}), p95 {p95:+.1}% (bare {:.0}us -> {:.0}us), p99 {p99:+.1}% (bare {:.0}us -> {:.0}us)",
+        bare.throughput_rps,
+        r.throughput_rps,
+        bare.p95_latency_us,
+        r.p95_latency_us,
+        bare.p99_latency_us,
+        r.p99_latency_us
     );
 }
 

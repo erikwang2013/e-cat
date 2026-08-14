@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_nats::{Client, Message};
 use async_trait::async_trait;
+use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
 use futures_core::Stream;
 use serde::Deserialize;
@@ -57,9 +58,9 @@ struct NatsStream {
 }
 
 impl MessageStream for NatsStream {
-    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
         match Pin::new(&mut *self.sub).poll_next(cx) {
-            Poll::Ready(Some(msg)) => Poll::Ready(Some(Ok(msg.payload.to_vec()))),
+            Poll::Ready(Some(msg)) => Poll::Ready(Some(Ok(msg.payload))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

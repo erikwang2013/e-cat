@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
 use futures_core::Stream;
 use lapin::options::{BasicConsumeOptions, BasicPublishOptions, QueueDeclareOptions};
@@ -92,9 +93,9 @@ struct RabbitStream {
 }
 
 impl MessageStream for RabbitStream {
-    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
         match Pin::new(&mut self.consumer).poll_next(cx) {
-            Poll::Ready(Some(Ok(delivery))) => Poll::Ready(Some(Ok(delivery.data))),
+            Poll::Ready(Some(Ok(delivery))) => Poll::Ready(Some(Ok(Bytes::from(delivery.data)))),
             Poll::Ready(Some(Err(e))) => {
                 Poll::Ready(Some(Err(MqError::Other(format!("rabbitmq recv: {e}")))))
             }

@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
 use serde::Deserialize;
@@ -107,16 +108,14 @@ impl MessageQueue for MqttMq {
             .await
             .map_err(|e| MqError::Other(format!("mqtt subscribe: {e}")))?;
 
-        let (tx, rx) = mpsc::channel::<Vec<u8>>(256);
+        let (tx, rx) = mpsc::channel::<Bytes>(256);
         tokio::spawn(async move {
             let mut eventloop = eventloop;
             loop {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::Publish(msg))) => {
-                        // msg.payload 是 bytes::Bytes；MessageStream 接口返回
-                        // Vec<u8>，此拷贝是接口约束下的必要转换（trait 改 Bytes
-                        // 后可零拷贝透传）。
-                        if tx.send(msg.payload.to_vec()).await.is_err() {
+                        // msg.payload 是 bytes::Bytes，直接透传，零拷贝。
+                        if tx.send(msg.payload).await.is_err() {
                             break;
                         }
                     }
@@ -130,11 +129,11 @@ impl MessageQueue for MqttMq {
 }
 
 struct MqttStream {
-    rx: mpsc::Receiver<Vec<u8>>,
+    rx: mpsc::Receiver<Bytes>,
 }
 
 impl MessageStream for MqttStream {
-    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
         match self.rx.poll_recv(cx) {
             Poll::Ready(Some(data)) => Poll::Ready(Some(Ok(data))),
             Poll::Ready(None) => Poll::Ready(None),

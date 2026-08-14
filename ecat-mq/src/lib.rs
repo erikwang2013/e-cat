@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use bytes::Bytes;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -14,7 +15,7 @@ pub trait MessageQueue: Send + Sync {
 }
 
 pub trait MessageStream: Send + Unpin {
-    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>>;
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>>;
 }
 
 #[derive(Debug, PartialEq, thiserror::Error)]
@@ -28,7 +29,7 @@ pub struct InMemoryMq {
 }
 
 struct SenderEntry {
-    tx: broadcast::Sender<Vec<u8>>,
+    tx: broadcast::Sender<Bytes>,
     notify: Arc<Notify>,
 }
 
@@ -54,7 +55,7 @@ impl MessageQueue for InMemoryMq {
             .read()
             .map_err(|e| MqError::Other(e.to_string()))?;
         if let Some(entries) = map.get(topic) {
-            let data = payload.to_vec();
+            let data = Bytes::copy_from_slice(payload);
             for entry in entries {
                 let _ = entry.tx.send(data.clone());
                 entry.notify.notify_waiters();
@@ -83,14 +84,14 @@ impl MessageQueue for InMemoryMq {
 }
 
 struct InMemoryStream {
-    rx: broadcast::Receiver<Vec<u8>>,
+    rx: broadcast::Receiver<Bytes>,
     notify: Arc<Notify>,
     // OwnedNotified 自带 Arc<Notify>，避免对 self 的自引用借用
     notified: Option<Pin<Box<OwnedNotified>>>,
 }
 
 impl MessageStream for InMemoryStream {
-    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Vec<u8>, MqError>>> {
+    fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
         // 先同步取数据；空时挂起在 Notify 上等待 publish 唤醒，不做自旋。
         match self.rx.try_recv() {
             Ok(data) => return Poll::Ready(Some(Ok(data))),
@@ -148,7 +149,7 @@ mod tests {
         let mut stream = mq.subscribe("topic").await.unwrap();
         mq.publish("topic", b"hello").await.unwrap();
         let msg = std::future::poll_fn(|cx| stream.poll_recv(cx)).await;
-        assert_eq!(msg, Some(Ok(b"hello".to_vec())));
+        assert_eq!(msg, Some(Ok(Bytes::from_static(b"hello"))));
     }
 
     #[tokio::test]
