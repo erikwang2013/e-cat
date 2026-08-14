@@ -12,3 +12,4 @@ async-trait.workspace = true
 axum = { workspace = true, features = ["ws"] }
 tower.workspace = true
 futures-util = "0.3"
+tracing.workspace = true

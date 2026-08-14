@@ -13,7 +13,7 @@
 - `ecat-events`：消费任务退出（正常/panic）后清理占位，再次 subscribe 可重启消费，修复事件永久静默丢失
 - `ecat-data-s3`：TLS 配置面重写——`tls` 字段由 bool 改为 `TlsClientConfig`，复用 `ecat_tls::build_reqwest_client`（rust-s3 → reqwest+rustls）；请求签名改为自实现 AWS SigV4（path-style 寻址，AUTHORIZATION / x-amz-date / x-amz-content-sha256 请求头），修复 S3-1/S3-2 的签名请求头装配与双重 percent-encoding
 - `ecat-mq-kafka`：消费改 StreamConsumer（tokio 驱动），消除 ~200ms 固定轮询延迟
-- `ecat-mq-kafka`（语义变更）：group_id 派生规则——显式配置时派生为 `{group_id}-{topic}`；未配置时生成随机组 `ecat-mq-{uuid}`。注意：未配置 group_id 的实例各自独立消费组（不再共享负载均衡）；已配置的组名变化会脱离原组 offset
+- `ecat-mq-kafka`（语义变更，⚠️ 破坏性）：group_id 派生规则——显式配置时派生为 `{group_id}-{topic_hash}`（SHA-256 取 8 位 hex：同一 (group, topic) 跨实例一致，共享消费组负载均衡、offset 组名稳定，hash 后缀消除 "-" 直接拼接的歧义碰撞）；未配置时生成随机组 `ecat-mq-{uuid}`。⚠️ 升级影响：有 group_id 的部署组名由 `{g}-{topic}` 变为 `{g}-{hash8}`，旧 committed offset 孤儿化——升级后按 offset 重置策略（默认 latest）从分区末尾重读，停机期间产生的消息会被跳过；未配置 group_id 的实例各自独立消费组（不再共享负载均衡）。新增 `auto_commit` 配置（默认 false，向后兼容）：true 时 `enable.auto.commit=true`（librdkafka 每 ~5s 自动提交，at-least-once，重启从最近提交点继续，避免停机期消息静默跳过）。消费错误分支新增 tracing::warn
 - `ecat-tracing`：TracingLayer span 记录 trace_id（提取自请求头，canonical `x-ecat-trace-id` 优先、`traceparent` 兜底，无 id 时空字段）；⚠️ `TracingService` 的 `Service` 实现由完全泛型特化为 `Service<http::Request<B>>`——使用非 HTTP 请求类型的调用方需调整（编译期变更）
 - `ecat-transport`：地址规范化共享——normalize_addr 统一空 host（`:8000`）→ `0.0.0.0:8000`，http/grpc/ws 三端一致，避免无 IPv6 环境绑定失败
 - `ecat-scheduler`：任务 panic 韧性——job 改 JoinSet 子任务，panic 记日志后继续下一 tick（不再静默死亡）；run() 同步 panic 记录 warn

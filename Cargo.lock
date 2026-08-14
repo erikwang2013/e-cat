@@ -1648,7 +1648,9 @@ dependencies = [
  "rdkafka",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -1861,6 +1863,7 @@ dependencies = [
  "tokio-rustls",
  "tower 0.5.3",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1873,6 +1876,7 @@ dependencies = [
  "futures-util",
  "tokio",
  "tower 0.5.3",
+ "tracing",
 ]
 
 [[package]]

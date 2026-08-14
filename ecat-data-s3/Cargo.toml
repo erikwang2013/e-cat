@@ -14,6 +14,6 @@ serde.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 hmac = "0.12"
-sha2 = "0.10"
+sha2.workspace = true
 time = { version = "0.3", features = ["formatting", "macros"] }
 quick-xml = "0.32"

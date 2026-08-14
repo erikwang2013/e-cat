@@ -113,6 +113,9 @@ impl MessageQueue for MqttMq {
             loop {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::Publish(msg))) => {
+                        // msg.payload 是 bytes::Bytes；MessageStream 接口返回
+                        // Vec<u8>，此拷贝是接口约束下的必要转换（trait 改 Bytes
+                        // 后可零拷贝透传）。
                         if tx.send(msg.payload.to_vec()).await.is_err() {
                             break;
                         }

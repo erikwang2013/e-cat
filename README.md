@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.5 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.0 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -402,6 +402,13 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
 | Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
 | Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
+
+## 已知限制
+
+- **WebSocket 优雅关闭（ecat-transport-ws）**：`WsServer::stop()` 不等待已升级的 WebSocket 连接——axum `on_upgrade` 连接在独立任务中运行，graceful shutdown 不覆盖，长连接在 stop() 后仍滞留，需对端主动断开或随进程退出回收。
+- **GraphQL 解析（ecat-graphql）**：`execute` 仅将 variables 传给 resolver，字段参数与嵌套 selection 不传递——含嵌套字段参数的复杂查询暂不支持，请将所需数据放入顶层查询参数。
+- **熔断判定（ecat-circuit-breaker）**：仅统计传输层错误，HTTP 5xx 视为成功——对「服务存活但持续返回 5xx」的不可用场景熔断无效。
+- **OAuth2 内省缓存（ecat-auth）**：token 明文存于进程内内存缓存（FIFO 有界，默认 10_000），属既有设计；脱敏（hash 化）留待后续版本。
 
 ## 设计目标
 

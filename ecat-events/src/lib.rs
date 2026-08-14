@@ -4,6 +4,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 type Handler = Arc<
     dyn Fn(Vec<u8>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
@@ -15,9 +16,10 @@ pub struct EventBus {
     mq: Option<Arc<dyn MessageQueue>>,
     local_handlers: Arc<RwLock<HashMap<String, Vec<Handler>>>>,
     /// 远程模式消费占位集合：同一事件类型只启动一个消费任务。
-    /// 消费任务退出（正常结束或 panic）后由监护任务移除占位，
-    /// 使再次 subscribe 能重启消费。
-    consumers: Arc<Mutex<HashMap<String, ()>>>,
+    /// 占位存消费任务 JoinHandle，任务结束（正常/panic/abort）后
+    /// 不再由后台任务清理，而是由后续 subscribe 检查 is_finished()
+    /// 惰性清理——彻底消除"任务已退出但占位未清"的窄窗口。
+    consumers: Arc<Mutex<HashMap<String, Option<JoinHandle<()>>>>>,
 }
 
 impl EventBus {
@@ -68,13 +70,22 @@ impl EventBus {
         // 前完成，保证订阅之后的发布都能被消费。
         if let Some(mq) = &self.mq {
             // 先占位再 await：防止并发 subscribe 为同一类型启动两个消费任务。
+            // 占位为 None 表示初始化中（mq.subscribe 未返回），同样阻止并发。
+            // 任务结束后占位保留，由这里惰性清理：is_finished() 为真即重启
+            // 消费，不依赖任何后台清理任务抢先执行（N1 窄窗口消除）。
             // 作用域块保证锁在 await 前释放。
             {
                 let mut consumers = self.consumers.lock().unwrap_or_else(|e| e.into_inner());
-                if consumers.contains_key(&event_name) {
-                    return;
+                if let Some(entry) = consumers.get(&event_name) {
+                    if !matches!(entry, Some(h) if h.is_finished()) {
+                        return;
+                    }
+                    tracing::warn!(
+                        event = %event_name,
+                        "event consumer exited; restarting on subscribe"
+                    );
                 }
-                consumers.insert(event_name.clone(), ());
+                consumers.insert(event_name.clone(), None);
             }
 
             let mut stream = match mq.subscribe(&event_name).await {
@@ -97,9 +108,18 @@ impl EventBus {
                         Some(Ok(payload)) => {
                             let hs = handlers.read().await;
                             if let Some(list) = hs.get(&topic) {
-                                for h in list {
-                                    let fut = h(payload.clone());
-                                    tokio::spawn(fut);
+                                // 单 handler 直接 move payload，免去一次 clone；
+                                // 多 handler 才复制（每个 handler 独占一份）。
+                                match list.as_slice() {
+                                    [h] => {
+                                        tokio::spawn(h(payload));
+                                    }
+                                    _ => {
+                                        for h in list {
+                                            let fut = h(payload.clone());
+                                            tokio::spawn(fut);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -108,25 +128,11 @@ impl EventBus {
                     }
                 }
             });
-            // 监护任务：消费任务退出（正常结束或 panic，JoinHandle 均会返回）
-            // 后移除占位，使同类型事件再次 subscribe 能重启消费，
-            // 避免事件因残留占位永久静默丢失（N1）。
-            let consumers = self.consumers.clone();
-            let topic = event_name.clone();
-            tokio::spawn(async move {
-                let _ = handle.await;
-                if consumers
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&topic)
-                    .is_some()
-                {
-                    tracing::warn!(
-                        event = %topic,
-                        "event consumer exited; subscribe again to restart"
-                    );
-                }
-            });
+            // 占位绑定真实 handle：后续 subscribe 据此惰性检测任务结束。
+            self.consumers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(event_name, Some(handle));
         }
     }
 
@@ -202,6 +208,27 @@ mod tests {
         }
     }
 
+    /// 首次 subscribe 失败、之后成功的假 MQ：验证 subscribe 失败
+    /// 回滚占位后，再次 subscribe 能重启消费（N1 补充）。
+    struct FailingOnceMq {
+        subscribe_count: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl MessageQueue for FailingOnceMq {
+        async fn publish(&self, _topic: &str, _payload: &[u8]) -> Result<(), MqError> {
+            Ok(())
+        }
+
+        async fn subscribe(&self, _topic: &str) -> Result<Box<dyn MessageStream>, MqError> {
+            let n = self.subscribe_count.fetch_add(1, Ordering::SeqCst);
+            if n == 0 {
+                return Err(MqError::Other("simulated subscribe failure".into()));
+            }
+            Ok(Box::new(EndingStream))
+        }
+    }
+
     /// 消费任务 panic 型假 MQ：poll_recv 直接 panic，
     /// 用于让消费任务以 panic 方式退出。
     struct PanicMq {
@@ -228,20 +255,26 @@ mod tests {
         }
     }
 
-    /// 等待消费任务退出并清理占位标记（reaper 是异步任务，需轮询）。
-    async fn wait_for_consumer_cleanup(bus: &EventBus) {
+    /// 等待消费任务结束（占位 handle is_finished）。N1 修复后占位不再
+    /// 由后台任务清理，而是由 subscribe 惰性清理——此辅助只等任务真正
+    /// 结束，随后立即 subscribe 即验证窄窗口场景（占位仍在，必须能重启）。
+    async fn wait_for_consumer_finish(bus: &EventBus) {
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            while !bus
-                .consumers
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_empty()
-            {
+            loop {
+                let done = bus
+                    .consumers
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .values()
+                    .all(|h| matches!(h, Some(h) if h.is_finished()));
+                if done {
+                    break;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
         })
         .await
-        .expect("consumer marker never cleaned up");
+        .expect("consumer never finished");
     }
 
     /// N1 回归：消费任务因 mq 流结束（None）退出后，占位标记必须被移除，
@@ -255,7 +288,7 @@ mod tests {
         let bus = EventBus::remote(mq);
 
         bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
-        wait_for_consumer_cleanup(&bus).await;
+        wait_for_consumer_finish(&bus).await;
 
         bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
         assert_eq!(
@@ -263,6 +296,31 @@ mod tests {
             2,
             "consumer was not restarted after stream ended"
         );
+    }
+
+    /// N1 补充：subscribe 失败（mq.subscribe 返回 Err）时占位必须回滚
+    /// remove，否则残留占位会让后续 subscribe 静默 return，消费永久无法
+    /// 启动；回滚后再次 subscribe 必须能成功重启。
+    #[tokio::test]
+    async fn subscribe_failure_rolls_back_and_allows_retry() {
+        let subscribe_count = Arc::new(AtomicUsize::new(0));
+        let mq: Arc<dyn MessageQueue> = Arc::new(FailingOnceMq {
+            subscribe_count: subscribe_count.clone(),
+        });
+        let bus = EventBus::remote(mq);
+
+        // 第一次 subscribe：mq.subscribe 返回 Err → 占位回滚。
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        assert_eq!(subscribe_count.load(Ordering::SeqCst), 1);
+
+        // 占位必须已回滚：再次 subscribe 能成功启动消费任务。
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        assert_eq!(
+            subscribe_count.load(Ordering::SeqCst),
+            2,
+            "consumer must restart after subscribe failure rollback"
+        );
+        wait_for_consumer_finish(&bus).await;
     }
 
     /// N1 回归：消费任务以 panic 方式退出后，占位标记同样必须被移除，
@@ -276,7 +334,7 @@ mod tests {
         let bus = EventBus::remote(mq);
 
         bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
-        wait_for_consumer_cleanup(&bus).await;
+        wait_for_consumer_finish(&bus).await;
 
         bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
         assert_eq!(

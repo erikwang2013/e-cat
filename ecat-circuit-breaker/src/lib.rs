@@ -72,12 +72,17 @@ struct BreakerInner {
     half_open_count: u32,
 }
 
+/// 分类回调：把"传输成功"的响应判定为业务失败（如 HTTP 5xx）。
+/// 签名经 Any 泛化，配置时类型安全，调用时 downcast 不匹配则视为成功。
+type Classify = Arc<dyn Fn(&dyn std::any::Any) -> bool + Send + Sync>;
+
 #[derive(Clone)]
 pub struct CircuitBreakerLayer {
     failure_ratio: f64,
     window: Duration,
     half_open_probes: u32,
     open_duration: Duration,
+    classify: Option<Classify>,
 }
 
 impl CircuitBreakerLayer {
@@ -87,7 +92,22 @@ impl CircuitBreakerLayer {
             window: Duration::from_secs(30),
             half_open_probes: 3,
             open_duration: Duration::from_secs(10),
+            classify: None,
         }
+    }
+
+    /// 配置分类回调：返回 true 的响应视为失败计入窗口（如 HTTP 5xx）。
+    /// 默认（不配置）时传输成功的响应一律计成功，与旧行为兼容。
+    /// `T` 必须与下游服务响应的具体类型一致；不一致时安全降级为成功。
+    pub fn classify<F, T>(mut self, f: F) -> Self
+    where
+        T: 'static,
+        F: Fn(&T) -> bool + Send + Sync + 'static,
+    {
+        self.classify = Some(Arc::new(move |resp: &dyn std::any::Any| {
+            resp.downcast_ref::<T>().map(&f).unwrap_or(false)
+        }));
+        self
     }
 
     pub fn failure_ratio(mut self, ratio: f64) -> Self {
@@ -145,6 +165,7 @@ impl<S, Req> Service<Req> for CircuitBreakerService<S>
 where
     S: Service<Req> + Clone + Send + 'static,
     S::Future: Send + 'static,
+    S::Response: 'static,
     S::Error: std::fmt::Display + std::error::Error + Send + Sync + 'static,
     Req: Send + 'static,
 {
@@ -201,7 +222,15 @@ where
             let mut breaker = breaker_ref.lock().unwrap_or_else(|e| e.into_inner());
 
             match &result {
-                Ok(_) => breaker.window.record(true),
+                Ok(resp) => {
+                    // 配置 classify 回调后，业务失败响应（如 HTTP 5xx）
+                    // 也计入失败窗口；未配置时传输成功一律计成功（兼容）。
+                    let is_failure = config
+                        .classify
+                        .as_ref()
+                        .is_some_and(|c| c(resp as &dyn std::any::Any));
+                    breaker.window.record(!is_failure);
+                }
                 Err(e) => {
                     tracing::warn!(error = %e, "circuit breaker: request failed");
                     breaker.window.record(false);
@@ -292,6 +321,55 @@ mod tests {
         w.clear();
         assert_eq!(w.total(), 0);
         assert_eq!(w.failure_ratio(), 0.0);
+    }
+
+    /// N10：配置 classify 回调后，业务失败响应（如 HTTP 5xx）计入失败
+    /// 窗口——连续 5xx 响应触发熔断 open。
+    #[tokio::test]
+    async fn classify_callback_counts_5xx_as_failure() {
+        use tower::ServiceExt;
+
+        #[derive(Debug)]
+        struct Resp {
+            code: u16,
+        }
+
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(10))
+            .classify(|r: &Resp| r.code >= 500);
+        let svc = layer.layer(tower::service_fn(|_: String| async move {
+            Ok::<Resp, std::io::Error>(Resp { code: 500 })
+        }));
+
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        let b = svc.breaker.lock().unwrap();
+        assert_eq!(b.state, State::Open, "5xx responses must trip the breaker");
+    }
+
+    /// N10：未配置 classify 时传输成功的响应一律计成功（兼容现状）——
+    /// 连续 Ok 响应不触发 open。
+    #[tokio::test]
+    async fn default_classify_treats_ok_as_success() {
+        use tower::ServiceExt;
+
+        #[derive(Debug)]
+        struct Resp;
+
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(10));
+        let svc = layer.layer(tower::service_fn(|_: String| async move {
+            Ok::<Resp, std::io::Error>(Resp)
+        }));
+
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        let b = svc.breaker.lock().unwrap();
+        assert_eq!(b.state, State::Closed, "Ok responses must count as success by default");
     }
 
     #[tokio::test]

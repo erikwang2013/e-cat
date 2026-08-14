@@ -21,3 +21,4 @@ rustls-pemfile = "2"
 
 [dev-dependencies]
 ecat-tls = { path = "../ecat-tls" }
+tracing-subscriber.workspace = true

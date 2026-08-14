@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.3.5 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.4.0 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -389,6 +389,13 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 13 | ✅ Done | Data backends (etcd / Kafka / OpenSearch / InfluxDB / ES / ClickHouse / Memcached / Neo4j / NebulaGraph / ArangoDB / IoTDB / QuestDB) |
 | Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
 | Phase 15 | ✅ Done | Ecosystem v2 (real Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / distributed lock / scheduler / CLI watch+upgrade) |
+
+## Known Limitations
+
+- **WebSocket graceful shutdown (ecat-transport-ws)**: `WsServer::stop()` does not wait for upgraded WebSocket connections — axum `on_upgrade` connections run in separate tasks and are not covered by graceful shutdown; long-lived connections remain after stop() until the peer closes or the process exits.
+- **GraphQL resolution (ecat-graphql)**: `execute` passes only variables to resolvers; field arguments and nested selections are not forwarded — queries with nested field arguments are not yet supported; put required data in top-level query arguments.
+- **Circuit breaker (ecat-circuit-breaker)**: only transport-level errors are counted; HTTP 5xx counts as success — the breaker is ineffective when a service stays alive but continuously returns 5xx.
+- **OAuth2 introspection cache (ecat-auth)**: tokens are stored in plaintext in the in-process memory cache (FIFO bounded, default 10_000) by design; desensitization (hashing) is left for a future release.
 
 ## Design Goals
 
