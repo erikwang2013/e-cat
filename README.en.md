@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.4.0 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.4.1 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -328,6 +328,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 > Note: use `0.0.0.0:port` (not `:port`) as the listen address so the service
 > also binds correctly on hosts without IPv6.
 
+### Aggregation crate (ecat)
+
+`ecat` provides feature-gated re-export entry points — enable only the components you need:
+
+```rust
+use ecat::transport_http::HttpServer;   // feature "http" (default)
+use ecat::middleware::RecoveryLayer;     // feature "middleware"
+use ecat::auth::JwtAuthLayer;            // feature "auth"
+use ecat::data::redis::RedisCache;       // feature "redis"
+```
+
+Default features = `http+grpc`; use `--no-default-features --features <component>` to slim the dependency tree. Full feature list: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+
 ### Middleware
 
 ```rust
@@ -353,6 +366,21 @@ let layer = ServiceBuilder::new()
 ```
 
 > Note: `ecat_middleware::TracingLayer` does not inject `trace_id`; use `ecat_tracing::TracingLayer::new()` for request-level `trace_id` injection.
+
+```rust
+// Metrics: records request count and duration into the global registry
+// (shared with the /metrics endpoint)
+use ecat_metrics::MetricsLayer;
+let app = Router::new().route("/hello", get(hello)).layer(MetricsLayer::new());
+// Metric names: ecat_http_requests_total / ecat_http_request_duration_seconds
+// (labels: method/path/status). For high-cardinality paths (with IDs), use
+// MetricsLayer::new().with_path_fn(...) to normalize, avoiding cardinality explosion.
+
+// Retry: exponential backoff; ⚠️ only safe for idempotent requests (GET/HEAD/PUT/DELETE)
+use ecat_middleware::RetryLayer;
+let retry = RetryLayer::new(3, Duration::from_secs(1), Duration::from_secs(30)); // 3 total attempts incl. first
+// Custom retry rule: RetryLayer::new(3, ...).with_rule(MyRule)  // decide by status code / response content
+```
 
 ### Error Handling
 
@@ -394,9 +422,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ## Known Limitations
 
-- **WebSocket graceful shutdown (ecat-transport-ws)**: `WsServer::stop()` does not wait for upgraded WebSocket connections — axum `on_upgrade` connections run in separate tasks and are not covered by graceful shutdown; long-lived connections remain after stop() until the peer closes or the process exits.
 - **GraphQL resolution (ecat-graphql)**: `execute` passes only variables to resolvers; field arguments and nested selections are not forwarded — queries with nested field arguments are not yet supported; put required data in top-level query arguments.
-- **Circuit breaker (ecat-circuit-breaker)**: only transport-level errors are counted; HTTP 5xx counts as success — the breaker is ineffective when a service stays alive but continuously returns 5xx.
 - **OAuth2 introspection cache (ecat-auth)**: the cache key is a SHA-256 hash of the token (no plaintext token stored); parsed claims (sub/role, etc.) are still stored in plaintext in the FIFO bounded cache (default 10_000).
 - **Kafka offset handling (ecat-mq-kafka)**: `enable.auto.commit=false` by default with no manual commit — after a restart the consumer re-reads from the partition end (latest), skipping messages produced while down; explicitly set `auto_commit=true` for at-least-once semantics (resumes from the last committed point).
 

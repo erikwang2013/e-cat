@@ -14,7 +14,7 @@ pub async fn wait_for_shutdown() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => tracing::info!("received SIGINT"),
-        _ = terminate => tracing::info!("received SIGTERM"),
+        _ = ctrl_c => ::tracing::info!("received SIGINT"),
+        _ = terminate => ::tracing::info!("received SIGTERM"),
     }
 }

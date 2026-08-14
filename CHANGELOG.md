@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.4.1] — 2026-08-14
+
+### Added
+- `ecat-metrics` M1 `MetricsLayer`（tower Layer）：记录请求计数与时延直方图到全局 registry（与 /metrics 端点共享）；指标 `ecat_http_requests_total` / `ecat_http_request_duration_seconds`，标签 method/path/status；`with_path_fn` 自定义 path 标签（高基数路径归一化/脱敏，避免指标基数爆炸）
+- `ecat-middleware` M2 `RetryLayer` / `RetryRule`：指数退避重试（`new(max_attempts, base_delay, max_delay)`，含首次共 max_attempts 次）；`RetryRule` trait 自定义重试判定（如按 HTTP 状态码/响应内容），默认规则仅重试服务错误；⚠️ 仅对幂等请求（GET/HEAD/PUT/DELETE）安全
+- `ecat` U1 聚合 crate：feature-gated re-export 入口——12 个 feature（http/grpc/middleware/auth/client/events/metrics/tracing/circuit-breaker/consul/remote/redis），默认 http+grpc，`--no-default-features --features <组件>` 精简依赖树
+
+### Fixed
+- `ecat-transport-http`：tls_listener accept 通道关闭 panic——accept 循环退出（任务 abort/panic 致 sender 释放、通道关闭）时记录错误并挂起，不再 panic 杀死服务线程；在途连接与优雅停机信号照常处理
+- `ecat-middleware` 限流：P1 flaky 测试重构——日志捕获断言改为 limiter 状态断言（消除 writer 捕获竞态）
+- `ecat-metrics`：空指标体可区分——无指标注册时输出 `# no metrics registered`（原空响应体无法区分「无数据」与「有数据但输出为空」）
+- 数据后端补测（4 个 crate 16 个测试）：`ecat-data-iotdb`（5）、`ecat-data-neo4j`（2）、`ecat-data-arangodb`（4）、`ecat-data-mongodb`（5）
+
+### Security
+- `ecat-auth` OAuth2 内省缓存：缓存 key 由 token 明文改为 SHA-256 hash（明文 token 不再驻留内存）；解析出的 claims 仍以明文存于 FIFO 有界缓存（默认 10_000）
+
+### Docs
+- README×2：新增聚合 crate（ecat）用法（12 feature 列表/默认 http+grpc）、M1 MetricsLayer 用法（指标名/标签/with_path_fn）、M2 RetryLayer 用法（指数退避/自定义规则/幂等性警告）；已知限制移除 2 条（WebSocket 优雅关闭、熔断判定——均已落地），保留 3 条（GraphQL、OAuth2 内省缓存、Kafka offset）
+- README×2 已知限制：Kafka offset 行为说明——默认 `auto_commit=false` 重启从分区末尾（latest）重读、停机期消息被跳过；显式 `auto_commit=true` 才具备 at-least-once 语义
+- docs/ecosystem-plan-v3.md：数据后端表按实测逐 crate 核对修正（驱动/能力列）
+- CI：新增 cargo-audit 步骤（依赖漏洞扫描，--deny medium，continue-on-error）
+
 ## [2.4.0] — 2026-08-14
 
 ### Added

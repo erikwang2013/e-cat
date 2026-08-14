@@ -6,7 +6,7 @@ license.workspace = true
 description = "Tower middleware (rate limiting, timeout) for e-cat"
 
 [dependencies]
-tower.workspace = true
+tower = { workspace = true, features = ["retry"] }
 tracing.workspace = true
 tokio.workspace = true
 async-trait.workspace = true

@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.0 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.4.1 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -341,6 +341,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 ```
 
+### 聚合 crate（ecat）
+
+`ecat` 提供 feature-gated 的 re-export 入口——只启用需要的组件：
+
+```rust
+use ecat::transport_http::HttpServer;   // feature "http"（默认）
+use ecat::middleware::RecoveryLayer;     // feature "middleware"
+use ecat::auth::JwtAuthLayer;            // feature "auth"
+use ecat::data::redis::RedisCache;       // feature "redis"
+```
+
+默认 features = `http+grpc`；使用 `--no-default-features --features <组件>` 可精简依赖树。完整 feature 列表：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`。
+
 ### 中间件
 
 ```rust
@@ -366,6 +379,20 @@ let layer = ServiceBuilder::new()
 ```
 
 > 注：`ecat_middleware::TracingLayer` 不注入 trace_id；如需请求级 trace_id 注入，请使用 `ecat_tracing::TracingLayer::new()`。
+
+```rust
+// 指标：记录请求计数与时延到全局 registry（与 /metrics 端点共享）
+use ecat_metrics::MetricsLayer;
+let app = Router::new().route("/hello", get(hello)).layer(MetricsLayer::new());
+// 指标名：ecat_http_requests_total / ecat_http_request_duration_seconds
+// （标签 method/path/status）。路径含 ID 等高基数场景请用
+// MetricsLayer::new().with_path_fn(...) 归一化，避免指标基数爆炸。
+
+// 重试：指数退避；⚠️ 仅对幂等请求（GET/HEAD/PUT/DELETE）安全
+use ecat_middleware::RetryLayer;
+let retry = RetryLayer::new(3, Duration::from_secs(1), Duration::from_secs(30)); // 含首次共 3 次尝试
+// 自定义重试规则：RetryLayer::new(3, ...).with_rule(MyRule)  // 按状态码/响应内容判定
+```
 
 ### 错误处理
 
@@ -407,9 +434,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ## 已知限制
 
-- **WebSocket 优雅关闭（ecat-transport-ws）**：`WsServer::stop()` 不等待已升级的 WebSocket 连接——axum `on_upgrade` 连接在独立任务中运行，graceful shutdown 不覆盖，长连接在 stop() 后仍滞留，需对端主动断开或随进程退出回收。
 - **GraphQL 解析（ecat-graphql）**：`execute` 仅将 variables 传给 resolver，字段参数与嵌套 selection 不传递——含嵌套字段参数的复杂查询暂不支持，请将所需数据放入顶层查询参数。
-- **熔断判定（ecat-circuit-breaker）**：仅统计传输层错误，HTTP 5xx 视为成功——对「服务存活但持续返回 5xx」的不可用场景熔断无效。
 - **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；解析出的 claims（sub/role 等）仍以明文存于 FIFO 有界缓存（默认 10_000）。
 - **Kafka offset（ecat-mq-kafka）**：默认 `enable.auto.commit=false` 且无手动 commit——进程重启后从分区末尾（latest）重读，停机期间产生的消息会被跳过；需显式配置 `auto_commit=true` 才具备 at-least-once 语义（重启从最近提交点继续）。
 

@@ -60,7 +60,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "2.4.0"
+version = "2.4.1"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erik/e-cat"
@@ -84,3 +84,18 @@ http = "1"
 thiserror = "2"
 futures-core = "0.3"
 sha2 = "0.10"
+ecat-transport = { version = "2.4.1", path = "ecat-transport" }
+ecat-transport-http = { version = "2.4.1", path = "ecat-transport-http" }
+ecat-transport-grpc = { version = "2.4.1", path = "ecat-transport-grpc" }
+ecat-logging = { version = "2.4.1", path = "ecat-logging" }
+ecat-errors = { version = "2.4.1", path = "ecat-errors" }
+ecat-middleware = { version = "2.4.1", path = "ecat-middleware" }
+ecat-auth = { version = "2.4.1", path = "ecat-auth" }
+ecat-client = { version = "2.4.1", path = "ecat-client" }
+ecat-events = { version = "2.4.1", path = "ecat-events" }
+ecat-metrics = { version = "2.4.1", path = "ecat-metrics" }
+ecat-tracing = { version = "2.4.1", path = "ecat-tracing" }
+ecat-circuit-breaker = { version = "2.4.1", path = "ecat-circuit-breaker" }
+ecat-registry-consul = { version = "2.4.1", path = "ecat-registry-consul" }
+ecat-config-remote = { version = "2.4.1", path = "ecat-config-remote" }
+ecat-data-redis = { version = "2.4.1", path = "ecat-data-redis" }

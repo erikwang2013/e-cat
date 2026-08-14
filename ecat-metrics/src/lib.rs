@@ -1,9 +1,13 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod metrics_layer;
+
 use axum::Router;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use prometheus::{Encoder, Registry, TextEncoder};
 use std::sync::OnceLock;
+
+pub use metrics_layer::{MetricsLayer, MetricsService};
 
 static REGISTRY: OnceLock<Registry> = OnceLock::new();
 
@@ -12,10 +16,20 @@ pub fn registry() -> &'static Registry {
 }
 
 pub fn metrics_text() -> String {
+    metrics_text_for(registry())
+}
+
+fn metrics_text_for(reg: &Registry) -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
-    if encoder.encode(&registry().gather(), &mut buffer).is_err() {
+    if encoder.encode(&reg.gather(), &mut buffer).is_err() {
         return String::from("# metrics encoding failed\n");
+    }
+    if buffer.is_empty() {
+        // 空 registry（无指标注册）：输出提示注释行而非空 body——
+        // 监控可区分"健康但无数据"与"异常"（纯空响应无法区分）。
+        // '#' 开头为 Prometheus 注释行，scrape 仍合法（0 个指标）。
+        return String::from("# no metrics registered\n");
     }
     String::from_utf8(buffer).unwrap_or_else(|_| String::from("# metrics: invalid utf-8\n"))
 }
@@ -49,6 +63,16 @@ mod tests {
         let text = metrics_text();
         // empty registry produces empty or minimal output — just check it's valid UTF-8
         let _ = text;
+    }
+
+    /// 第三轮：空 registry（无指标注册）时输出提示注释行而非空 body——
+    /// 监控可区分"健康但无数据"与"异常"（纯空响应无法区分）。
+    /// 用独立 Registry 断言（MetricsLayer 测试会向全局 registry 注册指标，
+    /// 与并行测试的精确匹配存在竞态）。
+    #[test]
+    fn metrics_text_marks_empty_registry() {
+        let text = metrics_text_for(&Registry::new());
+        assert_eq!(text, "# no metrics registered\n", "got: {text}");
     }
 
     #[tokio::test]

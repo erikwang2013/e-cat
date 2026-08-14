@@ -1,8 +1,12 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod hook;
+mod reexports;
 mod signal;
 
 pub use hook::LifecycleHook;
+// --no-default-features 时 glob 为空，allow 掉 unused import 告警。
+#[allow(unused_imports)]
+pub use reexports::*;
 pub use signal::wait_for_shutdown;
 
 use ecat_transport::Server;
@@ -24,11 +28,11 @@ impl App {
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // 用户若已先初始化 OTLP/ecat-tracing 等 subscriber，则不再重复初始化，
         // 避免 "a global default trace dispatcher has already been set" panic。
-        if !tracing::dispatcher::has_been_set() {
+        if !::tracing::dispatcher::has_been_set() {
             ecat_logging::init();
         }
 
-        tracing::info!(
+        ::tracing::info!(
             name = self.name,
             version = self.version,
             "starting application"
@@ -43,25 +47,25 @@ impl App {
             let server = Arc::clone(server);
             handles.push(tokio::spawn(async move {
                 if let Err(e) = server.start().await {
-                    tracing::error!(error = %e, "server error");
+                    ::tracing::error!(error = %e, "server error");
                 }
             }));
         }
 
         wait_for_shutdown().await;
 
-        tracing::info!("shutting down");
+        ::tracing::info!("shutting down");
         for hook in &self.stop_hooks {
             hook.on_stop().await?;
         }
         for server in &self.servers {
             if let Err(e) = server.stop().await {
-                tracing::error!(error = %e, "server stop error");
+                ::tracing::error!(error = %e, "server stop error");
             }
         }
         for handle in handles {
             if let Err(e) = handle.await {
-                tracing::error!(error = %e, "server task panicked");
+                ::tracing::error!(error = %e, "server task panicked");
             }
         }
 
