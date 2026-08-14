@@ -3,7 +3,7 @@
 
 [English](README.en.md) | 简体中文
 
-**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.3 · 55 crates）。
+**Ecat** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v2.3.5 · 55 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -147,7 +147,7 @@
 | 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
 | 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API |
 | 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 |
-| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ rust-s3 |
+| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
@@ -351,7 +351,8 @@ use ecat_security::SecurityLayer;
 use ecat_auth::JwtAuthLayer;
 use std::time::Duration;
 
-// JWT 密钥需 ≥32 字节
+// JWT 密钥需 ≥32 字节；可链式强制校验 iss/aud 声明（可选，默认不校验）：
+// JwtAuthLayer::new(secret)?.required_issuer("my-issuer").required_audience("my-api")
 let jwt = JwtAuthLayer::new("change-me-32-bytes-minimum-secret").expect("valid jwt secret");
 
 let layer = ServiceBuilder::new()

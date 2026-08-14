@@ -405,41 +405,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "attohttpc"
-version = "0.28.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07a9b245ba0739fc90935094c29adbaee3f977218b5fb95e822e261cda7f56a3"
-dependencies = [
- "http 1.4.2",
- "log",
- "native-tls",
- "serde",
- "serde_json",
- "url",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
-
-[[package]]
-name = "aws-creds"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f84143206b9c72b3c5cb65415de60c7539c79cd1559290fddec657939131be0"
-dependencies = [
- "attohttpc",
- "home",
- "log",
- "quick-xml",
- "rust-ini",
- "serde",
- "thiserror 1.0.69",
- "time",
- "url",
-]
 
 [[package]]
 name = "aws-lc-rs"
@@ -465,15 +434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-region"
-version = "0.25.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9aed3f9c7eac9be28662fdb3b0f4d1951e812f7c64fed4f0327ba702f459b3b"
-dependencies = [
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -483,8 +443,8 @@ dependencies = [
  "axum-core 0.4.5",
  "bytes",
  "futures-util",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
  "itoa",
  "matchit 0.7.3",
@@ -511,10 +471,10 @@ dependencies = [
  "bytes",
  "form_urlencoded",
  "futures-util",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
- "hyper 1.11.0",
+ "hyper",
  "hyper-util",
  "itoa",
  "matchit 0.8.4",
@@ -545,8 +505,8 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures-util",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
  "mime",
  "pin-project-lite",
@@ -564,8 +524,8 @@ checksum = "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
 dependencies = [
  "bytes",
  "futures-core",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
  "mime",
  "pin-project-lite",
@@ -1239,15 +1199,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dlv-list"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442039f5147480ba31067cb00ada1adae6892028e40e45fc5de7b7df6dcc1b5f"
-dependencies = [
- "const-random",
-]
-
-[[package]]
 name = "doc-comment"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1267,7 +1218,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "ecat"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-errors",
@@ -1281,10 +1232,10 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "axum 0.8.9",
- "http 1.4.2",
+ "http",
  "jsonwebtoken",
  "reqwest",
  "serde",
@@ -1296,14 +1247,14 @@ dependencies = [
 
 [[package]]
 name = "ecat-bench"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "tokio",
  "tower 0.5.3",
@@ -1312,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "clap",
  "libc",
@@ -1322,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-client"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -1333,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -1345,7 +1296,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config-remote"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1359,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -1371,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-arangodb"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1384,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-clickhouse"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1397,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-elasticsearch"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1410,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-influxdb"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1424,7 +1375,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-iotdb"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1437,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-memcached"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1448,7 +1399,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-mongodb"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1462,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-nebulagraph"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1475,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-neo4j"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1488,7 +1439,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-opensearch"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1501,7 +1452,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-questdb"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1515,7 +1466,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-redis"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1530,19 +1481,24 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-s3"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
- "rust-s3",
+ "ecat-tls",
+ "hmac 0.12.1",
+ "quick-xml",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "time",
  "tokio",
 ]
 
 [[package]]
 name = "ecat-data-sqlx"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1555,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-tdengine"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1568,7 +1524,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-encoding"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "prost",
  "serde",
@@ -1578,10 +1534,10 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "ecat-protos",
- "http 1.4.2",
+ "http",
  "prost",
  "serde",
  "thiserror 2.0.19",
@@ -1590,8 +1546,9 @@ dependencies = [
 
 [[package]]
 name = "ecat-events"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
+ "async-trait",
  "ecat-mq",
  "serde",
  "serde_json",
@@ -1602,7 +1559,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-graphql"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1613,7 +1570,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-health"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1625,7 +1582,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-lock"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -1634,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -1642,15 +1599,15 @@ dependencies = [
 
 [[package]]
 name = "ecat-metadata"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
- "http 1.4.2",
+ "http",
  "tonic",
 ]
 
 [[package]]
 name = "ecat-metrics"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "axum 0.8.9",
  "prometheus",
@@ -1660,11 +1617,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-middleware"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
- "http 1.4.2",
+ "http",
  "redis",
  "tokio",
  "tower 0.5.3",
@@ -1673,7 +1630,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -1683,19 +1640,21 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-kafka"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-mq",
+ "futures-util",
  "rdkafka",
  "serde",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
 name = "ecat-mq-mqtt"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-mq",
@@ -1707,7 +1666,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-nats"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -1720,7 +1679,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-rabbitmq"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-mq",
@@ -1733,7 +1692,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-openapi"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1741,7 +1700,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-protos"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "prost",
  "prost-types",
@@ -1751,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -1763,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1778,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-etcd"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1793,17 +1752,19 @@ dependencies = [
 
 [[package]]
 name = "ecat-scheduler"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "ecat-security"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "axum 0.8.9",
- "http 1.4.2",
+ "http",
  "security-rust",
  "thiserror 2.0.19",
  "tokio",
@@ -1813,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-testing"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1823,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-tls"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "rcgen",
  "reqwest",
@@ -1833,10 +1794,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-tracing"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "ecat-metadata",
- "http 1.4.2",
+ "http",
+ "tokio",
  "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
@@ -1845,7 +1807,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-tracing-otlp"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1858,21 +1820,21 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "bytes",
  "ecat-encoding",
  "ecat-errors",
  "ecat-metadata",
- "http 1.4.2",
+ "http",
  "tokio",
  "tower 0.5.3",
 ]
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "ecat-tls",
@@ -1886,7 +1848,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1903,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-ws"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1915,10 +1877,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-versioning"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "axum 0.8.9",
- "http 1.4.2",
+ "http",
+ "tokio",
  "tower 0.5.3",
  "tracing",
 ]
@@ -2089,21 +2052,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
-name = "foreign-types"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-dependencies = [
- "foreign-types-shared",
-]
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-
-[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2141,7 +2089,6 @@ checksum = "a88cf1f829d945f548cf8fec32c61b1f202b6d93b45848602fc02af4b12ad218"
 dependencies = [
  "futures-channel",
  "futures-core",
- "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -2328,7 +2275,7 @@ dependencies = [
  "fnv",
  "futures-core",
  "futures-sink",
- "http 1.4.2",
+ "http",
  "indexmap 2.14.0",
  "slab",
  "tokio",
@@ -2341,12 +2288,6 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "hashbrown"
-version = "0.14.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 
 [[package]]
 name = "hashbrown"
@@ -2382,7 +2323,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -2522,17 +2463,6 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
-dependencies = [
- "bytes",
- "fnv",
- "itoa",
-]
-
-[[package]]
-name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6970f50e31d6fc17d3fa27329444bfa74e196cf62e95052a3f6fee181dba6425"
@@ -2543,23 +2473,12 @@ dependencies = [
 
 [[package]]
 name = "http-body"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
-dependencies = [
- "bytes",
- "http 0.2.12",
- "pin-project-lite",
-]
-
-[[package]]
-name = "http-body"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca2a8f2913ee65f60facd6a5905613afaa448497a0230cc41ce022d93290bc2c"
 dependencies = [
  "bytes",
- "http 1.4.2",
+ "http",
 ]
 
 [[package]]
@@ -2570,8 +2489,8 @@ checksum = "e9f41fd6a08e4d4ec69df65976da761afd5ad5e58a9d4acb46bd1c953a9e3ff2"
 dependencies = [
  "bytes",
  "futures-core",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "pin-project-lite",
 ]
 
@@ -2598,29 +2517,6 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.14.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41dfc780fdec9373c01bae43289ea34c972e40ee3c9f6b3c8801a35f35586ce7"
-dependencies = [
- "bytes",
- "futures-channel",
- "futures-core",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "httparse",
- "httpdate",
- "itoa",
- "pin-project-lite",
- "socket2 0.5.10",
- "tokio",
- "tower-service",
- "tracing",
- "want",
-]
-
-[[package]]
-name = "hyper"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d22053281f852e11534f5198498373cbb59295120a20771d90f7ed1897490a72"
@@ -2630,8 +2526,8 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "h2",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "httparse",
  "httpdate",
  "itoa",
@@ -2647,8 +2543,8 @@ version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
 dependencies = [
- "http 1.4.2",
- "hyper 1.11.0",
+ "http",
+ "hyper",
  "hyper-util",
  "rustls",
  "tokio",
@@ -2663,24 +2559,11 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
 dependencies = [
- "hyper 1.11.0",
+ "hyper",
  "hyper-util",
  "pin-project-lite",
  "tokio",
  "tower-service",
-]
-
-[[package]]
-name = "hyper-tls"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
-dependencies = [
- "bytes",
- "hyper 0.14.32",
- "native-tls",
- "tokio",
- "tokio-native-tls",
 ]
 
 [[package]]
@@ -2693,9 +2576,9 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "http 1.4.2",
- "http-body 1.1.0",
- "hyper 1.11.0",
+ "http",
+ "http-body",
+ "hyper",
  "ipnet",
  "libc",
  "percent-encoding",
@@ -3235,17 +3118,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
-name = "maybe-async"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "746873a384ad60adc5db74471dfaba74bd278afbdcfd81db93fafcdfc8b5ca0c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3266,12 +3138,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "md5"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3282,15 +3148,6 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
-
-[[package]]
-name = "minidom"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f45614075738ce1b77a1768912a60c0227525971b03e09122a05b8a34a2a6278"
-dependencies = [
- "rxml",
-]
 
 [[package]]
 name = "minimal-lexical"
@@ -3419,23 +3276,6 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
-
-[[package]]
-name = "native-tls"
-version = "0.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "465500e14ea162429d264d44189adc38b199b62b1c21eea9f69e4b73cb03bbf2"
-dependencies = [
- "libc",
- "log",
- "openssl",
- "openssl-probe 0.2.1",
- "openssl-sys",
- "schannel",
- "security-framework 3.7.0",
- "security-framework-sys",
- "tempfile",
-]
 
 [[package]]
 name = "ndk-context"
@@ -3614,31 +3454,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "openssl"
-version = "0.10.81"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45"
-dependencies = [
- "bitflags 2.13.1",
- "cfg-if",
- "foreign-types",
- "libc",
- "openssl-macros",
- "openssl-sys",
-]
-
-[[package]]
-name = "openssl-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3649,18 +3464,6 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "opentelemetry"
@@ -3684,7 +3487,7 @@ checksum = "91cf61a1868dacc576bf2b2a1c3e9ab150af7272909e80085c3173384fe11f76"
 dependencies = [
  "async-trait",
  "futures-core",
- "http 1.4.2",
+ "http",
  "opentelemetry",
  "opentelemetry-proto",
  "opentelemetry_sdk",
@@ -3725,16 +3528,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
-]
-
-[[package]]
-name = "ordered-multimap"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49203cdcae0030493bad186b28da2fa25645fa276a51b6fec8010d281e02ef79"
-dependencies = [
- "dlv-list",
- "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -4133,7 +3926,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d3a6e5838b60e0e8fa7a43f22ade549a37d61f8bdbe636d0d7816191de969c2"
 dependencies = [
  "memchr",
- "serde",
 ]
 
 [[package]]
@@ -4448,10 +4240,10 @@ dependencies = [
  "base64",
  "bytes",
  "futures-core",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
- "hyper 1.11.0",
+ "hyper",
  "hyper-rustls",
  "hyper-util",
  "js-sys",
@@ -4536,53 +4328,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-stream",
  "tokio-util",
-]
-
-[[package]]
-name = "rust-ini"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "796e8d2b6696392a43bea58116b667fb4c29727dc5abd27d6acf338bb4f688c7"
-dependencies = [
- "cfg-if",
- "ordered-multimap",
-]
-
-[[package]]
-name = "rust-s3"
-version = "0.35.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3df3f353b1f4209dcf437d777cda90279c397ab15a0cd6fd06bd32c88591533"
-dependencies = [
- "async-trait",
- "aws-creds",
- "aws-region",
- "base64",
- "bytes",
- "cfg-if",
- "futures",
- "hex",
- "hmac 0.12.1",
- "http 0.2.12",
- "hyper 0.14.32",
- "hyper-tls",
- "log",
- "maybe-async",
- "md5",
- "minidom",
- "native-tls",
- "percent-encoding",
- "quick-xml",
- "serde",
- "serde_derive",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tokio-native-tls",
- "tokio-stream",
- "url",
 ]
 
 [[package]]
@@ -4747,23 +4492,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "rxml"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a98f186c7a2f3abbffb802984b7f1dfd65dac8be1aafdaabbca4137f53f0dff7"
-dependencies = [
- "bytes",
- "rxml_validation",
- "smartstring",
-]
-
-[[package]]
-name = "rxml_validation"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a197350ece202f19a166d1ad6d9d6de145e1d2a8ef47db299abe164dbd7530"
 
 [[package]]
 name = "ryu"
@@ -5127,17 +4855,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smartstring"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fb72c633efbaa2dd666986505016c32c3044395ceaf881518399d2f4127ee29"
-dependencies = [
- "autocfg",
- "static_assertions",
- "version_check",
-]
-
-[[package]]
 name = "socket2"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5379,12 +5096,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stringprep"
@@ -5657,16 +5368,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-native-tls"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
-dependencies = [
- "native-tls",
- "tokio",
-]
-
-[[package]]
 name = "tokio-rustls"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5725,7 +5426,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
- "http 1.4.2",
+ "http",
  "httparse",
  "rand 0.8.7",
  "ring",
@@ -5778,10 +5479,10 @@ dependencies = [
  "base64",
  "bytes",
  "h2",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "http-body-util",
- "hyper 1.11.0",
+ "hyper",
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
@@ -5857,8 +5558,8 @@ dependencies = [
  "bitflags 2.13.1",
  "bytes",
  "futures-util",
- "http 1.4.2",
- "http-body 1.1.0",
+ "http",
+ "http-body",
  "pin-project-lite",
  "tower 0.5.3",
  "tower-layer",
@@ -5982,7 +5683,7 @@ checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
 dependencies = [
  "bytes",
  "data-encoding",
- "http 1.4.2",
+ "http",
  "httparse",
  "log",
  "rand 0.9.5",

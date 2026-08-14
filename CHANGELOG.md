@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.4.0] — 2026-08-14
+
+### Added
+- `ecat-auth` JWT：新增 `required_issuer()` / `required_audience()` builder，强制校验 iss/aud 声明（默认不校验，向后兼容）
+- `ecat-auth` OAuth2：新增 `cache_capacity(n)` builder（FIFO 有界缓存，默认 10_000，达容量逐出最旧条目）
+
+### Fixed
+- `ecat-transport-http`：TLS 握手 DoS 修复——新增 src/tls_listener.rs（后台 accept_loop + 每连接独立 spawn 握手 + 10s 握手超时），慢握手连接不再阻塞其他连接；行为不变，无 API 变更
+- `ecat-auth` OAuth2：内省结果缓存由无界改为 FIFO 有界（默认 10_000），防海量唯一 token 内存无界增长
+- `ecat-tls`：`skip_verify=true` 与 `ca_cert` 同时配置改为构建报错（跳过校验却配置信任锚的矛盾配置）
+- `ecat-events`：消费任务退出（正常/panic）后清理占位，再次 subscribe 可重启消费，修复事件永久静默丢失
+- `ecat-data-s3`：TLS 配置面重写——`tls` 字段由 bool 改为 `TlsClientConfig`，复用 `ecat_tls::build_reqwest_client`（rust-s3 → reqwest+rustls）；请求签名改为自实现 AWS SigV4（path-style 寻址，AUTHORIZATION / x-amz-date / x-amz-content-sha256 请求头），修复 S3-1/S3-2 的签名请求头装配与双重 percent-encoding
+- `ecat-mq-kafka`：消费改 StreamConsumer（tokio 驱动），消除 ~200ms 固定轮询延迟
+- `ecat-mq-kafka`（语义变更）：group_id 派生规则——显式配置时派生为 `{group_id}-{topic}`；未配置时生成随机组 `ecat-mq-{uuid}`。注意：未配置 group_id 的实例各自独立消费组（不再共享负载均衡）；已配置的组名变化会脱离原组 offset
+- `ecat-tracing`：TracingLayer span 记录 trace_id（提取自请求头，canonical `x-ecat-trace-id` 优先、`traceparent` 兜底，无 id 时空字段）；⚠️ `TracingService` 的 `Service` 实现由完全泛型特化为 `Service<http::Request<B>>`——使用非 HTTP 请求类型的调用方需调整（编译期变更）
+- `ecat-transport`：地址规范化共享——normalize_addr 统一空 host（`:8000`）→ `0.0.0.0:8000`，http/grpc/ws 三端一致，避免无 IPv6 环境绑定失败
+- `ecat-scheduler`：任务 panic 韧性——job 改 JoinSet 子任务，panic 记日志后继续下一 tick（不再静默死亡）；run() 同步 panic 记录 warn
+- `ecat-versioning`：未知版本 404 路径去掉 builder+unwrap（消除生产 panic 面）
+
+### Docs
+- README×2 同步：S3 实现状态表更新（rust-s3 → reqwest+rustls）、JWT 中间件示例补充 `required_issuer` / `required_audience` 用法
+
+## [2.3.5] — 2026-08-07
+
+> 2.3.4 未发布：workspace 版本由 2.3.3 直接跳至 2.3.5（无 v2.3.4 tag）。
+
+### Fixed
+- mTLS 测试竞态（2 个 crate）：全量 workspace 测试下 rustls 因同时编译 aws-lc-rs + ring 无法自动选择 CryptoProvider 而 panic——`ecat-transport-grpc` 两个 TLS 测试开头同步调用 `ensure_crypto_provider()`；`ecat-transport-http` 新增 OnceLock 保护的 `ensure_crypto_provider()`，在 `build_server_config`（生产路径）与测试辅助 `client_config` 内调用，一次覆盖全部 3 个 TLS/mTLS 测试
+- clippy 告警清零（5 个 crate，11 处）：之前修复引入的嵌套 if / unused_mut / map_or 告警，全部折叠为 let-chain 或等价形式（ecat-cli 5、ecat-auth 2、ecat-events 1、ecat-data-questdb 1、ecat-circuit-breaker 2）
+
+### Docs
+- README×2 版本号同步 v2.3.5；docs/alipay.png、docs/weixinpay.png 底部增加 44px 边界并加水印 https://erik.xyz（已验证不遮挡二维码）
+- docs/ecosystem-plan-v3.md 更新；Helm Chart appVersion 同步 2.3.5
+- 新增团队协作设计（docs/superpowers/specs/2026-08-14-team-design.md）与建队实施计划（docs/superpowers/plans/2026-08-14-team-setup.md）
+
 ## [2.3.3] — 2026-08-07
 
 ### Added

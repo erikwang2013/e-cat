@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v2.3.3 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v2.3.5 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -148,7 +148,7 @@ Client Request
 | TSDB | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
 | TSDB | TDengine | `ecat-data-tdengine` | ✅ REST API |
 | Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver |
-| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ rust-s3 |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
 > All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
 
@@ -338,7 +338,8 @@ use ecat_security::SecurityLayer;
 use ecat_auth::JwtAuthLayer;
 use std::time::Duration;
 
-// JWT secret must be ≥32 bytes
+// JWT secret must be ≥32 bytes; optionally enforce iss/aud claims (not enforced by default):
+// JwtAuthLayer::new(secret)?.required_issuer("my-issuer").required_audience("my-api")
 let jwt = JwtAuthLayer::new("change-me-32-bytes-minimum-secret").expect("valid jwt secret");
 
 let layer = ServiceBuilder::new()
