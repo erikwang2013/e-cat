@@ -352,6 +352,8 @@ let layer = ServiceBuilder::new()
     .layer(SecurityLayer::new());
 ```
 
+> Note: `ecat_middleware::TracingLayer` does not inject `trace_id`; use `ecat_tracing::TracingLayer::new()` for request-level `trace_id` injection.
+
 ### Error Handling
 
 ```rust
@@ -395,7 +397,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **WebSocket graceful shutdown (ecat-transport-ws)**: `WsServer::stop()` does not wait for upgraded WebSocket connections — axum `on_upgrade` connections run in separate tasks and are not covered by graceful shutdown; long-lived connections remain after stop() until the peer closes or the process exits.
 - **GraphQL resolution (ecat-graphql)**: `execute` passes only variables to resolvers; field arguments and nested selections are not forwarded — queries with nested field arguments are not yet supported; put required data in top-level query arguments.
 - **Circuit breaker (ecat-circuit-breaker)**: only transport-level errors are counted; HTTP 5xx counts as success — the breaker is ineffective when a service stays alive but continuously returns 5xx.
-- **OAuth2 introspection cache (ecat-auth)**: tokens are stored in plaintext in the in-process memory cache (FIFO bounded, default 10_000) by design; desensitization (hashing) is left for a future release.
+- **OAuth2 introspection cache (ecat-auth)**: the cache key is a SHA-256 hash of the token (no plaintext token stored); parsed claims (sub/role, etc.) are still stored in plaintext in the FIFO bounded cache (default 10_000).
+- **Kafka offset handling (ecat-mq-kafka)**: `enable.auto.commit=false` by default with no manual commit — after a restart the consumer re-reads from the partition end (latest), skipping messages produced while down; explicitly set `auto_commit=true` for at-least-once semantics (resumes from the last committed point).
 
 ## Design Goals
 

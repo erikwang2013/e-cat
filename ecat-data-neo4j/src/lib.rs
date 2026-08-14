@@ -74,8 +74,108 @@ impl GraphClient for Neo4jClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn client_constructs() {
-        let _client = Neo4jClient::new("http://localhost:7474", "neo4j", "password");
+    use axum::body::{Body, to_bytes};
+    use axum::extract::State;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    use axum::routing::post;
+    use axum::{Json, Router};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct CapturedRequest {
+        path: String,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    }
+
+    impl CapturedRequest {
+        fn header(&self, name: &str) -> Option<&str> {
+            self.headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.as_str())
+        }
+    }
+
+    type MockState = (Arc<Mutex<Vec<CapturedRequest>>>, u16, &'static str);
+
+    /// mock Neo4j transaction-commit 端点：捕获请求路径/头/体，按给定
+    /// 状态码与响应体应答（body 为空时返回成功 JSON），返回 mock base_url。
+    async fn spawn_mock(
+        captured: Arc<Mutex<Vec<CapturedRequest>>>,
+        status: u16,
+        body: &'static str,
+    ) -> String {
+        let app = Router::new()
+            .route("/db/data/transaction/commit", post(handle))
+            .with_state((captured, status, body));
+
+        async fn handle(
+            State((captured, status, body)): State<MockState>,
+            req: axum::http::Request<Body>,
+        ) -> axum::response::Response {
+            let path = req.uri().path().to_string();
+            let (parts, req_body) = req.into_parts();
+            let headers = parts
+                .headers
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.as_str().to_string(),
+                        v.to_str().unwrap_or_default().to_string(),
+                    )
+                })
+                .collect();
+            let req_body = to_bytes(req_body, usize::MAX).await.unwrap_or_default();
+            captured
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(CapturedRequest { path, headers, body: req_body.to_vec() });
+            if body.is_empty() {
+                Json(serde_json::json!({"results": [], "errors": []})).into_response()
+            } else {
+                (StatusCode::from_u16(status).unwrap(), Body::from(body)).into_response()
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn execute_builds_correct_request() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock(Arc::clone(&captured), 200, "").await;
+        let client = Neo4jClient::new(base_url, "neo4j", "secret");
+        let query = "MATCH (n:User) RETURN n LIMIT $limit";
+        let params = serde_json::json!({"limit": 10});
+        client.execute(query, &params).await.unwrap();
+
+        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(reqs.len(), 1);
+        let r = &reqs[0];
+        assert_eq!(r.path, "/db/data/transaction/commit");
+        // base64("neo4j:secret")
+        assert_eq!(r.header("authorization"), Some("Basic bmVvNGo6c2VjcmV0"));
+        let body: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(body["statements"][0]["statement"], query);
+        assert_eq!(body["statements"][0]["parameters"]["limit"], 10);
+    }
+
+    #[tokio::test]
+    async fn execute_propagates_server_error() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock(Arc::clone(&captured), 500, "boom").await;
+        let client = Neo4jClient::new(base_url, "neo4j", "secret");
+        let err = client
+            .execute("MATCH (n) RETURN n", &serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("boom"), "got: {err}");
     }
 }

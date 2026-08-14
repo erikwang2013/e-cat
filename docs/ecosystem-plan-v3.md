@@ -51,19 +51,22 @@
 
 **e-cat 已达到生产可用成熟度。** 47 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
 
-## 数据后端覆盖（14 个）
+## 数据后端覆盖（15 个）
 
 | 类别 | 数据库 | Crate | 驱动方式 |
 |------|--------|-------|----------|
-| RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx |
-| 缓存 | Redis | `ecat-data-redis` | redis-rs |
-| 缓存 | Memcached | `ecat-data-memcached` | memcache |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | HTTP |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | opensearch |
-| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | elasticsearch |
-| 图 | Neo4j | `ecat-data-neo4j` | neo4rs |
-| 图 | NebulaGraph | `ecat-data-nebulagraph` | REST API |
-| 图 | ArangoDB | `ecat-data-arangodb` | arangors |
-| 时序 | InfluxDB | `ecat-data-influxdb` | influxdb2 |
-| 时序 | Apache IoTDB | `ecat-data-iotdb` | REST API |
-| 时序 | QuestDB | `ecat-data-questdb` | HTTP API |
+| RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx（官方异步驱动） |
+| 缓存 | Redis | `ecat-data-redis` | redis-rs（官方驱动） |
+| 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产） |
+| 文档 | MongoDB | `ecat-data-mongodb` | mongodb（官方驱动） |
+| 对象存储 | S3 / MinIO | `ecat-data-s3` | HTTP/REST（reqwest+rustls，自实现 SigV4） |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | HTTP/REST（reqwest） |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | HTTP/REST（reqwest） |
+| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | HTTP/REST（reqwest） |
+| 图 | Neo4j | `ecat-data-neo4j` | HTTP/REST（reqwest） |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | HTTP/REST（reqwest） |
+| 图 | ArangoDB | `ecat-data-arangodb` | HTTP/REST（reqwest） |
+| 时序 | InfluxDB | `ecat-data-influxdb` | HTTP/REST（reqwest） |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | HTTP/REST（reqwest） |
+| 时序 | QuestDB | `ecat-data-questdb` | HTTP/REST（reqwest） |
+| 时序 | TDengine | `ecat-data-tdengine` | HTTP/REST（reqwest） |

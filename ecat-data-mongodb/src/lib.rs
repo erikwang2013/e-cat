@@ -127,4 +127,46 @@ mod tests {
         .await;
         assert!(result.is_err());
     }
+
+    /// insert/find/update/delete 的公共输入路径：serde_json::Value →
+    /// bson::Document 往返保真（嵌套、数组、各标量类型、null）。
+    #[test]
+    fn bson_roundtrip_preserves_json_object() {
+        let v: Value = serde_json::json!({
+            "name": "alice",
+            "age": 30,
+            "active": true,
+            "score": 1.5,
+            "tags": ["a", "b", "c"],
+            "nested": {"level": 2, "nil": null},
+            "none": null,
+        });
+        let doc = bson::to_document(&v).unwrap();
+        let back: Value = serde_json::to_value(doc).unwrap();
+        assert_eq!(v, back);
+    }
+
+    /// bson::to_document 要求顶层为文档：null / 数组等非文档值必须报错
+    /// （否则 insert 会拿非法文档直达网络）。
+    #[test]
+    fn bson_to_document_rejects_non_document_top_level() {
+        assert!(bson::to_document(&Value::Null).is_err());
+        assert!(bson::to_document(&serde_json::json!([1, 2, 3])).is_err());
+        assert!(bson::to_document(&Value::from("str")).is_err());
+    }
+
+    /// 错误路径先于网络访问：insert 的 bson 转换失败返回 DocumentError，
+    /// 不发起任何连接（url 指向不可达端口也无妨）。
+    #[tokio::test]
+    async fn insert_rejects_non_document_before_network() {
+        let client = MongoClient::from_config(MongoConfig {
+            url: "mongodb://127.0.0.1:1".into(),
+            database: "app".into(),
+            tls: None,
+        })
+        .await
+        .unwrap();
+        let err = client.insert("col", &Value::Null).await.unwrap_err();
+        assert!(err.to_string().contains("mongodb bson:"), "got: {err}");
+    }
 }

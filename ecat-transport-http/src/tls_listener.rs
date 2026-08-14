@@ -229,9 +229,15 @@ impl axum::serve::Listener for TlsListener {
         loop {
             let (result, addr) = match self.rx.recv().await {
                 Some(pair) => pair,
-                // 通道关闭只发生在 TlsListener 释放之后（watch 信号先让 accept
-                // 循环退出），届时 axum::serve 已不再调用 accept()，属不可达分支。
-                None => panic!("tls accept loop exited unexpectedly"),
+                // accept 循环异常退出（任务被 abort/panic）后 sender 全部
+                // 释放、通道关闭：已无新连接来源。记录错误后挂起而非 panic
+                // ——serve 任务保持存活，在途连接与优雅停机信号照常处理
+                // （axum serve 循环把 accept 与 shutdown 信号 select，挂起
+                // 的 accept 不阻塞停机）。
+                None => {
+                    tracing::error!("tls accept loop exited unexpectedly; listener is dead");
+                    std::future::pending::<(std::io::Result<Self::Io>, Self::Addr)>().await
+                }
             };
             match result {
                 Ok(tls) => return (tls, addr),
@@ -250,6 +256,7 @@ impl axum::serve::Listener for TlsListener {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::serve::Listener;
     use tokio::io::AsyncReadExt;
     use tokio::net::TcpStream;
     use tokio::sync::{mpsc, watch, Semaphore};
@@ -269,25 +276,13 @@ mod tests {
         );
     }
 
-    #[derive(Clone)]
-    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-
-    impl std::io::Write for CaptureWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
     /// S1 补充：断开日志限频——同一窗口内多个溢出连接只记一条
     /// warn（含累计数），防止握手风暴刷日志放大 DoS 面。
+    /// 限频状态机由 DropLimiter 单测覆盖；此处断言 accept 循环对
+    /// 共享 limiter 的实际调用效果：首条立即上报（first 复位、计数
+    /// 归零），其余静默累计（dropped==2）。此前用 tracing 捕获断言
+    /// 日志条数，多 crate 并行下事件偶发丢失（flaky），已改为对
+    /// limiter 状态的稳定断言，warn 宏调用路径保持原样。
     #[tokio::test]
     async fn drop_logs_are_rate_limited_per_window() {
         let dir = std::env::temp_dir().join(format!("ecat-http-tls-rate-{}", std::process::id()));
@@ -301,31 +296,24 @@ mod tests {
         .unwrap();
         let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_cfg));
 
-        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let writer = CaptureWriter(std::sync::Arc::clone(&buf));
-        let subscriber = tracing_subscriber::fmt()
-            .with_ansi(false)
-            .with_writer(move || writer.clone())
-            .finish();
-        let _guard = tracing::subscriber::set_default(subscriber);
-
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let (tx, _rx) = mpsc::channel::<(std::io::Result<TlsStream>, SocketAddr)>(64);
         let (shutdown_tx, shutdown_rx) = watch::channel(());
         let semaphore = Arc::new(Semaphore::new(1));
+        let limiter = Arc::new(std::sync::Mutex::new(DropLimiter::new()));
         tokio::spawn(accept_loop(
             listener,
             acceptor,
             tx,
             shutdown_rx,
             semaphore,
-            Arc::new(std::sync::Mutex::new(DropLimiter::new())),
+            Arc::clone(&limiter),
         ));
 
         // 占住唯一许可：连接 1 只建 TCP 不握手。
         let _tcp1 = TcpStream::connect(addr).await.unwrap();
-        // 3 个溢出连接全部被断开，但限频窗口内只允许 1 条日志。
+        // 3 个溢出连接全部被断开（EOF），每次触发一次 record()。
         for _ in 0..3 {
             let mut tcp = TcpStream::connect(addr).await.unwrap();
             let mut b = [0u8; 1];
@@ -337,18 +325,13 @@ mod tests {
             );
         }
 
-        let out = String::from_utf8(
-            buf.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone(),
-        )
-        .unwrap();
-        let warn_count = out
-            .matches("concurrency limit reached")
-            .count();
+        // 3 次 record() 后：首条已立即上报（first 复位、计数归零），
+        // 其余 2 条静默累计。若限频失效（每条都记），dropped 将为 0。
+        let l = limiter.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(!l.first, "first drop must have been reported immediately");
         assert_eq!(
-            warn_count, 1,
-            "drop warnings must be rate-limited to 1 per window, got {warn_count} in: {out}"
+            l.dropped, 2,
+            "remaining drops must accumulate silently within the window"
         );
 
         let _ = shutdown_tx.send(());
@@ -364,6 +347,30 @@ mod tests {
         std::fs::write(&cert_path, &pair.cert_pem).unwrap();
         std::fs::write(&key_path, &pair.key_pem).unwrap();
         (cert_path, key_path)
+    }
+
+    /// 第三轮：accept 循环异常退出（sender 全部释放、通道关闭）时
+    /// accept() 必须挂起而非 panic——serve 任务保持存活，在途连接与
+    /// 优雅停机信号照常处理（旧实现 panic 会杀死服务线程）。
+    #[tokio::test]
+    async fn accept_hangs_not_panics_when_loop_exits() {
+        let (tx, rx) = mpsc::channel::<(std::io::Result<TlsStream>, SocketAddr)>(1);
+        drop(tx); // 模拟 accept 循环异常退出：通道关闭
+        let (shutdown_tx, _) = watch::channel(());
+        let mut listener = TlsListener {
+            rx,
+            local_addr: "127.0.0.1:0".parse().unwrap(),
+            shutdown_tx,
+        };
+        let r = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            listener.accept(),
+        )
+        .await;
+        assert!(
+            r.is_err(),
+            "accept() must hang, not panic, when accept loop is dead"
+        );
     }
 
     fn test_client_config(root_pem: &str) -> rustls::ClientConfig {

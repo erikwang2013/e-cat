@@ -1221,8 +1221,18 @@ name = "ecat"
 version = "2.4.0"
 dependencies = [
  "async-trait",
+ "ecat-auth",
+ "ecat-circuit-breaker",
+ "ecat-client",
+ "ecat-config-remote",
+ "ecat-data-redis",
  "ecat-errors",
+ "ecat-events",
  "ecat-logging",
+ "ecat-metrics",
+ "ecat-middleware",
+ "ecat-registry-consul",
+ "ecat-tracing",
  "ecat-transport",
  "ecat-transport-grpc",
  "ecat-transport-http",
@@ -1240,6 +1250,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "tower 0.5.3",
  "tracing",
@@ -1325,6 +1336,7 @@ name = "ecat-data-arangodb"
 version = "2.4.0"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
  "ecat-tls",
  "reqwest",
@@ -1378,6 +1390,7 @@ name = "ecat-data-iotdb"
 version = "2.4.0"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
  "ecat-tls",
  "reqwest",
@@ -1429,6 +1442,7 @@ name = "ecat-data-neo4j"
 version = "2.4.0"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
  "ecat-tls",
  "reqwest",
@@ -1863,7 +1877,6 @@ dependencies = [
  "tokio-rustls",
  "tower 0.5.3",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

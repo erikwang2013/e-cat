@@ -34,6 +34,14 @@ impl IntrospectCache {
     }
 }
 
+/// 内省缓存 key：token 的 SHA-256 hex。缓存中不保存明文 token，
+/// 内存转储/取证不泄露凭据（S2 增强）；命中语义不变。
+fn cache_key(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(token.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 #[derive(Clone)]
 pub struct OAuth2Layer {
     introspection_url: String,
@@ -159,10 +167,11 @@ where
 }
 
 async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaims, String> {
+    let key = cache_key(token);
     // TTL 内命中缓存，避免每个请求都打 introspection 端点。
     if config.cache_ttl_secs > 0 {
         let cache = config.cache.read().await;
-        if let Some((claims, cached_at)) = cache.entries.get(token)
+        if let Some((claims, cached_at)) = cache.entries.get(&key)
             && cached_at.elapsed() < std::time::Duration::from_secs(config.cache_ttl_secs)
         {
             return Ok(claims.clone());
@@ -236,16 +245,16 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
         let mut cache = config.cache.write().await;
         // 新 key 且容量已满：FIFO 逐出最旧条目（order 与 entries 一一对应，
         // 每个 key 只入队一次，不产生重复条目）。
-        if !cache.entries.contains_key(token) {
+        if !cache.entries.contains_key(&key) {
             if cache.entries.len() >= config.cache_capacity
                 && let Some(oldest) = cache.order.pop_front()
             {
                 cache.entries.remove(&oldest);
             }
-            cache.order.push_back(token.to_string());
+            cache.order.push_back(key.clone());
         }
         cache.entries.insert(
-            token.to_string(),
+            key,
             (claims.clone(), std::time::Instant::now()),
         );
     }
@@ -324,14 +333,37 @@ mod tests {
         {
             let cache = cfg.cache.read().await;
             assert_eq!(cache.entries.len(), 3);
-            assert!(!cache.entries.contains_key("tok-1"));
-            assert!(cache.entries.contains_key("tok-2"));
+            assert!(!cache.entries.contains_key(&cache_key("tok-1")));
+            assert!(cache.entries.contains_key(&cache_key("tok-2")));
         }
 
         // 被逐出的 tok-1 需重新 introspection；随后 tok-2 按 FIFO 被挤出。
         introspect_token(&cfg, "tok-1").await.unwrap();
         assert_eq!(COUNT.load(Ordering::SeqCst), 5);
-        assert!(!cfg.cache.read().await.entries.contains_key("tok-2"));
+        assert!(!cfg.cache.read().await.entries.contains_key(&cache_key("tok-2")));
+    }
+
+    /// S2 增强：缓存 key 为 token 的 SHA-256 hash，而非明文 token——
+    /// 内存中不保存凭据明文（转储/取证不泄露 token）；缓存命中
+    /// 行为不变（由 introspection_cached_within_ttl 覆盖）。
+    #[tokio::test]
+    async fn cache_keys_are_token_hashes_not_plaintext() {
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+        let url = spawn_introspection_server(&COUNT).await;
+        let cfg = OAuth2Layer::new(url, "cid", "csecret")
+            .unwrap()
+            .cache_ttl(60);
+
+        introspect_token(&cfg, "tok-1").await.unwrap();
+        let cache = cfg.cache.read().await;
+        assert!(
+            !cache.entries.contains_key("tok-1"),
+            "raw token must not be used as cache key"
+        );
+        assert!(
+            cache.entries.contains_key(&cache_key("tok-1")),
+            "hashed token must be the cache key"
+        );
     }
 
     /// P1 优化：缓存直接保存 AuthClaims 结构体，命中路径不再每请求
@@ -346,7 +378,7 @@ mod tests {
 
         introspect_token(&cfg, "tok-1").await.unwrap();
         let cache = cfg.cache.read().await;
-        let (claims, _) = cache.entries.get("tok-1").expect("token cached");
+        let (claims, _) = cache.entries.get(&cache_key("tok-1")).expect("token cached");
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.role.as_deref(), Some("admin"));
     }

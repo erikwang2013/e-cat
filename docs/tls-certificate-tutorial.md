@@ -78,6 +78,8 @@ rm -f *.csr
 | `tls.client_key` | `Option<String>` | 客户端私钥 PEM 路径（mTLS） |
 | `tls.skip_verify` | `Option<bool>` | 跳过证书验证（仅测试环境） |
 
+> ⚠️ 互斥：`skip_verify=true` 与 `ca_cert` 同时配置会在构建时直接报错（`ecat-tls` 拒绝矛盾配置——跳过校验却配置信任锚，防止误配静默关闭证书校验）。
+
 ### YAML 配置示例
 
 ```yaml

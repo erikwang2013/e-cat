@@ -365,6 +365,8 @@ let layer = ServiceBuilder::new()
     .layer(SecurityLayer::new());
 ```
 
+> 注：`ecat_middleware::TracingLayer` 不注入 trace_id；如需请求级 trace_id 注入，请使用 `ecat_tracing::TracingLayer::new()`。
+
 ### 错误处理
 
 ```rust
@@ -408,7 +410,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **WebSocket 优雅关闭（ecat-transport-ws）**：`WsServer::stop()` 不等待已升级的 WebSocket 连接——axum `on_upgrade` 连接在独立任务中运行，graceful shutdown 不覆盖，长连接在 stop() 后仍滞留，需对端主动断开或随进程退出回收。
 - **GraphQL 解析（ecat-graphql）**：`execute` 仅将 variables 传给 resolver，字段参数与嵌套 selection 不传递——含嵌套字段参数的复杂查询暂不支持，请将所需数据放入顶层查询参数。
 - **熔断判定（ecat-circuit-breaker）**：仅统计传输层错误，HTTP 5xx 视为成功——对「服务存活但持续返回 5xx」的不可用场景熔断无效。
-- **OAuth2 内省缓存（ecat-auth）**：token 明文存于进程内内存缓存（FIFO 有界，默认 10_000），属既有设计；脱敏（hash 化）留待后续版本。
+- **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；解析出的 claims（sub/role 等）仍以明文存于 FIFO 有界缓存（默认 10_000）。
+- **Kafka offset（ecat-mq-kafka）**：默认 `enable.auto.commit=false` 且无手动 commit——进程重启后从分区末尾（latest）重读，停机期间产生的消息会被跳过；需显式配置 `auto_commit=true` 才具备 at-least-once 语义（重启从最近提交点继续）。
 
 ## 设计目标
 

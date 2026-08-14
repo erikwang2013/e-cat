@@ -113,3 +113,32 @@
 - `ecat-circuit-breaker/src/lib.rs:203-209` 只把 inner Err 记为失败，HTTP 5xx 视为成功 → 熔断对服务不可用（5xx 风暴）无效；文档未说明。
 
 **验证状态**：首轮 `cargo test --workspace` 全绿（含 doc-tests，尾部输出未见任何失败）；S1 修复 agent 编辑期间 transport-http 曾现编译错误与 2 处告警（unused import `ensure_crypto_provider`、`shutdown_tx` 未读）——属中间态，S1 收尾后需全量复跑测试与 `clippy --all-targets -D warnings`。
+
+---
+
+## 第三轮：动态验证 + CVE 复查 + panic 面（专项，2026-08-14）
+
+### CVE 复查（新增发现，按严重度）
+
+1. **[中] rustls-webpki 0.102.8 残留在依赖树**（RUSTSEC-2026-0049/0098/0099/0104：CRL distributionPoint 绕过、URI/wildcard name-constraints，修复版 0.103.10）。主链为 0.103.13（经 rustls 0.23.43，安全）；0.102.8 经 async-nats 0.38.0 / rumqttc 0.25.1 引入，覆盖 NATS/MQTT TLS 客户端链。上游未迁移 rustls 0.23，无修复版本——受控风险，建议注释跟踪。
+2. **[中-低] rdkafka 0.36.2 内嵌 librdkafka 携带 cJSON 1.7.14**（CVE-2023-53154 及 cJSON 系列；CVE-2025-57052 标 CVSS 9.8 但受影响文件 cJSON_utils.c 未被 librdkafka 使用，适用性存疑）。上游修复在 librdkafka 2.10+（2026-03 PR #5346）。ecat-mq-kafka 静态链接，需核对 librdkafka-sys 打包版本并跟踪升级。
+3. **[低] rustls-pemfile 2.2.0 未维护**（RUSTSEC-2025-0134）— ecat-transport-http 启动期解析本地文件，非攻击者输入。
+4. **[低] rsa 0.9.10**（RUSTSEC-2023-0071 Marvin 计时侧信道）— 经 sqlx-mysql TLS 引入，仅 MySQL + RSA 密钥交换场景相关。
+5. async-nats 0.38.0 已高于 RUSTSEC-2023-0027（CN 校验绕过）修复线，无问题。
+
+### 动态验证（examples/helloworld，debug 构建，临时端口 18080，已清理）
+
+- /health 200、/（JSON 序列化）200（27B）、404 正常；Logging 中间件正常记录请求。
+- **/metrics 挂载但返回 200 + 空 body（0 字节）**：无指标注册时无任何输出，监控侧无法区分"健康/无指标"。建议空 registry 输出注释行或 503。
+- 畸形请求（头含 0x01/0x02）→ 400 Bad Request，服务存活、后续 /health 仍 200，无 panic。
+- TLS/mTLS 路径与熔断/限流中间件：由 ecat-transport-http/grpc、ecat-middleware 测试覆盖（mTLS 竞态修复后全绿，拒绝匿名/错误客户端证书用例通过）。
+
+### bench 基线
+
+- ecat-bench 无 [[bench]]/bin 目标，无 cargo bench 入口；run_bench_with_warmup 已带预热（P2 修复落地），harness 测试全绿。
+- 实测为 debug 构建 smoke：/ 约 1.3ms、/health 约 1.8ms（含 curl 进程开销，无基线意义）。建议 release 构建 + wrk/hey 压测出真实基线。
+
+### panic 面复查（全 workspace，排除测试模块）
+
+- 共 31 处 unwrap/expect/panic，均低风险：Response::builder().body().unwrap()（jwt/apikey/oauth2 不可失败分支）、锁中毒兜底（etcd/testing）、clickhouse serde_json::to_string().unwrap()（极端 NaN/inf 输入理论 panic）。
+- **1 处需留意**：`ecat-transport-http/src/tls_listener.rs:234` — 后台 accept 循环异常退出时 `accept()` 内 panic!，服务线程死亡（触发条件苛刻：仅监听器致命错误），建议降级为错误返回并打日志。
