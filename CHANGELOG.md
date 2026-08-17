@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.1] — 2026-08-17
+
+### Fixed
+- `ecat-mq-kafka` auto_commit=true 消息丢失量化告警：消费者流被 drop 时 warn 记录通道内未消费条数（librdkafka 已交付 offset 无法恢复，告警为可达最优解；默认 auto_commit=false 保持安全基线）
+- `ecat-data` rdbms rollback 误报：显式 `rollback()` 后 Drop 不再触发 "dropped without commit — rolling back" 误导性 warn（新增 rolled_back 标志）
+- `ecat-auth` OAuth2 内省安全：响应体 1MiB 有界读取（防无界内存）、`active=true` 但 sub 缺失/为空即拒绝
+
+### Performance
+- 根 Cargo.toml 新增 `[profile.release] lto = "thin"`：60 个跨 crate 热点调用可跨 crate 内联
+
+### Tests
+- `ecat-config` FileSource::load() 补 4 个测试（JSON/YAML 值断言、解析错误、顶层非 object 报错）——启动必经路径此前零测试
+- `ecat-circuit-breaker` 补状态机迁移测试（open 拒绝请求、half-open 失败重开）
+
 ## [3.0.0] — 2026-08-14
 
 ### Breaking

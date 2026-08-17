@@ -12,6 +12,9 @@ use tower::{Layer, Service};
 /// HTTP timeout for token introspection requests.
 const INTROSPECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// 内省响应体大小上限（1 MiB）：有界读取，防止恶意提供方无界响应耗尽内存。
+const INTROSPECT_BODY_LIMIT: usize = 1024 * 1024;
+
 /// 内省缓存容量上限：达到后按 FIFO 逐出最旧条目，防止海量唯一 token
 /// 无限占用内存（S2 DoS）。
 const CACHE_CAPACITY: usize = 10_000;
@@ -229,7 +232,7 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
         ("client_secret", &config.client_secret),
     ];
 
-    let resp = config
+    let mut resp = config
         .client
         .post(&config.introspection_url)
         .form(&params)
@@ -241,10 +244,21 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
         return Err(format!("introspection returned {}", resp.status()));
     }
 
-    let body: serde_json::Value = resp
-        .json()
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| format!("introspection parse: {e}"))?;
+        .map_err(|e| format!("introspection read: {e}"))?
+    {
+        if bytes.len() + chunk.len() > INTROSPECT_BODY_LIMIT {
+            return Err(format!(
+                "introspection response exceeds {INTROSPECT_BODY_LIMIT} bytes"
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let body: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("introspection parse: {e}"))?;
 
     let active = body
         .get("active")
@@ -255,11 +269,10 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
         return Err("token is not active".into());
     }
 
-    let sub = body
-        .get("sub")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let sub = match body.get("sub").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return Err("introspection response missing sub".into()),
+    };
 
     let role = body
         .get("role")

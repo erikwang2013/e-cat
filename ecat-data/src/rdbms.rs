@@ -36,6 +36,7 @@ pub trait TransactionInner: Send {
 #[derive(Default)]
 pub struct Transaction {
     committed: bool,
+    rolled_back: bool,
     inner: Option<Box<dyn TransactionInner>>,
 }
 
@@ -48,6 +49,7 @@ impl Transaction {
         Self {
             inner: Some(inner),
             committed: false,
+            rolled_back: false,
         }
     }
 
@@ -64,6 +66,7 @@ impl Transaction {
             inner.rollback().await?;
         }
         self.committed = false;
+        self.rolled_back = true;
         Ok(())
     }
 }
@@ -74,7 +77,7 @@ impl Drop for Transaction {
         // possible in Drop); actual rollback relies on the backing sqlx
         // Transaction dropping without commit, which rolls back the
         // underlying DB connection.
-        if !self.committed {
+        if !self.committed && !self.rolled_back {
             tracing::warn!("transaction dropped without commit — rolling back");
         }
     }

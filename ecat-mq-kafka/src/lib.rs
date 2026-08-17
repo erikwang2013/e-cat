@@ -9,6 +9,8 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -88,6 +90,12 @@ impl MessageQueue for KafkaMq {
             .map_err(|e| MqError::Other(format!("kafka subscribe: {e}")))?;
 
         let (tx, rx) = mpsc::channel::<Bytes>(1024);
+        // 入队/已消费计数：stream 被 drop 时量化未交付消息数（auto_commit
+        // 下这些消息的 offset 仍会被 5s 自动提交，造成静默丢失）。
+        let queued = Arc::new(AtomicU64::new(0));
+        let consumed = Arc::new(AtomicU64::new(0));
+        let queued_ref = Arc::clone(&queued);
+        let consumed_ref = Arc::clone(&consumed);
         tokio::spawn(async move {
             // StreamConsumer 由 tokio 驱动：消息到达立即唤醒，空闲时挂起，
             // 无固定 poll/sleep 延迟，也不阻塞 tokio worker 线程。
@@ -104,22 +112,35 @@ impl MessageQueue for KafkaMq {
                 if let Some(payload) = msg.payload()
                     && tx.send(Bytes::copy_from_slice(payload)).await.is_err()
                 {
+                    // rx 已 drop：通道内未消费消息与本消息一并丢失
+                    let lost = queued_ref.load(Ordering::Relaxed)
+                        - consumed_ref.load(Ordering::Relaxed)
+                        + 1;
+                    tracing::warn!(
+                        lost,
+                        "kafka consumer dropped: receiver closed, undelivered messages lost"
+                    );
                     break;
                 }
+                queued.fetch_add(1, Ordering::Relaxed);
             }
         });
-        Ok(Box::new(KafkaStream { rx }))
+        Ok(Box::new(KafkaStream { rx, consumed }))
     }
 }
 
 struct KafkaStream {
     rx: mpsc::Receiver<Bytes>,
+    consumed: Arc<AtomicU64>,
 }
 
 impl MessageStream for KafkaStream {
     fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Bytes, MqError>>> {
         match self.rx.poll_recv(cx) {
-            Poll::Ready(Some(data)) => Poll::Ready(Some(Ok(data))),
+            Poll::Ready(Some(data)) => {
+                self.consumed.fetch_add(1, Ordering::Relaxed);
+                Poll::Ready(Some(Ok(data)))
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

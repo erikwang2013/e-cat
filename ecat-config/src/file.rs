@@ -38,3 +38,75 @@ impl ConfigSource for FileSource {
         Ok(map.into_iter().collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    /// 每测试唯一临时目录（pid + 自增序号），避免并发测试互相覆盖；
+    /// 测试结束删除。
+    fn tempdir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "ecat-config-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn load_parses_json_by_extension() {
+        let dir = tempdir();
+        let path = dir.join("config.json");
+        std::fs::write(&path, r#"{"port": 8080, "name": "api"}"#).unwrap();
+
+        let map = FileSource::new(&path).load().await.unwrap();
+        assert_eq!(map.get("port"), Some(&serde_json::json!(8080)));
+        assert_eq!(map.get("name"), Some(&serde_json::json!("api")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_parses_yaml_by_extension() {
+        let dir = tempdir();
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, "name: my-app\nport: 8080\n").unwrap();
+
+        let map = FileSource::new(&path).load().await.unwrap();
+        assert_eq!(map.get("name"), Some(&serde_json::json!("my-app")));
+        assert_eq!(map.get("port"), Some(&serde_json::json!(8080)));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_reports_parse_errors() {
+        let dir = tempdir();
+        let path = dir.join("config.json");
+        std::fs::write(&path, "{invalid").unwrap();
+
+        let err = FileSource::new(&path).load().await.unwrap_err();
+        assert!(
+            err.to_string().contains("line 1"),
+            "got: {err}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_rejects_non_object_top_level() {
+        let dir = tempdir();
+        let path = dir.join("config.json");
+        std::fs::write(&path, r#"[1, 2, 3]"#).unwrap();
+
+        let err = FileSource::new(&path).load().await.unwrap_err();
+        assert!(
+            err.to_string().contains("expected a JSON/YAML object"),
+            "got: {err}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

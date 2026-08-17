@@ -372,6 +372,64 @@ mod tests {
         assert_eq!(b.state, State::Closed, "Ok responses must count as success by default");
     }
 
+    /// open 冷却期内请求被直接拒绝，不触达下游。
+    #[tokio::test]
+    async fn open_state_rejects_requests_until_cooldown() {
+        use tower::ServiceExt;
+
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(100))
+            .open_duration(Duration::from_secs(60));
+        let svc = layer.layer(tower::service_fn(|_: String| async move {
+            Err::<String, std::io::Error>(std::io::Error::other("fail"))
+        }));
+
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        {
+            let b = svc.breaker.lock().unwrap();
+            assert_eq!(b.state, State::Open);
+        }
+
+        let err = svc.clone().oneshot("x".to_string()).await.unwrap_err();
+        assert!(
+            err.to_string().contains("circuit breaker is open"),
+            "got: {err}"
+        );
+    }
+
+    /// half-open 探针失败 → 立即回到 open，需再次等待冷却期。
+    #[tokio::test]
+    async fn half_open_probe_failure_reopens_circuit() {
+        use tower::ServiceExt;
+
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(100))
+            .open_duration(Duration::from_millis(10))
+            .half_open_probes(3);
+        let svc = layer.layer(tower::service_fn(|_: String| async move {
+            Err::<String, std::io::Error>(std::io::Error::other("fail"))
+        }));
+
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        {
+            let b = svc.breaker.lock().unwrap();
+            assert_eq!(b.state, State::Open);
+        }
+
+        // 冷却期后首个请求作为 half-open 探针放行，失败后重新 open
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let _ = svc.clone().oneshot("x".to_string()).await;
+        let b = svc.breaker.lock().unwrap();
+        assert_eq!(b.state, State::Open, "failed probe must reopen the circuit");
+        assert!(b.opened_at.is_some());
+    }
+
     #[tokio::test]
     async fn half_open_success_resets_window_so_breaker_stays_closed() {
         use std::sync::atomic::{AtomicBool, Ordering};
