@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3] — 2026-08-27
+
+### Added
+- 全球转账打赏：README / README.en 及全部 12 语言 README 新增 ZA Bank 汇款信息（WANG KEXUN / SWIFT AABLHKHHXXX / 银行编号 387），含 Citibank（港元/人民币/美元）与 BNY Mellon（其他币种）跨境汇款代理行附注
+- API 参考文档 `docs/api.md`：端口约定、/health /ready /metrics 内置端点、错误格式、GraphQL/OpenAPI/WebSocket/版本路由扩展接口
+- 12 语言文档目录 `docs/i18n/{en,ja,ko,ru,de,fr,es,pt,hi,ar,bn,id}/`：全部 24 份文档翻译 + 3 张图片副本，README 顶部语言切换器互链
+
 ## [3.0.2] — 2026-08-27
 
 ### Fixed
