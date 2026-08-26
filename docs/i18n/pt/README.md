@@ -1,19 +1,19 @@
 <!-- Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz -->
 # Ecat
 
-[English](README.en.md) | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md) | 简体中文
+[简体中文](../../../README.md) | [English](../../../README.en.md) | [日本語](../ja/README.md) | [한국어](../ko/README.md) | [Русский](../ru/README.md) | [Deutsch](../de/README.md) | [Français](../fr/README.md) | [Español](../es/README.md) | **[Português](../pt/README.md)** | [हिन्दी](../hi/README.md) | [العربية](../ar/README.md) | [বাংলা](../bn/README.md) | [Bahasa Indonesia](../id/README.md)
 
-Ecat中文名：一只猫
+Nome chinês do Ecat: 一只猫
 
-**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v3.0.2 · 51 crates）。
+**一只猫** ("um gato") é um framework de microsserviços Rust comparável ao [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 51 crates).
 
-提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
+Oferece uma experiência de desenvolvimento API-first, arquitetura de componentes plugáveis, abstração unificada de middleware HTTP/gRPC e um conjunto completo de ferramentas CLI. Permite que desenvolvedores familiarizados com Kratos comecem sem atrito, aproveitando ao mesmo tempo a segurança de tipos, as abstrações de custo zero e o desempenho extremo do Rust.
 
 <p align="center">
-  <img src="docs/e-cat.svg" alt="Ecat 项目宠物（动态）" width="220" />
+  <img src="e-cat.svg" alt="Mascote do projeto Ecat (dinâmico)" width="220" />
 </p>
 
-## 设计架构
+## Arquitetura de design
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -51,7 +51,7 @@ Ecat中文名：一只猫
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 请求处理流程
+### Fluxo de processamento de requisições
 
 ```
 客户端请求
@@ -83,85 +83,85 @@ Ecat中文名：一只猫
                               └───────────────┘
 ```
 
-## 功能
+## Recursos
 
-- **API-first**：Protobuf 定义 API、错误码、元数据；prost + tonic-build 代码生成
-- **双协议支持**：HTTP（axum）和 gRPC（tonic）共用同一套 tower::Layer 中间件
-- **可插拔架构**：Registry、Config、Logging、Encoding 全部通过 trait 抽象，默认提供生产可用实现
-- **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、MetricsLayer、RetryLayer、ValidateLayer、CORS（cors feature）；通过 tower::ServiceBuilder 组合
-- **应用生命周期**：Builder 模式构建 App，多 Server 并发启动，SIGTERM/SIGINT 信号处理，start/stop 生命周期钩子
-- **类型安全**：基于 protobuf 的错误码体系，编译期 HTTP 状态码映射
-- **可观测性**：tracing + Prometheus + Health 端点（/health、/ready）
-- **攻击检测**：SecurityLayer 自动检测 SQL 注入、XSS、SSRF 等攻击模式，阻断高危请求
-- **服务间通信**：HttpClient 集成服务发现与负载均衡，CircuitBreaker 熔断保护
-- **认证鉴权**：JWT / API Key 认证中间件，Claims 传递至请求上下文
-- **消息与事件**：MessageQueue trait + EventBus 本地/远程 Pub/Sub
-- **分布式追踪**：请求 span、trace_id 注入/提取
-- **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
-- **多协议**：HTTP、gRPC、WebSocket、GraphQL 统一路由
-- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）
+- **API-first**: define APIs, códigos de erro e metadados com Protobuf; geração de código com prost + tonic-build
+- **Suporte a dois protocolos**: HTTP (axum) e gRPC (tonic) compartilham o mesmo conjunto de middlewares `tower::Layer`
+- **Arquitetura plugável**: Registry, Config, Logging e Encoding são todos abstraídos por traits, com implementações prontas para produção fornecidas por padrão
+- **Sistema de middleware**: Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (feature "cors") embutidos; combinados via `tower::ServiceBuilder`
+- **Ciclo de vida da aplicação**: padrão Builder para construir o App, inicialização concorrente de múltiplos Servers, tratamento de sinais SIGTERM/SIGINT, hooks de ciclo de vida start/stop
+- **Segurança de tipos**: sistema de códigos de erro baseado em protobuf, mapeamento de status HTTP em tempo de compilação
+- **Observabilidade**: tracing + Prometheus + endpoints de Health (`/health`, `/ready`)
+- **Detecção de ataques**: SecurityLayer detecta automaticamente SQL injection, XSS, SSRF e outros padrões de ataque, bloqueando requisições de alto risco
+- **Comunicação entre serviços**: HttpClient integra descoberta de serviço e balanceamento de carga; CircuitBreaker protege contra falhas em cascata
+- **Autenticação e autorização**: middlewares JWT / API Key, Claims propagados ao contexto da requisição
+- **Mensagens e eventos**: trait MessageQueue + EventBus Pub/Sub local/remoto
+- **Rastreamento distribuído**: spans de requisição, injeção/extração de trace_id
+- **Cliente gRPC**: GrpcClient integra descoberta de serviço e balanceamento de carga
+- **Múltiplos protocolos**: HTTP, gRPC, WebSocket e GraphQL roteados de forma unificada
+- **Múltiplas fontes de dados**: RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), busca (OpenSearch/Elasticsearch), grafos (Neo4j/NebulaGraph/ArangoDB), séries temporais (InfluxDB/IoTDB/QuestDB/TDengine), documentos (MongoDB), armazenamento de objetos (S3/MinIO)
 
-### Kratos 概念映射
+### Mapeamento de conceitos do Kratos
 
-| Kratos (Go) | e-cat (Rust) | 说明 |
+| Kratos (Go) | e-cat (Rust) | Descrição |
 |-------------|-------------|------|
-| `kratos.New()` | `App::builder()` | Builder 模式 |
-| `http.Handler` | `tower::Service` | Rust 生态标准 trait |
-| `http.Server` | `axum::Router` | 社区主流 HTTP 框架 |
-| `grpc.Server` | `tonic::transport::Server` | 最成熟的 gRPC 实现 |
-| `proto generate` | `prost + tonic-build` | 社区标准 protobuf |
-| `registry.Discovery` | `Registry` trait | 可插拔注册发现 |
-| `config.Source` | `ConfigSource` trait | 多源配置加载 |
+| `kratos.New()` | `App::builder()` | Padrão Builder |
+| `http.Handler` | `tower::Service` | Trait padrão do ecossistema Rust |
+| `http.Server` | `axum::Router` | Framework HTTP mainstream da comunidade |
+| `grpc.Server` | `tonic::transport::Server` | A implementação gRPC mais madura |
+| `proto generate` | `prost + tonic-build` | Protobuf padrão da comunidade |
+| `registry.Discovery` | `Registry` trait | Registro/descoberta plugável |
+| `config.Source` | `ConfigSource` trait | Carregamento de configuração multi-fonte |
 
-## 技术栈
+## Stack tecnológica
 
-| 组件 | 选型 |
+| Componente | Escolha |
 |------|------|
-| 异步运行时 | **tokio** |
+| Runtime assíncrono | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
 | Protobuf | **prost + tonic-build** |
-| 中间件 | **tower::Service / Layer** |
-| 日志/追踪 | **tracing + trace_id propagation** |
-| 指标 | **prometheus** |
-| 序列化 | **serde + prost** |
-| 攻击检测 | **security-rust** |
+| Middleware | **tower::Service / Layer** |
+| Logs/rastreamento | **tracing + trace_id propagation** |
+| Métricas | **prometheus** |
+| Serialização | **serde + prost** |
+| Detecção de ataques | **security-rust** |
 | RDBMS | **sqlx** |
 | Redis | **redis-rs** |
 | JWT | **jsonwebtoken** |
 | HTTP Client | **reqwest** |
 | CLI | **clap** |
 
-## 支持的数据库
+## Bancos de dados suportados
 
-| 类别 | 数据库 | Crate | 状态 |
+| Categoria | Banco de dados | Crate | Status |
 |------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
-| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
-| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 |
-| 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 |
-| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 |
-| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implementado |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implementado |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementado |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementado |
+| Cache | Redis | `ecat-data-redis` | ✅ Implementado |
+| Busca | OpenSearch | `ecat-data-opensearch` | ✅ Implementado |
+| Busca | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementado |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementação em memória (não para produção, não use para cache persistente) |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementado |
+| Grafo | Neo4j | `ecat-data-neo4j` | ✅ API REST |
+| Grafo | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST |
+| Grafo | ArangoDB | `ecat-data-arangodb` | ✅ API REST |
+| Séries temporais | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP |
+| Séries temporais | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST |
+| Séries temporais | QuestDB | `ecat-data-questdb` | ✅ API HTTP |
+| Séries temporais | TDengine | `ecat-data-tdengine` | ✅ API REST |
+| Documentos | MongoDB | `ecat-data-mongodb` | ✅ Driver nativo |
+| Armazenamento de objetos | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+> Todos os backends de dados são abstraídos por traits unificados (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); importe o crate contrib correspondente conforme necessário. Cada backend fornece uma struct `XxxConfig` (`#[derive(Deserialize)]`) que suporta carregar as informações de conexão a partir de arquivos de configuração JSON/YAML.
 
-> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
+> **Convenção de nomenclatura de construtores**: os crates de fila de mensagens (`ecat-mq-*`) usam `connect` como construtor principal (ex.: `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), além de `from_config` para carregar da configuração; a maioria dos crates de backend de dados (`ecat-data-*`) usa `new` como construtor principal, com exceções: `ecat-data-redis` / `ecat-data-sqlx` mantêm `connect`, e `ecat-data-mongodb` / `ecat-data-s3` oferecem apenas `from_config`. Trata-se de uma convenção existente, não unificada à força (para evitar mudanças que quebrem código); pode ser avaliada uma unificação na janela 3.0.
 
-### 数据库配置示例
+### Exemplo de configuração de banco de dados
 
-每个数据后端提供 `XxxConfig` 结构体和 `from_config()` 方法，将连接信息从代码中解耦到配置文件：
+Cada backend de dados fornece uma struct `XxxConfig` e o método `from_config()`, que desacoplam as informações de conexão do código para arquivos de configuração:
 
 ```rust
 use ecat_data_redis::{RedisCache, RedisConfig};
@@ -191,9 +191,9 @@ let ch = ClickhouseClient::from_config(ch_cfg);
 ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 ```
 
-**配置字段参考**:
+**Referência de campos de configuração**:
 
-| 后端 | Config | 字段 | 示例值 |
+| Backend | Config | Campos | Valor de exemplo |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
 | RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
@@ -206,14 +206,14 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | NebulaGraph | `NebulaGraphConfig` | `base_url`, `space`, `username`?, `password`? | — |
 | ArangoDB | `ArangoConfig` | `base_url`, `db`, `username`, `password` | — |
 | IoTDB | `IotdbConfig` | `base_url`, `username`, `password` | — |
-| Memcached | `MemcachedConfig` | `username`?, `password`?（保留字段） | — |
+| Memcached | `MemcachedConfig` | `username`?, `password`? (campos reservados) | — |
 | TDengine | `TdengineConfig` | `base_url`, `username`, `password`, `database`? | `http://localhost:6041` |
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> 所有后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证。详见 [数据库配置教程](docs/database-config-tutorial.md)。
+> Todos os Configs de backend suportam o campo opcional `tls` (`TlsClientConfig`), usado para configurar a autenticação por certificado de cliente TLS. Consulte o [Tutorial de configuração de banco de dados](database-config-tutorial.md).
 
-## 项目结构
+## Estrutura do projeto
 
 ```
 e-cat/
@@ -278,20 +278,20 @@ e-cat/
 └── examples/                   # 示例项目
 ```
 
-## 快速开始
+## Início rápido
 
-### 前提条件
+### Pré-requisitos
 
-- Rust 1.85+（stable 工具链，edition 2024 要求）
-- [protoc](https://github.com/protocolbuffers/protobuf)（Protocol Buffers 编译器）
+- Rust 1.85+ (toolchain stable, exigência da edition 2024)
+- [protoc](https://github.com/protocolbuffers/protobuf) (compilador Protocol Buffers)
 
-### 安装 CLI
+### Instalar o CLI
 
 ```bash
 cargo install ecat-cli
 ```
 
-### 创建服务
+### Criar um serviço
 
 ```bash
 # 脚手架生成项目
@@ -315,9 +315,9 @@ ecat run --watch
 ecat upgrade
 ```
 
-访问 `http://localhost:8000/helloworld/ecat`。
+Acesse `http://localhost:8000/helloworld/ecat`.
 
-### 代码示例
+### Exemplo de código
 
 ```rust
 use ecat::App;
@@ -349,9 +349,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 ```
 
-### 聚合 crate（ecat）
+### Crate agregado (ecat)
 
-`ecat` 提供 feature-gated 的 re-export 入口——只启用需要的组件：
+`ecat` fornece pontos de re-export controlados por features — habilite apenas os componentes necessários:
 
 ```rust
 use ecat::transport_http::HttpServer;   // feature "http"（默认）
@@ -360,9 +360,9 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-默认 features = `http+grpc`；使用 `--no-default-features --features <组件>` 可精简依赖树。完整 feature 列表：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`。
+Features padrão = `http+grpc`; use `--no-default-features --features <componente>` para enxugar a árvore de dependências. Lista completa de features: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
 
-### 中间件
+### Middleware
 
 ```rust
 use tower::ServiceBuilder;
@@ -386,7 +386,7 @@ let layer = ServiceBuilder::new()
     .layer(SecurityLayer::new());
 ```
 
-> 注：`ecat_middleware::TracingLayer` 不注入 trace_id；如需请求级 trace_id 注入，请使用 `ecat_tracing::TracingLayer::new()`。
+> Observação: `ecat_middleware::TracingLayer` não injeta trace_id; para injeção de trace_id em nível de requisição, use `ecat_tracing::TracingLayer::new()`.
 
 ```rust
 // 指标：记录请求计数与时延到全局 registry（与 /metrics 端点共享）
@@ -416,7 +416,7 @@ use ecat_middleware::{CorsLayer, AllowOrigin};
 let cors = CorsLayer::new().allow_origin(AllowOrigin::any());
 ```
 
-### 错误处理
+### Tratamento de erros
 
 ```rust
 use ecat_errors::{Error, ErrorCode};
@@ -433,99 +433,99 @@ fn get_user(id: u64) -> Result<User, Error> {
 }
 ```
 
-## 实现阶段
+## Fases de implementação
 
-| 阶段 | 状态 | 内容 |
+| Fase | Status | Conteúdo |
 |------|------|------|
-| Phase 1 | ✅ 完成 | 项目骨架、protos、errors、metadata、encoding、logging |
-| Phase 2 | ✅ 完成 | Transport 层（HTTP + gRPC） |
-| Phase 3 | ✅ 完成 | Middleware 体系（Recovery/Tracing/Logging/Timeout） |
-| Phase 4 | ✅ 完成 | App 生命周期管理 |
-| Phase 5 | ✅ 完成 | Registry、Config、Metrics |
-| Phase 5.5 | ✅ 完成 | Data 访问层（traits + sqlx 后端） |
-| Phase 6 | ✅ 完成 | CLI 工具链（new/proto/run/build） |
-| Phase 7 | ✅ 完成 | README、示例（helloworld）、设计文档 |
-| Phase 8 | ✅ 完成 | 攻击检测集成（security-rust, ecat-security） |
-| Phase 9 | ✅ 完成 | 生态一期（health / client / circuit-breaker / auth / registry-consul） |
-| Phase 10 | ✅ 完成 | 生态二期（redis / mq / events / config-remote） |
-| Phase 11 | ✅ 完成 | 生态三期（testing / deploy / bench / openapi） |
-| Phase 12 | ✅ 完成 | 通信与安全强化（gRPC 客户端 / OAuth2 / mTLS / 分布式追踪） |
-| Phase 13 | ✅ 完成 | 数据后端补齐（etcd / Kafka / OpenSearch / InfluxDB） |
-| Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
-| Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
-| Phase 16 | ✅ 完成 | 维护强化 v2.4（M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 聚合 crate ecat / U2 examples / OAuth2 token hash / CVE 跟踪） |
+| Phase 1 | ✅ Concluída | Esqueleto do projeto, protos, errors, metadata, encoding, logging |
+| Phase 2 | ✅ Concluída | Camada Transport (HTTP + gRPC) |
+| Phase 3 | ✅ Concluída | Sistema de Middleware (Recovery/Tracing/Logging/Timeout) |
+| Phase 4 | ✅ Concluída | Gerenciamento do ciclo de vida do App |
+| Phase 5 | ✅ Concluída | Registry, Config, Metrics |
+| Phase 5.5 | ✅ Concluída | Camada de acesso a dados (traits + backend sqlx) |
+| Phase 6 | ✅ Concluída | Ferramentas CLI (new/proto/run/build) |
+| Phase 7 | ✅ Concluída | README, exemplos (helloworld), documentos de design |
+| Phase 8 | ✅ Concluída | Integração de detecção de ataques (security-rust, ecat-security) |
+| Phase 9 | ✅ Concluída | Ecossistema fase 1 (health / client / circuit-breaker / auth / registry-consul) |
+| Phase 10 | ✅ Concluída | Ecossistema fase 2 (redis / mq / events / config-remote) |
+| Phase 11 | ✅ Concluída | Ecossistema fase 3 (testing / deploy / bench / openapi) |
+| Phase 12 | ✅ Concluída | Comunicação e reforço de segurança (cliente gRPC / OAuth2 / mTLS / rastreamento distribuído) |
+| Phase 13 | ✅ Concluída | Complemento de backends de dados (etcd / Kafka / OpenSearch / InfluxDB) |
+| Phase 14 | ✅ Concluída | Operações e experiência (WebSocket / versionamento de API / Helm / CI/CD) |
+| Phase 15 | ✅ Concluída | Expansão do ecossistema v2 (Kafka real / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / lock distribuído / scheduler / CLI watch+upgrade) |
+| Phase 16 | ✅ Concluída | Manutenção reforçada v2.4 (M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 crate agregado ecat / U2 examples / hash de token OAuth2 / rastreamento de CVE) |
 
-## 已知限制
+## Limitações conhecidas
 
-- **GraphQL 解析（ecat-graphql）**：支持字段参数与嵌套 selection（`query_field`/`mutation_field` 富 resolver 可访问 `args`/`variables`/`selection`）；仍不支持别名、fragment 与多顶层字段，请勿将其暴露为通用 GraphQL 端点。
-- **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；缓存值经白名单过滤（默认保留 sub/exp/iat/role + extra 的 iss/aud/scope/roles，`cache_claims_whitelist` 可配置；miss 时仍返回完整 claims，仅缓存值过滤）；TTL 过期条目在写入时主动清除（默认 TTL 300s）。
-- **Kafka offset（ecat-mq-kafka）**：默认 `enable.auto.commit=false` 且无手动 commit——进程重启后从分区末尾（latest）重读，停机期间产生的消息会被跳过；需显式配置 `auto_commit=true` 才具备 at-least-once 语义（重启从最近提交点继续）。
+- **Parsing GraphQL (ecat-graphql)**: suporta argumentos de campo e selections aninhadas (`query_field`/`mutation_field` resolvers ricos podem acessar `args`/`variables`/`selection`); ainda não suporta aliases, fragments nem múltiplos campos de nível superior — não o exponha como endpoint GraphQL genérico.
+- **Cache de introspecção OAuth2 (ecat-auth)**: a chave do cache é o hash SHA-256 do token (o token em texto puro não é armazenado); o valor em cache é filtrado por whitelist (por padrão mantém sub/exp/iat/role + iss/aud/scope/roles do extra, configurável via `cache_claims_whitelist`; em caso de miss, as claims completas ainda são retornadas — apenas o valor em cache é filtrado); entradas expiradas pelo TTL são removidas ativamente na escrita (TTL padrão 300s).
+- **Kafka offset (ecat-mq-kafka)**: por padrão `enable.auto.commit=false` e sem commit manual — após reinício do processo, a leitura recomeça do fim da partição (latest), e mensagens produzidas durante a parada são puladas; é necessário configurar explicitamente `auto_commit=true` para obter semântica at-least-once (após reinício, continua do último ponto de commit).
 
-## 设计目标
+## Objetivos de design
 
-| # | 目标 | 说明 |
+| # | Objetivo | Descrição |
 |---|------|------|
-| 1 | **Kratos 对齐** | 保持 Kratos 的 API-first、可插拔、统一抽象理念 |
-| 2 | **Rust 惯用** | 复用 tower::Service、trait 泛型、零成本抽象；不做「Go in Rust」 |
-| 3 | **类型安全** | 编译期捕获错误，Protobuf 定义全强类型化 |
-| 4 | **可插拔** | Registry、Config、Logging、Encoding 全部通过 trait 抽象 |
-| 5 | **工具链完备** | CLI 支持项目脚手架、proto 代码生成、开发运行 |
-| 6 | **性能优先** | 零成本抽象 + 异步运行时 |
-| 7 | **可观测** | tracing + Prometheus 开箱即用 |
-| 8 | **生态完备** | 客户端、熔断、认证、健康检查、注册中心后端 |
+| 1 | **Alinhamento com Kratos** | Manter a filosofia API-first, plugável e de abstração unificada do Kratos |
+| 2 | **Idiomático em Rust** | Reutilizar tower::Service, generics de trait, abstrações de custo zero; não fazer "Go in Rust" |
+| 3 | **Segurança de tipos** | Capturar erros em tempo de compilação; definições Protobuf totalmente tipadas |
+| 4 | **Plugável** | Registry, Config, Logging, Encoding todos abstraídos por traits |
+| 5 | **Toolchain completo** | CLI suporta scaffolding de projetos, geração de código proto, execução em desenvolvimento |
+| 6 | **Performance em primeiro lugar** | Abstrações de custo zero + runtime assíncrono |
+| 7 | **Observável** | tracing + Prometheus prontos para uso |
+| 8 | **Ecossistema completo** | Cliente, circuit breaker, autenticação, health check, backends de registry |
 
-## 技术说明
+## Notas técnicas
 
-### 为什么选择 tower::Service
+### Por que tower::Service
 
-[`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) 是 Rust 异步生态的 `http.Handler` 等价物。axum 和 tonic 都构建在 tower 之上，因此 e-cat 不需要自定义中间件 trait——直接提供 tower::Layer 实现即可达到与 Kratos 中间件相同的效果，且零适配器开销。
+[`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) é o equivalente ao `http.Handler` do ecossistema assíncrono Rust. Tanto axum quanto tonic são construídos sobre tower; portanto, o e-cat não precisa de um trait de middleware próprio — basta fornecer implementações de `tower::Layer` para alcançar o mesmo efeito dos middlewares do Kratos, sem custo de adaptadores.
 
-### 为什么用 Cargo Workspace
+### Por que Cargo Workspace
 
-与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 3.0.2），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
+Consistente com o design modular do Kratos. Todos os crates `ecat-*` são publicados em versões sincronizadas no workspace (atualmente 3.0.2), compilados de forma independente; o usuário importa conforme necessário. Os crates centrais mantêm dependências mínimas; os crates contrib fornecem integrações opcionais.
 
-### 为什么用 prost（而非 protobuf-rs）
+### Por que prost (e não protobuf-rs)
 
-prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型安全代码，与 tonic 深度集成。
+prost é a implementação de protobuf mais amplamente usada na comunidade Rust; gera código seguro por tipos em tempo de compilação e integra-se profundamente com tonic.
 
-## 设计文档
+## Documentos de design
 
-- [设计规范](docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
-- [实现计划](docs/superpowers/plans/2026-07-29-ecat-framework.md)
-- [生态规划 v1](docs/ecosystem-plan.md)（已完成）
-- [生态规划 v2](docs/ecosystem-plan-v2.md)（已完成）
-- [生态规划 v3](docs/ecosystem-plan-v3.md)（最终评估）
-- [API 参考](docs/api.md)
-- [审计报告 r5](docs/audit-report-2026-08-01-r5.md)（2026-08-01）
-- [数据库配置教程](docs/database-config-tutorial.md)
-- [依赖 CVE 跟踪](docs/dependency-cve-tracking.md)
-- [TLS 证书认证教程](docs/tls-certificate-tutorial.md)
-- [配置示例文件](config/databases.example.yaml)
+- [设计规范](../../../docs/superpowers/specs/2026-07-29-ecat-framework-design.md)
+- [实现计划](../../../docs/superpowers/plans/2026-07-29-ecat-framework.md)
+- [Plano de ecossistema v1](ecosystem-plan.md) (concluído)
+- [Plano de ecossistema v2](ecosystem-plan-v2.md) (concluído)
+- [Plano de ecossistema v3](ecosystem-plan-v3.md) (avaliação final)
+- [Referência da API](api.md)
+- [Relatório de auditoria r5](audit-report-2026-08-01-r5.md) (2026-08-01)
+- [Tutorial de configuração de banco de dados](database-config-tutorial.md)
+- [Rastreamento de CVE de dependências](dependency-cve-tracking.md)
+- [Tutorial de certificados TLS](tls-certificate-tutorial.md)
+- [Arquivo de configuração de exemplo](../../../config/databases.example.yaml)
 
-## 支持
+## Suporte
 
-欢迎支持本项目！
+Apoie este projeto!
 
-| 微信支付 | 支付宝 |
+| WeChat Pay | Alipay |
 |:---:|:---:|
-| <img src="docs/weixinpay.png" width="130" height="130" alt="微信支付"> | <img src="docs/alipay.png" width="130" height="130" alt="支付宝"> |
+| <img src="weixinpay.png" width="130" height="130" alt="WeChat Pay"> | <img src="alipay.png" width="130" height="130" alt="Alipay"> |
 
-### 全球转账（银行汇款）
+### Transferência bancária global
 
-| 项目 | 信息 |
+| Item | Informação |
 |------|------|
-| 收款人姓名 | WANG KEXUN |
-| 收款账户号码 | 881015918251 |
-| 收款银行 | ZA Bank Limited |
+| Nome do beneficiário | WANG KEXUN |
+| Número da conta do beneficiário | 881015918251 |
+| Banco do beneficiário | ZA Bank Limited |
 | SWIFT Code | AABLHKHHXXX |
-| 银行编号 | 387 |
-| 银行地址 | Core F, Cyberport 3, 100 Cyberport Road, Hong Kong |
+| Código do banco | 387 |
+| Endereço do banco | Core F, Cyberport 3, 100 Cyberport Road, Hong Kong |
 
-> **跨境汇款代理银行（如需）**：此为代理银行（中转银行）信息，非收款银行信息，请向汇款银行查询是否需要提供。
+> **Banco correspondente para transferências internacionais (se necessário)**: estas são as informações do banco correspondente (banco intermediário), não do banco beneficiário. Consulte o seu banco remetente para saber se é necessário fornecê-las.
 >
-> - 汇入港元、人民币及美元：**Citibank N.A. Hong Kong**（SWIFT：`CITIHKHXXXX`，银行编号：006，分行：Hong Kong Branch，分行编号：391，地址：Citibank Tower, Citibank Plaza, 3 Garden Road, Central, Hong Kong）
-> - 汇入其他币种：**THE BANK OF NEW YORK MELLON**（SWIFT：`IRVTUS3NXXX`，地址：240 GREENWICH STREET, NEW YORK, United States）
+> - Para remessas em dólares de Hong Kong (HKD), renminbi (RMB) e dólares americanos (USD): **Citibank N.A. Hong Kong** (SWIFT: `CITIHKHXXXX`, código do banco: 006, filial: Hong Kong Branch, código da filial: 391, endereço: Citibank Tower, Citibank Plaza, 3 Garden Road, Central, Hong Kong)
+> - Para remessas em outras moedas: **THE BANK OF NEW YORK MELLON** (SWIFT: `IRVTUS3NXXX`, endereço: 240 GREENWICH STREET, NEW YORK, United States)
 
-## 许可证
+## Licença
 
 Apache-2.0

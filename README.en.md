@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz -->
 # Ecat
 
-[简体中文](README.md) | English
+[简体中文](README.md) | English | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md)
 
 **Ecat** is a Rust microservices framework (v3.0.2 · 51 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
@@ -477,6 +477,7 @@ prost is the most widely used protobuf implementation in the Rust community, gen
 - [Ecosystem Plan v1](docs/ecosystem-plan.md) (completed)
 - [Ecosystem Plan v2](docs/ecosystem-plan-v2.md) (completed)
 - [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final evaluation)
+- [API Reference](docs/api.md)
 - [Audit Report r5](docs/audit-report-2026-08-01-r5.md) (2026-08-01)
 - [Database Config Tutorial](docs/database-config-tutorial.md)
 - [Dependency CVE Tracking](docs/dependency-cve-tracking.md)
@@ -490,6 +491,22 @@ Your support is welcome!
 | WeChat Pay | Alipay |
 |:---:|:---:|
 | <img src="docs/weixinpay.png" width="130" height="130" alt="WeChat Pay"> | <img src="docs/alipay.png" width="130" height="130" alt="Alipay"> |
+
+### Global Transfer (Bank Wire)
+
+| Field | Value |
+|-------|-------|
+| Beneficiary Name | WANG KEXUN |
+| Account Number | 881015918251 |
+| Bank | ZA Bank Limited |
+| SWIFT Code | AABLHKHHXXX |
+| Bank Code | 387 |
+| Bank Address | Core F, Cyberport 3, 100 Cyberport Road, Hong Kong |
+
+> **Cross-border remittance agent bank (if required)**: this is the agent (intermediary) bank information, NOT the receiving bank. Ask your remitting bank whether it is required.
+>
+> - For HKD, CNY and USD remittances: **Citibank N.A. Hong Kong** (SWIFT: `CITIHKHXXXX`, Bank Code: 006, Branch: Hong Kong Branch, Branch Code: 391, Address: Citibank Tower, Citibank Plaza, 3 Garden Road, Central, Hong Kong)
+> - For other currencies: **THE BANK OF NEW YORK MELLON** (SWIFT: `IRVTUS3NXXX`, Address: 240 GREENWICH STREET, NEW YORK, United States)
 
 ## License
 
