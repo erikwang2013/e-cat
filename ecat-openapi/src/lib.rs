@@ -240,4 +240,70 @@ mod tests {
         let item = json.pointer("/paths/~1x").unwrap().as_object().unwrap();
         assert!(item.is_empty(), "unknown method must be ignored");
     }
+
+    #[test]
+    fn add_schema_emits_components() {
+        let spec = OpenApiBuilder::new("T", "1")
+            .add_schema("User", {
+                let mut p = HashMap::new();
+                p.insert("name".into(), string_schema());
+                p
+            })
+            .build();
+        let schemas = spec.components.expect("components present").schemas;
+        assert!(schemas.unwrap().contains_key("User"));
+    }
+
+    #[test]
+    fn build_without_schemas_omits_components() {
+        let spec = OpenApiBuilder::new("T", "1").build();
+        assert!(spec.components.is_none());
+        let json = serde_json::to_string(&spec).unwrap();
+        assert!(!json.contains("components"), "got: {json}");
+    }
+
+    #[test]
+    fn schema_ref_points_to_components() {
+        let s = schema_ref("User");
+        assert_eq!(s.reference.as_deref(), Some("#/components/schemas/User"));
+        assert_eq!(s.schema_type, None);
+    }
+
+    #[test]
+    fn string_schema_has_type() {
+        assert_eq!(string_schema().schema_type.as_deref(), Some("string"));
+    }
+
+    #[test]
+    fn same_method_twice_overwrites() {
+        let spec = OpenApiBuilder::new("T", "1")
+            .add_route("/r", "GET", "first", vec![])
+            .add_route("/r", "GET", "second", vec![])
+            .build();
+        let json = serde_json::to_value(&spec).unwrap();
+        let item = json.pointer("/paths/~1r").unwrap().as_object().unwrap();
+        assert_eq!(item.len(), 1, "only one method slot");
+        assert_eq!(item["get"]["summary"], "second");
+    }
+
+    #[test]
+    fn default_response_200_added() {
+        let spec = OpenApiBuilder::new("T", "1")
+            .add_route("/r", "POST", "s", vec![])
+            .build();
+        let json = serde_json::to_value(&spec).unwrap();
+        assert!(json.pointer("/paths/~1r/post/responses/200").is_some());
+    }
+
+    #[test]
+    fn tags_serialized() {
+        let spec = OpenApiBuilder::new("T", "1")
+            .add_route("/r", "GET", "s", vec!["a".into(), "b".into()])
+            .build();
+        let json = serde_json::to_value(&spec).unwrap();
+        assert_eq!(
+            json.pointer("/paths/~1r/get/tags").unwrap(),
+            &serde_json::json!(["a", "b"])
+        );
+    }
 }

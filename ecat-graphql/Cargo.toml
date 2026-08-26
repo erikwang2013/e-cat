@@ -7,10 +7,10 @@ description = "GraphQL integration for e-cat"
 
 [dependencies]
 axum.workspace = true
-tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

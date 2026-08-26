@@ -411,29 +411,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "aws-lc-rs"
-version = "1.17.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bdb5da18dac48ca2cc7cd4a98e533e8635a58e2361d13a1a4ee3888e0d72f1"
-dependencies = [
- "aws-lc-sys",
- "zeroize",
-]
-
-[[package]]
-name = "aws-lc-sys"
-version = "0.43.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43103168cc76fe62678a375e722fc9cb3a0146159ac5828bc4f0dfd755c2224c"
-dependencies = [
- "cc",
- "cmake",
- "dunce",
- "fs_extra",
- "pkg-config",
-]
-
-[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -683,8 +660,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5add81bb678e6cb321aff7fa0dc7689ad82b112dbc032cea19f91d6b8e3582b9"
 dependencies = [
  "find-msvc-tools",
- "jobserver",
- "libc",
  "shlex",
 ]
 
@@ -760,15 +735,6 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
-
-[[package]]
-name = "cmake"
-version = "0.1.58"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "cmov"
@@ -1064,10 +1030,11 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
 name = "databases"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-errors",
  "serde",
  "serde_json",
  "tokio",
@@ -1222,14 +1189,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
-name = "dunce"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
-
-[[package]]
 name = "ecat"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-auth",
@@ -1253,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -1269,7 +1230,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-bench"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "ecat-metrics",
@@ -1282,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "tokio",
  "tower 0.5.3",
@@ -1291,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "clap",
  "libc",
@@ -1301,7 +1262,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-client"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -1312,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "serde",
@@ -1324,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config-remote"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1338,9 +1299,10 @@ dependencies = [
 
 [[package]]
 name = "ecat-data"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "ecat-errors",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
@@ -1350,11 +1312,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-arangodb"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1364,10 +1327,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-clickhouse"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1377,10 +1342,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-elasticsearch"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1390,11 +1357,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-influxdb"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1404,11 +1372,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-iotdb"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1418,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-memcached"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1429,10 +1398,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-mongodb"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "futures-util",
  "mongodb",
@@ -1443,10 +1413,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-nebulagraph"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1456,11 +1428,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-neo4j"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1470,10 +1443,12 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-opensearch"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1483,7 +1458,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-questdb"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1497,10 +1472,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-redis"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-errors",
  "ecat-lock",
  "ecat-tls",
  "redis",
@@ -1512,10 +1488,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-s3"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "hmac 0.12.1",
  "quick-xml",
@@ -1529,7 +1506,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-sqlx"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "base64",
@@ -1538,14 +1515,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tokio",
 ]
 
 [[package]]
 name = "ecat-data-tdengine"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-errors",
  "ecat-tls",
  "reqwest",
  "serde",
@@ -1555,7 +1535,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-encoding"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "prost",
  "serde",
@@ -1565,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "ecat-protos",
  "http",
@@ -1577,7 +1557,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-events"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1591,7 +1571,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-graphql"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1603,19 +1583,20 @@ dependencies = [
 
 [[package]]
 name = "ecat-health"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
  "serde",
  "serde_json",
  "tokio",
+ "tower 0.5.3",
  "tracing",
 ]
 
 [[package]]
 name = "ecat-lock"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -1624,15 +1605,16 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
+ "ecat-tracing",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
 name = "ecat-metadata"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "http",
  "tonic",
@@ -1640,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metrics"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "prometheus",
@@ -1650,10 +1632,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-middleware"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "ecat-tracing",
  "http",
  "redis",
  "serde_json",
@@ -1665,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1676,7 +1659,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-kafka"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1693,12 +1676,13 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-mqtt"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
  "ecat-mq",
  "rumqttc",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
@@ -1706,13 +1690,15 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-nats"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
  "ecat-mq",
  "futures-core",
+ "rustls-native-certs 0.7.3",
+ "rustls-pemfile",
  "serde",
  "serde_json",
  "tokio",
@@ -1720,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-rabbitmq"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1734,7 +1720,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-openapi"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1742,7 +1728,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-protos"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "prost",
  "prost-types",
@@ -1752,7 +1738,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "serde",
@@ -1764,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1779,7 +1765,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-etcd"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1794,7 +1780,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-scheduler"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "tokio",
  "tracing",
@@ -1803,10 +1789,11 @@ dependencies = [
 
 [[package]]
 name = "ecat-security"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "http",
+ "http-body-util",
  "security-rust",
  "thiserror 2.0.19",
  "tokio",
@@ -1815,28 +1802,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "ecat-testing"
-version = "3.0.0"
-dependencies = [
- "async-trait",
- "axum 0.8.9",
- "ecat-transport",
- "tokio",
-]
-
-[[package]]
 name = "ecat-tls"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "rcgen",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "ecat-tracing"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "ecat-metadata",
  "http",
@@ -1848,21 +1826,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "ecat-tracing-otlp"
-version = "3.0.0"
-dependencies = [
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "ecat-transport"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1876,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "ecat-tls",
@@ -1890,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1907,7 +1872,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-ws"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1920,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-versioning"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -2102,12 +2067,6 @@ checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
 ]
-
-[[package]]
-name = "fs_extra"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fsevent-sys"
@@ -2302,12 +2261,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
-
-[[package]]
 name = "h2"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2366,7 +2319,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -2913,16 +2866,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jobserver"
-version = "0.1.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
-dependencies = [
- "getrandom 0.4.3",
- "libc",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3188,7 +3131,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "middleware"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -3522,71 +3465,6 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "opentelemetry"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab70038c28ed37b97d8ed414b6429d343a8bbf44c9f79ec854f3a643029ba6d7"
-dependencies = [
- "futures-core",
- "futures-sink",
- "js-sys",
- "pin-project-lite",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "opentelemetry-otlp"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91cf61a1868dacc576bf2b2a1c3e9ab150af7272909e80085c3173384fe11f76"
-dependencies = [
- "async-trait",
- "futures-core",
- "http",
- "opentelemetry",
- "opentelemetry-proto",
- "opentelemetry_sdk",
- "prost",
- "thiserror 1.0.69",
- "tokio",
- "tonic",
-]
-
-[[package]]
-name = "opentelemetry-proto"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6e05acbfada5ec79023c85368af14abd0b307c015e9064d249b2a950ef459a6"
-dependencies = [
- "opentelemetry",
- "opentelemetry_sdk",
- "prost",
- "tonic",
-]
-
-[[package]]
-name = "opentelemetry_sdk"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "231e9d6ceef9b0b2546ddf52335785ce41252bc7474ee8ba05bfad277be13ab8"
-dependencies = [
- "async-trait",
- "futures-channel",
- "futures-executor",
- "futures-util",
- "glob",
- "opentelemetry",
- "percent-encoding",
- "rand 0.8.7",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-stream",
- "tracing",
-]
 
 [[package]]
 name = "p12-keystore"
@@ -3999,7 +3877,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -4037,9 +3915,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4455,7 +4333,6 @@ version = "0.23.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
 dependencies = [
- "aws-lc-rs",
  "log",
  "once_cell",
  "ring",
@@ -4539,7 +4416,6 @@ version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
- "aws-lc-rs",
  "ring",
  "rustls-pki-types",
  "untrusted",
@@ -5406,7 +5282,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.2.2",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.5",
@@ -5679,24 +5554,6 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-opentelemetry"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97a971f6058498b5c0f1affa23e7ea202057a7301dbff68e968b2d578bcbd053"
-dependencies = [
- "js-sys",
- "once_cell",
- "opentelemetry",
- "opentelemetry_sdk",
- "smallvec",
- "tracing",
- "tracing-core",
- "tracing-log",
- "tracing-subscriber",
- "web-time",
 ]
 
 [[package]]
@@ -6006,7 +5863,7 @@ dependencies = [
 
 [[package]]
 name = "websocket"
-version = "3.0.0"
+version = "3.0.2"
 dependencies = [
  "ecat",
  "ecat-transport-ws",

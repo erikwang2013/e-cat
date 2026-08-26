@@ -13,3 +13,6 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ecat-tls = { path = "../ecat-tls" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

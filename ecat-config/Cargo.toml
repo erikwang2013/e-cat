@@ -10,5 +10,8 @@ serde.workspace = true
 serde_json.workspace = true
 yaml_serde = "0.10"
 async-trait.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["fs"] }
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

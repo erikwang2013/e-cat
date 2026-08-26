@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.2] — 2026-08-27
+
+### Fixed
+- `ecat-security` SQL 注入扫描绕过：URI 百分号编码载荷（`?q=SELECT%20*%20...`）此前可绕过 header 层检测（检测正则要求字面空白），现先 percent-decode 再匹配，仅检测用解码、转发/日志 URI 不变
+- `ecat-data-sqlx` AnyPool 未安装驱动：`connect()/from_config()` 首次连接即 panic "No drivers installed"，现入口处一次安装（幂等，覆盖全部连接路径）
+- `ecat-data-influxdb` line protocol 过度转义：字符串 field 值不再转义空格（规范只需转义 `"` 与 `\`）；tag/field 输出经排序保证确定性
+- `ecat-data-clickhouse` 建表缓存永不失效：TTL 60s 过期重建；INSERT 报缺表错误时清缓存重试一次
+- `ecat-events` dev-dependencies 补 tokio features（macros/rt/time）：此前单独编译该 crate 测试目标必失败，被 workspace feature 并集掩盖
+
+### Tests
+- 全面单元测试补写：51 个 crate 全覆盖，+206 测试（核心 40 / data 66 / mq-transport 54 / app 46），workspace 总计 675 测试全绿；测试团队报告见 docs/test-report-2026-08-26.md
+
 ## [3.0.1] — 2026-08-17
 
 ### Fixed

@@ -60,15 +60,14 @@ impl<S, B> Service<http::Request<B>> for TracingService<S>
 where
     S: Service<http::Request<B>> + Send + 'static,
     S::Future: Send + 'static,
-    S::Error: std::error::Error + Send + Sync + 'static,
     B: Send + 'static,
 {
     type Response = S::Response;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = S::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(|e| Box::new(e) as _)
+        self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
@@ -86,7 +85,7 @@ where
         let fut = self.inner.call(req);
         Box::pin(async move {
             let _guard = span.enter();
-            fut.await.map_err(|e| Box::new(e) as _)
+            fut.await
         })
     }
 }
@@ -167,7 +166,11 @@ mod tests {
             .expect("canonical header set");
         assert_eq!(value.len(), 32, "32-hex-char trace id");
         assert!(
-            value.to_str().unwrap().chars().all(|c| c.is_ascii_hexdigit()),
+            value
+                .to_str()
+                .unwrap()
+                .chars()
+                .all(|c| c.is_ascii_hexdigit()),
             "trace id is hex"
         );
     }
@@ -203,6 +206,45 @@ mod tests {
             headers.get("traceparent").unwrap().to_str().unwrap(),
             "tp-000"
         );
+    }
+
+    #[test]
+    fn extract_skips_non_utf8_header() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            ecat_metadata::TRACE_ID,
+            http::HeaderValue::from_bytes(b"\xff\xfe").unwrap(),
+        );
+        assert_eq!(extract_trace_id(&headers), None);
+    }
+
+    #[test]
+    fn extract_canonical_header_alone() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(ecat_metadata::TRACE_ID, "t1".parse().unwrap());
+        assert_eq!(extract_trace_id(&headers).as_deref(), Some("t1"));
+    }
+
+    #[tokio::test]
+    async fn service_preserves_response() {
+        use tower::ServiceExt;
+
+        let svc = TracingLayer::new("svc").layer(tower::service_fn(
+            |_req: http::Request<()>| async move {
+                Ok::<_, std::convert::Infallible>(
+                    http::Response::builder()
+                        .status(http::StatusCode::CREATED)
+                        .body("ok".to_string())
+                        .unwrap(),
+                )
+            },
+        ));
+        let resp = svc
+            .oneshot(http::Request::builder().body(()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), http::StatusCode::CREATED);
+        assert_eq!(resp.into_body(), "ok");
     }
 
     #[derive(Clone)]
@@ -251,8 +293,7 @@ mod tests {
         .await
         .unwrap();
 
-        let out = String::from_utf8(buf.lock().unwrap_or_else(|e| e.into_inner()).clone())
-            .unwrap();
+        let out = String::from_utf8(buf.lock().unwrap_or_else(|e| e.into_inner()).clone()).unwrap();
         assert!(
             out.contains("trace_id=\"abc123\""),
             "span must record trace_id, got: {out}"

@@ -2,9 +2,9 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
+use futures_util::StreamExt;
 use rdkafka::Message;
 use rdkafka::config::ClientConfig;
-use futures_util::StreamExt;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde::Deserialize;
@@ -26,41 +26,52 @@ pub struct KafkaConfig {
     /// 开始消费，停机期间的消息被静默跳过。
     #[serde(default)]
     pub auto_commit: bool,
+    /// librdkafka 原生 TLS/SASL：设为 `ssl` 或 `sasl_ssl` 开启 TLS，
+    /// 缺省（None）为明文直连。例：
+    /// `{"security_protocol":"sasl_ssl","sasl_mechanism":"SCRAM-SHA-256",
+    ///   "sasl_username":"u","sasl_password":"p"}`
+    #[serde(default)]
+    pub security_protocol: Option<String>,
+    /// SASL mechanism（PLAIN / SCRAM-SHA-256 / SCRAM-SHA-512 等）。
+    #[serde(default)]
+    pub sasl_mechanism: Option<String>,
+    #[serde(default)]
+    pub sasl_username: Option<String>,
+    #[serde(default)]
+    pub sasl_password: Option<String>,
 }
 
 pub struct KafkaMq {
     producer: FutureProducer,
-    brokers: String,
-    group_id: Option<String>,
-    auto_commit: bool,
+    config: KafkaConfig,
 }
 
 impl KafkaMq {
     pub async fn connect(brokers: &str) -> Result<Self, MqError> {
-        let producer: FutureProducer = ClientConfig::new()
-            .set("bootstrap.servers", brokers)
-            .set("message.timeout.ms", "5000")
-            .create()
-            .map_err(|e| MqError::Other(format!("kafka producer: {e}")))?;
-        Ok(Self {
-            producer,
+        Self::from_config(KafkaConfig {
             brokers: brokers.to_string(),
             group_id: None,
             auto_commit: false,
+            security_protocol: None,
+            sasl_mechanism: None,
+            sasl_username: None,
+            sasl_password: None,
         })
+        .await
     }
 
     pub async fn from_config(cfg: KafkaConfig) -> Result<Self, MqError> {
-        let producer: FutureProducer = ClientConfig::new()
+        let mut client_config = ClientConfig::new();
+        client_config
             .set("bootstrap.servers", &cfg.brokers)
-            .set("message.timeout.ms", "5000")
+            .set("message.timeout.ms", "5000");
+        apply_security(&cfg, &mut client_config);
+        let producer: FutureProducer = client_config
             .create()
             .map_err(|e| MqError::Other(format!("kafka producer: {e}")))?;
         Ok(Self {
             producer,
-            brokers: cfg.brokers,
-            group_id: cfg.group_id,
-            auto_commit: cfg.auto_commit,
+            config: cfg,
         })
     }
 }
@@ -77,14 +88,9 @@ impl MessageQueue for KafkaMq {
     }
 
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn MessageStream>, MqError> {
-        let consumer: StreamConsumer = build_consumer_config(
-            &self.brokers,
-            self.group_id.as_deref(),
-            topic,
-            self.auto_commit,
-        )
-        .create()
-        .map_err(|e| MqError::Other(format!("kafka consumer: {e}")))?;
+        let consumer: StreamConsumer = build_consumer_config(&self.config, topic)
+            .create()
+            .map_err(|e| MqError::Other(format!("kafka consumer: {e}")))?;
         consumer
             .subscribe(&[topic])
             .map_err(|e| MqError::Other(format!("kafka subscribe: {e}")))?;
@@ -167,23 +173,42 @@ fn consumer_group_id(group_id: Option<&str>, topic: &str) -> String {
     }
 }
 
-fn build_consumer_config(
-    brokers: &str,
-    group_id: Option<&str>,
-    topic: &str,
-    auto_commit: bool,
-) -> ClientConfig {
+fn build_consumer_config(cfg: &KafkaConfig, topic: &str) -> ClientConfig {
     let mut config = ClientConfig::new();
     config
-        .set("bootstrap.servers", brokers)
+        .set("bootstrap.servers", &cfg.brokers)
         // offset 语义：默认 enable.auto.commit=false + reset=latest，offset
         // 不落盘，进程重启后从最新开始消费，停机期间消息被静默跳过；
         // auto_commit=true 时 librdkafka 每 5s 自动提交（at-least-once，
         // 重启从最近提交点继续）。
-        .set("enable.auto.commit", if auto_commit { "true" } else { "false" })
+        .set(
+            "enable.auto.commit",
+            if cfg.auto_commit { "true" } else { "false" },
+        )
         .set("auto.offset.reset", "latest");
-    config.set("group.id", consumer_group_id(group_id, topic));
+    config.set(
+        "group.id",
+        consumer_group_id(cfg.group_id.as_deref(), topic),
+    );
+    apply_security(cfg, &mut config);
     config
+}
+
+/// TLS/SASL 由 librdkafka 原生处理（security.protocol / sasl.*），
+/// 无需额外依赖。全部字段可选，缺省保持明文直连。
+fn apply_security(cfg: &KafkaConfig, c: &mut ClientConfig) {
+    if let Some(p) = &cfg.security_protocol {
+        c.set("security.protocol", p);
+    }
+    if let Some(m) = &cfg.sasl_mechanism {
+        c.set("sasl.mechanism", m);
+    }
+    if let Some(u) = &cfg.sasl_username {
+        c.set("sasl.username", u);
+    }
+    if let Some(p) = &cfg.sasl_password {
+        c.set("sasl.password", p);
+    }
 }
 
 fn log_poll_error(e: &rdkafka::error::KafkaError) {
@@ -199,9 +224,15 @@ mod tests {
         let cfg: KafkaConfig = serde_json::from_value(serde_json::json!({
             "brokers": "localhost:9092",
             "group_id": "my-group",
+            "security_protocol": "sasl_ssl",
+            "sasl_mechanism": "SCRAM-SHA-256",
+            "sasl_username": "u",
+            "sasl_password": "p",
         }))
         .unwrap();
         assert_eq!(cfg.group_id.as_deref(), Some("my-group"));
+        assert_eq!(cfg.security_protocol.as_deref(), Some("sasl_ssl"));
+        assert_eq!(cfg.sasl_mechanism.as_deref(), Some("SCRAM-SHA-256"));
     }
 
     #[test]
@@ -241,9 +272,11 @@ mod tests {
     fn topic_hash_is_stable_hex() {
         assert_eq!(topic_hash("user.created"), topic_hash("user.created"));
         assert_eq!(topic_hash("user.created").len(), 8);
-        assert!(topic_hash("user.created")
-            .chars()
-            .all(|c| c.is_ascii_hexdigit()));
+        assert!(
+            topic_hash("user.created")
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
+        );
         assert_ne!(topic_hash("user.created"), topic_hash("order.paid"));
     }
 
@@ -251,9 +284,14 @@ mod tests {
     fn poll_error_is_logged_at_warn() {
         use tracing::subscriber::with_default;
         let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        with_default(CaptureSubscriber { events: events.clone() }, || {
-            log_poll_error(&rdkafka::error::KafkaError::ClientCreation("boom".into()));
-        });
+        with_default(
+            CaptureSubscriber {
+                events: events.clone(),
+            },
+            || {
+                log_poll_error(&rdkafka::error::KafkaError::ClientCreation("boom".into()));
+            },
+        );
         let events = events.lock().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].0, tracing::Level::WARN);
@@ -271,7 +309,7 @@ mod tests {
 
     #[test]
     fn auto_commit_false_defaults_to_manual_offset_control() {
-        let cfg = build_consumer_config("localhost:9092", Some("g"), "t", false);
+        let cfg = build_consumer_config(&test_config(), "t");
         assert_eq!(cfg.get("enable.auto.commit"), Some("false"));
         assert_eq!(cfg.get("auto.offset.reset"), Some("latest"));
         assert!(cfg.get("group.id").unwrap().starts_with("g-"));
@@ -279,23 +317,89 @@ mod tests {
 
     #[test]
     fn auto_commit_true_enables_automatic_commit() {
-        let cfg = build_consumer_config("localhost:9092", Some("g"), "t", true);
-        assert_eq!(cfg.get("enable.auto.commit"), Some("true"));
+        let mut cfg = test_config();
+        cfg.auto_commit = true;
+        let c = build_consumer_config(&cfg, "t");
+        assert_eq!(c.get("enable.auto.commit"), Some("true"));
+    }
+
+    #[test]
+    fn security_settings_applied_to_producer_and_consumer() {
+        let cfg = KafkaConfig {
+            brokers: "h:9092".into(),
+            group_id: None,
+            auto_commit: false,
+            security_protocol: Some("sasl_ssl".into()),
+            sasl_mechanism: Some("PLAIN".into()),
+            sasl_username: Some("u".into()),
+            sasl_password: Some("p".into()),
+        };
+        let c = build_consumer_config(&cfg, "t");
+        assert_eq!(c.get("security.protocol"), Some("sasl_ssl"));
+        assert_eq!(c.get("sasl.mechanism"), Some("PLAIN"));
+        assert_eq!(c.get("sasl.username"), Some("u"));
+        assert_eq!(c.get("sasl.password"), Some("p"));
+    }
+
+    #[test]
+    fn security_defaults_to_plaintext() {
+        let c = build_consumer_config(&test_config(), "t");
+        assert_eq!(c.get("security.protocol"), None);
+        assert_eq!(c.get("sasl.mechanism"), None);
     }
 
     #[tokio::test]
     async fn stream_consumer_constructs_with_derived_group() {
         // 锁定订阅路径构造：无配置 group_id 时也能创建 StreamConsumer（
         // rdkafka create() 只校验配置不连 broker），避免回归到 INVALID_ARG。
-        let consumer: StreamConsumer = build_consumer_config(
-            "localhost:9092",
-            None,
-            "test.topic",
-            false,
-        )
-        .create()
-        .unwrap();
+        let consumer: StreamConsumer = build_consumer_config(&test_config(), "test.topic")
+            .create()
+            .unwrap();
         consumer.subscribe(&["test.topic"]).unwrap();
+    }
+
+    #[test]
+    fn config_defaults_when_fields_missing() {
+        let cfg: KafkaConfig =
+            serde_json::from_value(serde_json::json!({"brokers": "h:9092"})).unwrap();
+        assert_eq!(cfg.brokers, "h:9092");
+        assert!(!cfg.auto_commit, "auto_commit must default to false");
+        assert!(cfg.group_id.is_none());
+        assert!(cfg.security_protocol.is_none());
+        assert!(cfg.sasl_mechanism.is_none());
+        assert!(cfg.sasl_username.is_none());
+        assert!(cfg.sasl_password.is_none());
+    }
+
+    #[test]
+    fn security_fields_apply_independently() {
+        // 只配 SASL 用户名/机制、不配 protocol：字段仍须各自落到配置上
+        let cfg = KafkaConfig {
+            brokers: "h:9092".into(),
+            group_id: None,
+            auto_commit: false,
+            security_protocol: None,
+            sasl_mechanism: Some("PLAIN".into()),
+            sasl_username: Some("u".into()),
+            sasl_password: None,
+        };
+        let c = build_consumer_config(&cfg, "t");
+        assert_eq!(c.get("security.protocol"), None);
+        assert_eq!(c.get("sasl.mechanism"), Some("PLAIN"));
+        assert_eq!(c.get("sasl.username"), Some("u"));
+        assert_eq!(c.get("sasl.password"), None);
+    }
+
+    fn test_config() -> KafkaConfig {
+        KafkaConfig {
+            brokers: "localhost:9092".into(),
+            group_id: Some("g".into()),
+            auto_commit: false,
+            security_protocol: None,
+            sasl_mechanism: None,
+            sasl_username: None,
+            sasl_password: None,
+        }
     }
 
     struct CaptureSubscriber {

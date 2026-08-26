@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::claims::AuthClaims;
-use super::helpers::extract_bearer;
+use super::helpers::{error_response, extract_bearer};
 use http::{Request, Response, StatusCode};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -187,12 +187,10 @@ where
             let token = match token {
                 Some(t) => t,
                 None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(
-                            r#"{"error":"missing bearer token"}"#,
-                        ))
-                        .unwrap());
+                    return Ok(error_response(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"missing bearer token"}"#,
+                    ));
                 }
             };
 
@@ -204,10 +202,10 @@ where
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "oauth2 introspection failed");
-                    Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(r#"{"error":"invalid token"}"#))
-                        .unwrap())
+                    Ok(error_response(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"invalid token"}"#,
+                    ))
                 }
             }
         })
@@ -301,8 +299,12 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
 
     if config.cache_ttl_secs > 0 {
         let mut cache = config.cache.write().await;
-        // TTL 时间淘汰：先清除过期条目，避免其残留内存（任务 #36）。
-        cache.purge_expired(std::time::Duration::from_secs(config.cache_ttl_secs));
+        // TTL 时间淘汰：仅在缓存接近容量上限时全量扫描（O(n)），避免每次
+        // miss 写都扫全部条目；过期条目读取时被惰性跳过、命中写入时覆盖，
+        // 内存仍受容量上限约束（P2）。
+        if cache.entries.len() >= (config.cache_capacity * 9 / 10).max(1) {
+            cache.purge_expired(std::time::Duration::from_secs(config.cache_ttl_secs));
+        }
         // 新 key 且容量已满：FIFO 逐出最旧条目（order 与 entries 一一对应，
         // 每个 key 只入队一次，不产生重复条目）。
         if !cache.entries.contains_key(&key) {
@@ -325,7 +327,6 @@ async fn introspect_token(config: &OAuth2Layer, token: &str) -> Result<AuthClaim
 
     Ok(claims)
 }
-
 
 #[cfg(test)]
 mod tests;

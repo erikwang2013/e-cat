@@ -31,12 +31,22 @@ fn percent_encode(s: &str) -> String {
         .collect()
 }
 
+/// AnyPool 首次连接前必须先安装驱动，否则 sqlx 直接 panic
+/// "No drivers installed"。install_default_drivers 内部对每个驱动
+/// 也是 Once 保护，这里再用 Once 显式保证只装一次。
+static DRIVERS_INSTALLED: std::sync::Once = std::sync::Once::new();
+
+fn ensure_drivers() {
+    DRIVERS_INSTALLED.call_once(sqlx::any::install_default_drivers);
+}
+
 pub struct SqlxClient {
     pool: AnyPool,
 }
 
 impl SqlxClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
+        ensure_drivers();
         let pool = AnyPool::connect(url).await?;
         Ok(Self { pool })
     }
@@ -306,6 +316,162 @@ mod tests {
         // Compile-time check: SqlxClient::from_pool exists with correct signature.
         fn _check_sig(pool: sqlx::AnyPool) -> SqlxClient {
             SqlxClient::from_pool(pool)
+        }
+    }
+
+    /// 内存 SQLite：无外部服务即可做端到端往返。
+    /// 每次调用名唯一，避免并行测试互相干扰。
+    fn mem_sqlite(name: &str) -> String {
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        format!("sqlite:ecat-test-{name}{n}?mode=memory&cache=shared")
+    }
+
+    /// sqlx 0.8 要求先安装 Any driver（Once 保护，重复调用安全）。
+    fn init_drivers() {
+        sqlx::any::install_default_drivers();
+    }
+
+    /// 单连接池客户端：内存库随连接销毁，多连接池建的表会被后续
+    /// 连接丢失，单连接池保证同测试内所有语句命中同一库。
+    async fn single_conn_client(name: &str) -> SqlxClient {
+        init_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .max_connections(1)
+            .connect(&mem_sqlite(name))
+            .await
+            .unwrap();
+        SqlxClient::from_pool(pool)
+    }
+
+    #[tokio::test]
+    async fn connect_and_execute_query_round_trip() {
+        let client = single_conn_client("t1").await;
+        client
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .await
+            .unwrap();
+        client
+            .execute("INSERT INTO t VALUES (1, 'alice'), (2, 'bob')")
+            .await
+            .unwrap();
+        let rows = client
+            .query("SELECT id, name FROM t ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].get("id"), Some(&serde_json::json!(1)));
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("alice")));
+        assert_eq!(rows[1].get("id"), Some(&serde_json::json!(2)));
+        assert_eq!(rows[1].get("missing"), None);
+    }
+
+    #[tokio::test]
+    async fn execute_with_binds_all_json_value_types() {
+        let client = single_conn_client("t1").await;
+        client
+            .execute("CREATE TABLE t (s TEXT, i INTEGER, f REAL, b INTEGER, n TEXT)")
+            .await
+            .unwrap();
+        let affected = client
+            .execute_with(
+                "INSERT INTO t VALUES (?, ?, ?, ?, ?)",
+                &[
+                    serde_json::json!("str"),
+                    serde_json::json!(42),
+                    serde_json::json!(1.5),
+                    serde_json::json!(true),
+                    serde_json::Value::Null,
+                ],
+            )
+            .await
+            .unwrap();
+        assert_eq!(affected, 1);
+        let rows = client.query("SELECT * FROM t").await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("s"), Some(&serde_json::json!("str")));
+        assert_eq!(rows[0].get("i"), Some(&serde_json::json!(42)));
+        assert_eq!(rows[0].get("f"), Some(&serde_json::json!(1.5)));
+        // SQLite 无布尔类型：true 绑定后回读为整数 1
+        assert_eq!(rows[0].get("b"), Some(&serde_json::json!(1)));
+        assert_eq!(rows[0].get("n"), Some(&serde_json::Value::Null));
+    }
+
+    #[tokio::test]
+    async fn query_with_parameterized_sql() {
+        let client = single_conn_client("t1").await;
+        client.execute("CREATE TABLE t (name TEXT)").await.unwrap();
+        client
+            .execute_with("INSERT INTO t VALUES (?)", &[serde_json::json!("x")])
+            .await
+            .unwrap();
+        let rows = client
+            .query_with(
+                "SELECT name FROM t WHERE name = ?",
+                &[serde_json::json!("x")],
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("x")));
+    }
+
+    #[tokio::test]
+    async fn cell_to_json_encodes_blob_as_base64() {
+        let client = single_conn_client("t1").await;
+        client.execute("CREATE TABLE t (data BLOB)").await.unwrap();
+        // 真实 BLOB 字节（0x01 0x02 0x03），绕过 bind（bind 会把 JSON 值绑成文本）
+        client
+            .execute("INSERT INTO t VALUES (x'010203')")
+            .await
+            .unwrap();
+        let rows = client.query("SELECT data FROM t").await.unwrap();
+        assert_eq!(rows[0].get("data"), Some(&serde_json::json!("AQID")));
+    }
+
+    #[tokio::test]
+    async fn connect_with_auth_does_not_inject_into_non_url_scheme() {
+        // sqlite URL 不含 "://"，凭据注入分支不生效，直接连接成功
+        init_drivers();
+        let client = SqlxClient::connect_with_auth(&mem_sqlite("t2"), "user", "pass")
+            .await
+            .unwrap();
+        client.execute("SELECT 1").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn from_config_without_auth_connects_and_queries() {
+        // 不手动 init_drivers：验证 from_config 自身完成驱动安装后
+        // 能在内存 sqlite 上实际执行查询
+        // （注意：多连接池下 mode=memory 库随连接关闭而销毁，故只做单条查询）
+        let cfg = SqlxConfig {
+            url: mem_sqlite("t3"),
+            username: None,
+            password: None,
+            tls: None,
+        };
+        let client = SqlxClient::from_config(cfg).await.unwrap();
+        let rows = client.query("SELECT 1 AS one").await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("one"), Some(&serde_json::json!(1)));
+    }
+
+    #[tokio::test]
+    async fn from_config_with_empty_credentials_connects_plain() {
+        // (Some(""), Some("")) 或 (Some(""), None) 都走无认证分支；
+        // from_config 内部会装驱动，无需手动 init_drivers
+        for (u, p) in [
+            (Some("".to_string()), Some("".to_string())),
+            (Some("".to_string()), None),
+        ] {
+            let cfg = SqlxConfig {
+                url: mem_sqlite("t3"),
+                username: u,
+                password: p,
+                tls: None,
+            };
+            let client = SqlxClient::from_config(cfg).await.unwrap();
+            client.execute("SELECT 1").await.unwrap();
         }
     }
 }

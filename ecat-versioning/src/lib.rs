@@ -177,4 +177,71 @@ mod tests {
         let ok_resp = router.oneshot(ok_req).await.unwrap();
         assert_eq!(ok_resp.status(), axum::http::StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn path_strategy_routes_versioned_and_default() {
+        use tower::ServiceExt;
+
+        let router = VersionedRouter::new(VersionStrategy::PathPrefix)
+            .add_version("v1", axum::Router::new().route("/health", get(health)))
+            .default_version("v1")
+            .build();
+
+        let resp = router
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/v1/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        // 默认版本合并到根路径
+        let resp = router
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        // 未注册版本 → 404（nest 无匹配回落 404）
+        let resp = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/v9/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn extract_version_missing_or_malformed() {
+        assert_eq!(extract_version(&HeaderMap::new()), None);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Accept", "application/json".parse().unwrap());
+        assert_eq!(extract_version(&headers), None);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Accept", "version=".parse().unwrap());
+        assert_eq!(extract_version(&headers), Some("".into()));
+    }
+
+    #[test]
+    fn extract_version_without_quotes() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Accept", "version=v2".parse().unwrap());
+        assert_eq!(extract_version(&headers), Some("v2".into()));
+    }
 }

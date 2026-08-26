@@ -181,7 +181,11 @@ mod tests {
         );
         let result = svc.oneshot(()).await;
         assert!(result.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 3, "must stop after max_attempts");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "must stop after max_attempts"
+        );
     }
 
     #[tokio::test]
@@ -233,7 +237,11 @@ mod tests {
             }));
         let result = svc.oneshot(()).await;
         assert!(result.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "rule declined, single attempt");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "rule declined, single attempt"
+        );
     }
 
     #[test]

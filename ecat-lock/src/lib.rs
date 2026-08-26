@@ -85,9 +85,13 @@ mod tests {
     #[tokio::test]
     async fn acquire_while_held_returns_none() {
         let lock = MemoryLock::new();
-        lock.acquire("job-a", Duration::from_secs(30)).await.unwrap();
+        lock.acquire("job-a", Duration::from_secs(30))
+            .await
+            .unwrap();
         assert_eq!(
-            lock.acquire("job-a", Duration::from_secs(30)).await.unwrap(),
+            lock.acquire("job-a", Duration::from_secs(30))
+                .await
+                .unwrap(),
             None,
             "lock held by someone else must not be acquirable"
         );
@@ -112,7 +116,9 @@ mod tests {
     #[tokio::test]
     async fn release_wrong_token_fails() {
         let lock = MemoryLock::new();
-        lock.acquire("job-a", Duration::from_secs(30)).await.unwrap();
+        lock.acquire("job-a", Duration::from_secs(30))
+            .await
+            .unwrap();
         let err = lock.release("job-a", "tok-forgery").await.unwrap_err();
         assert_eq!(err.to_string(), "lock error: token mismatch");
     }
@@ -120,7 +126,9 @@ mod tests {
     #[tokio::test]
     async fn ttl_expiry_allows_reacquire() {
         let lock = MemoryLock::new();
-        lock.acquire("job-a", Duration::from_millis(50)).await.unwrap();
+        lock.acquire("job-a", Duration::from_millis(50))
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(150)).await;
         lock.acquire("job-a", Duration::from_secs(30))
             .await
@@ -135,7 +143,9 @@ mod tests {
         for _ in 0..8 {
             let lock = lock.clone();
             tasks.push(tokio::spawn(async move {
-                lock.acquire("shared", Duration::from_secs(30)).await.unwrap()
+                lock.acquire("shared", Duration::from_secs(30))
+                    .await
+                    .unwrap()
             }));
         }
         let mut winners = 0;
@@ -149,6 +159,27 @@ mod tests {
 
     #[test]
     fn lock_error_displays() {
-        assert_eq!(LockError::Other("boom".into()).to_string(), "lock error: boom");
+        assert_eq!(
+            LockError::Other("boom".into()).to_string(),
+            "lock error: boom"
+        );
+    }
+
+    #[tokio::test]
+    async fn release_unheld_lock_fails() {
+        let lock = MemoryLock::new();
+        let err = lock.release("job-a", "tok-job-a").await.unwrap_err();
+        assert_eq!(err.to_string(), "lock error: lock not held");
+    }
+
+    #[tokio::test]
+    async fn acquire_empty_key_works() {
+        let lock = MemoryLock::new();
+        let token = lock
+            .acquire("", Duration::from_secs(30))
+            .await
+            .unwrap()
+            .expect("empty key must be acquirable");
+        lock.release("", &token).await.unwrap();
     }
 }

@@ -89,4 +89,32 @@ mod tests {
         assert_eq!(c.get::<String>("s"), Some("hello".into()));
         assert!(c.get::<i32>("s").is_none()); // type mismatch
     }
+
+    #[tokio::test]
+    async fn config_load_merges_and_later_source_overrides() {
+        struct Src(serde_json::Value);
+        #[async_trait::async_trait]
+        impl ConfigSource for Src {
+            async fn load(&self) -> Result<HashMap<String, serde_json::Value>, ConfigError> {
+                Ok(self
+                    .0
+                    .as_object()
+                    .expect("object")
+                    .clone()
+                    .into_iter()
+                    .collect())
+            }
+        }
+
+        let mut c = Config::new();
+        c.load(&Src(serde_json::json!({"a": 1, "b": 1})))
+            .await
+            .unwrap();
+        c.load(&Src(serde_json::json!({"b": 2, "c": 3})))
+            .await
+            .unwrap();
+        assert_eq!(c.get::<i32>("a"), Some(1));
+        assert_eq!(c.get::<i32>("b"), Some(2), "later source overrides");
+        assert_eq!(c.get::<i32>("c"), Some(3));
+    }
 }

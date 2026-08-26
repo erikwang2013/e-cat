@@ -184,7 +184,10 @@ fn upgrade_packages() {
         eprintln!("Failed to write Cargo.toml: {}", e);
         process::exit(1);
     });
-    println!("Updated {} ecat-* dependency requirement(s) to {}", changed, version);
+    println!(
+        "Updated {} ecat-* dependency requirement(s) to {}",
+        changed, version
+    );
     let status = Command::new("cargo")
         .arg("update")
         .status()
@@ -363,7 +366,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
         process::exit(1);
     });
     let toml = ensure_toml_section(&toml, "build-dependencies", &[("tonic-build", "0.12")]);
-    let toml = ensure_toml_section(&toml, "dependencies", &[("tonic", "0.12"), ("prost", "0.13")]);
+    let toml = ensure_toml_section(
+        &toml,
+        "dependencies",
+        &[("tonic", "0.12"), ("prost", "0.13")],
+    );
     fs::write("Cargo.toml", toml).unwrap_or_else(|e| {
         eprintln!("Failed to write Cargo.toml: {}", e);
         process::exit(1);
@@ -375,7 +382,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {{
     println!();
     println!("Next steps:");
     println!("  cargo build  (requires protoc in PATH)");
-    println!("  then add `mod pb_{};` to src/main.rs or src/lib.rs", if server { "server" } else { "client" });
+    println!(
+        "  then add `mod pb_{};` to src/main.rs or src/lib.rs",
+        if server { "server" } else { "client" }
+    );
 }
 
 /// Ensure a TOML section lists the given key = "version" dependencies.
@@ -399,7 +409,9 @@ fn ensure_toml_section(toml: &str, section: &str, deps: &[(&str, &str)]) -> Stri
                     e = i;
                     break;
                 }
-                if !t.starts_with('#') && let Some(eq) = t.find('=') {
+                if !t.starts_with('#')
+                    && let Some(eq) = t.find('=')
+                {
                     existing.insert(t[..eq].trim().to_string());
                 }
             }

@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English
 
-**Ecat** is a Rust microservices framework (v3.0.0 · 55 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v3.0.2 · 51 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -464,7 +464,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos' modular design. Each `ecat-*` crate versions and compiles independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
+Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 3.0.2), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
 
 ### Why prost (not protobuf-rs)
 

@@ -64,7 +64,7 @@ async fn health() -> Json<HealthResponse> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let middleware = ServiceBuilder::new()
-        .layer(TracingLayer)
+        .layer(TracingLayer::new(env!("CARGO_PKG_NAME")))
         .layer(LoggingLayer);
 
     let router = Router::new()

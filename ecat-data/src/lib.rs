@@ -7,10 +7,11 @@ mod search;
 mod storage;
 mod tsdb;
 
-pub use cache::{Cache, CacheError};
-pub use document::{DocumentClient, DocumentError};
-pub use graph::{GraphClient, GraphError};
+pub use cache::Cache;
+pub use document::DocumentClient;
+pub use ecat_errors::Error;
+pub use graph::GraphClient;
 pub use rdbms::{RdbmsClient, RdbmsError, Row, Transaction, TransactionInner};
-pub use search::{SearchClient, SearchError};
-pub use storage::{StorageClient, StorageError};
-pub use tsdb::{DataPoint, FieldValue, TsdbClient, TsdbError};
+pub use search::SearchClient;
+pub use storage::StorageClient;
+pub use tsdb::{DataPoint, FieldValue, TsdbClient};

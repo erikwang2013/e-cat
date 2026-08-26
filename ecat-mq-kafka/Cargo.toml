@@ -8,7 +8,7 @@ description = "Kafka message queue backend for e-cat"
 [dependencies]
 ecat-mq = { path = "../ecat-mq" }
 bytes.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,3 +17,6 @@ uuid = { version = "1", features = ["v4"] }
 futures-util = "0.3"
 sha2.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

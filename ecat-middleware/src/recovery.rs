@@ -95,4 +95,29 @@ mod tests {
         let result = svc.call("hello".into()).await.unwrap();
         assert_eq!(result, "hello");
     }
+
+    /// 内层任务 panic 必须转换为 Err("task panicked")，不能向调用方传播 panic。
+    #[tokio::test]
+    async fn inner_panic_becomes_error() {
+        struct PanicService;
+        impl Service<()> for PanicService {
+            type Response = ();
+            type Error = std::io::Error;
+            type Future = Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + Send>>;
+            fn poll_ready(
+                &mut self,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Result<(), Self::Error>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn call(&mut self, _req: ()) -> Self::Future {
+                Box::pin(async { panic!("boom") })
+            }
+        }
+
+        let layer = RecoveryLayer;
+        let mut svc = layer.layer(PanicService);
+        let err = svc.call(()).await.unwrap_err();
+        assert!(err.to_string().contains("task panicked"), "got: {err}");
+    }
 }

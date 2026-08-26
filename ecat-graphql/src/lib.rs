@@ -9,8 +9,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod parser;
+mod validation;
 
 pub use parser::{FieldNode, Operation, SelectionSet};
+pub use validation::QueryLimits;
 
 type Resolver = Arc<
     dyn Fn(
@@ -46,6 +48,7 @@ enum FieldHandler {
 pub struct GraphQLSchema {
     query_resolvers: HashMap<String, FieldHandler>,
     mutation_resolvers: HashMap<String, FieldHandler>,
+    limits: QueryLimits,
 }
 
 impl GraphQLSchema {
@@ -53,11 +56,19 @@ impl GraphQLSchema {
         Self {
             query_resolvers: HashMap::new(),
             mutation_resolvers: HashMap::new(),
+            limits: QueryLimits::default(),
         }
     }
 
+    /// 配置执行前查询预算（防查询放大 DoS），默认已启用。
+    pub fn with_limits(mut self, limits: QueryLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
     pub fn query(mut self, name: impl Into<String>, r: Resolver) -> Self {
-        self.query_resolvers.insert(name.into(), FieldHandler::Legacy(r));
+        self.query_resolvers
+            .insert(name.into(), FieldHandler::Legacy(r));
         self
     }
 
@@ -147,6 +158,11 @@ async fn execute(
         }
     };
 
+    if let Err(e) = validation::validate(&field, &schema.limits) {
+        errors.push(e);
+        return Err(errors);
+    }
+
     let (resolvers, field_name) = if field.operation == Operation::Mutation {
         (&schema.mutation_resolvers, &field.name)
     } else {
@@ -233,38 +249,30 @@ mod tests {
 
     #[test]
     fn legacy_resolver_receives_merged_args() {
-        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
-            Box::pin(async move { Ok(vars) })
-        });
+        let schema =
+            GraphQLSchema::new().query_fn("echo", |vars| Box::pin(async move { Ok(vars) }));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let vars = serde_json::json!({"id": 1});
         let data = rt
             .block_on(execute(&schema, "{ echo(id: 2, name: \"x\") }", &vars))
             .unwrap();
-        assert_eq!(
-            data["echo"],
-            serde_json::json!({"id": 2, "name": "x"})
-        );
+        assert_eq!(data["echo"], serde_json::json!({"id": 2, "name": "x"}));
     }
 
     #[test]
     fn legacy_resolver_without_args_is_unchanged() {
-        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
-            Box::pin(async move { Ok(vars) })
-        });
+        let schema =
+            GraphQLSchema::new().query_fn("echo", |vars| Box::pin(async move { Ok(vars) }));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let vars = serde_json::json!({"a": 1});
-        let data = rt
-            .block_on(execute(&schema, "{ echo }", &vars))
-            .unwrap();
+        let data = rt.block_on(execute(&schema, "{ echo }", &vars)).unwrap();
         assert_eq!(data["echo"], serde_json::json!({"a": 1}));
     }
 
     #[test]
     fn legacy_resolver_args_override_same_named_variables() {
-        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
-            Box::pin(async move { Ok(vars) })
-        });
+        let schema =
+            GraphQLSchema::new().query_fn("echo", |vars| Box::pin(async move { Ok(vars) }));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let vars = serde_json::json!({"id": 1});
         let data = rt
@@ -275,9 +283,8 @@ mod tests {
 
     #[test]
     fn legacy_resolver_args_with_null_variables() {
-        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
-            Box::pin(async move { Ok(vars) })
-        });
+        let schema =
+            GraphQLSchema::new().query_fn("echo", |vars| Box::pin(async move { Ok(vars) }));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let data = rt
             .block_on(execute(&schema, "{ echo(id: 1) }", &Value::Null))
@@ -287,15 +294,15 @@ mod tests {
 
     #[test]
     fn legacy_resolver_errors_on_non_object_variables_with_args() {
-        let schema = GraphQLSchema::new().query_fn("echo", |vars| {
-            Box::pin(async move { Ok(vars) })
-        });
+        let schema =
+            GraphQLSchema::new().query_fn("echo", |vars| Box::pin(async move { Ok(vars) }));
         let rt = tokio::runtime::Runtime::new().unwrap();
         let err = rt
             .block_on(execute(&schema, "{ echo(id: 1) }", &serde_json::json!(5)))
             .unwrap_err();
         assert!(
-            err.iter().any(|e| e.contains("variables must be a JSON object")),
+            err.iter()
+                .any(|e| e.contains("variables must be a JSON object")),
             "got: {err:?}"
         );
     }
@@ -306,15 +313,14 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let vars = serde_json::json!({"env": "prod"});
         let data = rt
-            .block_on(execute(
-                &schema,
-                "{ user(id: 7) { name } }",
-                &vars,
-            ))
+            .block_on(execute(&schema, "{ user(id: 7) { name } }", &vars))
             .unwrap();
         // Rich resolver 收到原样 variables 与解析后的 args，二者不合并
         assert_eq!(data["user"]["args"]["id"], 7);
-        assert_eq!(data["user"]["variables"], serde_json::json!({"env": "prod"}));
+        assert_eq!(
+            data["user"]["variables"],
+            serde_json::json!({"env": "prod"})
+        );
         assert_eq!(data["user"]["has_selection"], true);
     }
 
@@ -361,11 +367,7 @@ mod tests {
         let schema = schema.mutation_field("write", MutWrite);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let data = rt
-            .block_on(execute(
-                &schema,
-                "mutation { write(id: 3) }",
-                &Value::Null,
-            ))
+            .block_on(execute(&schema, "mutation { write(id: 3) }", &Value::Null))
             .unwrap();
         assert_eq!(data["write"]["id"], 3);
     }
@@ -395,7 +397,9 @@ mod tests {
     fn router() -> Router {
         graphql_router(
             GraphQLSchema::new()
-                .query_fn("hello", |_v| Box::pin(async { Ok(serde_json::json!("world")) }))
+                .query_fn("hello", |_v| {
+                    Box::pin(async { Ok(serde_json::json!("world")) })
+                })
                 .query_field("user", EchoField),
         )
     }
@@ -500,7 +504,9 @@ mod tests {
     #[test]
     fn schema_field_name_conflict_latest_wins() {
         let schema = GraphQLSchema::new()
-            .query_fn("f", |_v| Box::pin(async { Ok(serde_json::json!("legacy")) }))
+            .query_fn("f", |_v| {
+                Box::pin(async { Ok(serde_json::json!("legacy")) })
+            })
             .query_field("f", EchoField);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let data = rt

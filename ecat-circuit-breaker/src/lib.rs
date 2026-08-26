@@ -369,7 +369,11 @@ mod tests {
             let _ = svc.clone().oneshot("x".to_string()).await;
         }
         let b = svc.breaker.lock().unwrap();
-        assert_eq!(b.state, State::Closed, "Ok responses must count as success by default");
+        assert_eq!(
+            b.state,
+            State::Closed,
+            "Ok responses must count as success by default"
+        );
     }
 
     /// open 冷却期内请求被直接拒绝，不触达下游。
@@ -428,6 +432,66 @@ mod tests {
         let b = svc.breaker.lock().unwrap();
         assert_eq!(b.state, State::Open, "failed probe must reopen the circuit");
         assert!(b.opened_at.is_some());
+    }
+
+    /// half-open 探针名额耗尽后请求被拒绝，不触达下游。
+    ///
+    /// 注意：顺序探测时每次失败都会重新 open（count 清零），该分支只在
+    /// 多个探针并发在飞时可达，故直接操纵内部状态做白盒验证。
+    #[tokio::test]
+    async fn half_open_probes_exhausted_rejects_requests() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tower::ServiceExt;
+
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&hits);
+        let layer = CircuitBreakerLayer::new().half_open_probes(2);
+        let svc = layer.layer(tower::service_fn(move |_: String| {
+            let counter = Arc::clone(&counter);
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok::<String, std::io::Error>("ok".to_string())
+            }
+        }));
+        {
+            let mut b = svc.breaker.lock().unwrap();
+            b.state = State::HalfOpen;
+            b.half_open_count = 2;
+        }
+
+        let err = svc.clone().oneshot("x".to_string()).await.unwrap_err();
+        assert!(err.to_string().contains("too many probes"), "got: {err}");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "rejected probe must not hit downstream"
+        );
+    }
+
+    /// classify 类型不匹配时安全降级为成功（不 panic、不计失败）。
+    #[tokio::test]
+    async fn classify_type_mismatch_falls_back_to_success() {
+        use tower::ServiceExt;
+
+        #[derive(Debug)]
+        struct Resp {
+            code: u16,
+        }
+
+        // 回调期望 Resp，但下游返回 String → downcast 失败 → 视为成功
+        let layer = CircuitBreakerLayer::new()
+            .failure_ratio(0.5)
+            .window(Duration::from_millis(10))
+            .classify(|r: &Resp| r.code >= 500);
+        let svc = layer.layer(tower::service_fn(|_: String| async move {
+            Ok::<String, std::io::Error>("ok".to_string())
+        }));
+
+        for _ in 0..5 {
+            let _ = svc.clone().oneshot("x".to_string()).await;
+        }
+        let b = svc.breaker.lock().unwrap();
+        assert_eq!(b.state, State::Closed, "mismatched classify must not trip");
     }
 
     #[tokio::test]

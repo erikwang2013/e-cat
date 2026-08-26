@@ -40,10 +40,9 @@ pub(crate) fn build_server_config(
             .ca_cert_path
             .as_ref()
             .ok_or("require_client_auth requires ca_cert_path")?;
-        let ca_certs = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-            ca_path,
-        )?))
-        .collect::<Result<Vec<_>, _>>()?;
+        let ca_certs =
+            rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(ca_path)?))
+                .collect::<Result<Vec<_>, _>>()?;
         if ca_certs.is_empty() {
             return Err(format!("no CA certificates found in {}", ca_path.display()).into());
         }
@@ -259,7 +258,7 @@ mod tests {
     use axum::serve::Listener;
     use tokio::io::AsyncReadExt;
     use tokio::net::TcpStream;
-    use tokio::sync::{mpsc, watch, Semaphore};
+    use tokio::sync::{Semaphore, mpsc, watch};
 
     /// 日志限频：窗口内首次断开立即记，其余静默累计，窗口结束补记。
     #[test]
@@ -276,6 +275,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn build_server_config_missing_cert_file_errors() {
+        let tls = ecat_transport::TlsConfig::new("/no-such-cert.pem", "/no-such-key.pem");
+        assert!(build_server_config(&tls).is_err());
+    }
+
+    #[test]
+    fn build_server_config_missing_key_file_errors() {
+        let dir = std::env::temp_dir().join(format!("ecat-http-nokey-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let srv = ecat_tls::generate_server_cert("localhost").unwrap();
+        let cert = dir.join("cert.pem");
+        std::fs::write(&cert, &srv.cert_pem).unwrap();
+        let tls = ecat_transport::TlsConfig::new(cert, "/no-such-key.pem");
+        assert!(build_server_config(&tls).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn build_server_config_client_auth_requires_ca_path() {
+        let dir = std::env::temp_dir().join(format!("ecat-http-noca-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let srv = ecat_tls::generate_server_cert("localhost").unwrap();
+        let cert = dir.join("cert.pem");
+        let key = dir.join("key.pem");
+        std::fs::write(&cert, &srv.cert_pem).unwrap();
+        std::fs::write(&key, &srv.key_pem).unwrap();
+        let tls = ecat_transport::TlsConfig {
+            cert_path: cert,
+            key_path: key,
+            ca_cert_path: None,
+            require_client_auth: true,
+        };
+        let err = build_server_config(&tls).unwrap_err().to_string();
+        assert!(err.contains("ca_cert_path"), "got: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// S1 补充：断开日志限频——同一窗口内多个溢出连接只记一条
     /// warn（含累计数），防止握手风暴刷日志放大 DoS 面。
     /// 限频状态机由 DropLimiter 单测覆盖；此处断言 accept 循环对
@@ -289,11 +326,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let srv = ecat_tls::generate_server_cert("localhost").unwrap();
         let (cert_path, key_path) = write_pem_files(&dir, &srv);
-        let server_cfg = build_server_config(&ecat_transport::TlsConfig::new(
-            cert_path,
-            key_path,
-        ))
-        .unwrap();
+        let server_cfg =
+            build_server_config(&ecat_transport::TlsConfig::new(cert_path, key_path)).unwrap();
         let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_cfg));
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -317,8 +351,7 @@ mod tests {
         for _ in 0..3 {
             let mut tcp = TcpStream::connect(addr).await.unwrap();
             let mut b = [0u8; 1];
-            let r = tokio::time::timeout(std::time::Duration::from_secs(2), tcp.read(&mut b))
-                .await;
+            let r = tokio::time::timeout(std::time::Duration::from_secs(2), tcp.read(&mut b)).await;
             assert!(
                 matches!(r, Ok(Ok(0)) | Ok(Err(_))),
                 "overflow connection must be dropped, got {r:?}"
@@ -362,11 +395,8 @@ mod tests {
             local_addr: "127.0.0.1:0".parse().unwrap(),
             shutdown_tx,
         };
-        let r = tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            listener.accept(),
-        )
-        .await;
+        let r =
+            tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await;
         assert!(
             r.is_err(),
             "accept() must hang, not panic, when accept loop is dead"
@@ -396,11 +426,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let srv = ecat_tls::generate_server_cert("localhost").unwrap();
         let (cert_path, key_path) = write_pem_files(&dir, &srv);
-        let server_cfg = build_server_config(&ecat_transport::TlsConfig::new(
-            cert_path,
-            key_path,
-        ))
-        .unwrap();
+        let server_cfg =
+            build_server_config(&ecat_transport::TlsConfig::new(cert_path, key_path)).unwrap();
         let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_cfg));
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -422,16 +449,15 @@ mod tests {
         // 连接 2：无许可，accept 循环必须直接断开（读立即返回 EOF/重置）。
         let mut tcp2 = TcpStream::connect(addr).await.unwrap();
         let mut buf = [0u8; 1];
-        let r = tokio::time::timeout(std::time::Duration::from_secs(2), tcp2.read(&mut buf))
-            .await;
+        let r = tokio::time::timeout(std::time::Duration::from_secs(2), tcp2.read(&mut buf)).await;
         assert!(
             matches!(r, Ok(Ok(0)) | Ok(Err(_))),
             "overflow connection must be dropped immediately, got {r:?}"
         );
 
         // 连接 1 不被误断开：读挂起（timeout 超时而非 EOF）。
-        let r = tokio::time::timeout(std::time::Duration::from_millis(300), tcp1.read(&mut buf))
-            .await;
+        let r =
+            tokio::time::timeout(std::time::Duration::from_millis(300), tcp1.read(&mut buf)).await;
         assert!(r.is_err(), "held connection must not be dropped, got {r:?}");
 
         // 连接 1 完成真实 TLS 握手 → 握手任务结束 → 许可释放：
@@ -441,8 +467,8 @@ mod tests {
         let server_name = rustls::pki_types::ServerName::try_from("localhost").unwrap();
         let _tls1 = connector.connect(server_name, tcp1).await.unwrap();
         let mut tcp3 = TcpStream::connect(addr).await.unwrap();
-        let r = tokio::time::timeout(std::time::Duration::from_millis(300), tcp3.read(&mut buf))
-            .await;
+        let r =
+            tokio::time::timeout(std::time::Duration::from_millis(300), tcp3.read(&mut buf)).await;
         assert!(
             r.is_err(),
             "permit must be released after handshake completes, got {r:?}"

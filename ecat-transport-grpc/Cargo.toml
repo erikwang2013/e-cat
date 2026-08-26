@@ -9,7 +9,7 @@ description = "gRPC transport implementation for e-cat"
 ecat-transport = { path = "../ecat-transport" }
 tonic = { workspace = true, features = ["tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 async-trait.workspace = true
 
 [dev-dependencies]

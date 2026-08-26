@@ -5,7 +5,7 @@
 
 Ecat中文名：一只猫
 
-**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v3.0.0 · 55 crates）。
+**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v3.0.2 · 51 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -482,7 +482,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### 为什么用 Cargo Workspace
 
-与 Kratos 的模块化设计一致。每个 `ecat-*` crate 独立版本、独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
+与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 3.0.2），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
 
 ### 为什么用 prost（而非 protobuf-rs）
 

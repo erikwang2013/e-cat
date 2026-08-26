@@ -10,7 +10,7 @@
 //! deployment.
 
 use async_trait::async_trait;
-use ecat_data::{Cache, CacheError};
+use ecat_data::{Cache, Error as CacheError};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -21,12 +21,12 @@ type CacheEntry = (Vec<u8>, Option<Instant>);
 
 /// ⚠️ **内存实现，仅用于开发/测试，禁止生产使用** — this config drives an
 /// in-memory cache only; there is no memcached server connection.
+///
+/// Authentication is **not supported**: this fake speaks no memcached protocol,
+/// so `username`/`password` would be dead config. Any memcached SASL auth must
+/// wait for a real protocol client.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct MemcachedConfig {
-    #[serde(default)]
-    pub username: Option<String>,
-    #[serde(default)]
-    pub password: Option<String>,
     /// TLS config — reserved for future network-based memcached implementation.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
@@ -43,35 +43,19 @@ pub struct MemcachedConfig {
 /// restart. For local development/testing only.
 pub struct MemcachedClient {
     store: Mutex<HashMap<Vec<u8>, CacheEntry>>,
-    _username: Option<String>,
-    _password: Option<String>,
 }
 
 impl MemcachedClient {
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
-            _username: None,
-            _password: None,
-        }
-    }
-
-    pub fn with_auth(_username: impl Into<String>, _password: impl Into<String>) -> Self {
-        Self {
-            store: Mutex::new(HashMap::new()),
-            _username: Some(_username.into()),
-            _password: Some(_password.into()),
         }
     }
 
     /// 与 workspace 其它数据后端一致：返回 `Result<Self, CacheError>`。
     /// 内存实现不会失败，恒为 `Ok`。
-    pub fn from_config(cfg: MemcachedConfig) -> Result<Self, CacheError> {
-        Ok(Self {
-            store: Mutex::new(HashMap::new()),
-            _username: cfg.username,
-            _password: cfg.password,
-        })
+    pub fn from_config(_cfg: MemcachedConfig) -> Result<Self, CacheError> {
+        Ok(Self::new())
     }
 }
 
@@ -163,16 +147,46 @@ mod tests {
 
     #[test]
     fn from_config_returns_ok_and_works() {
-        let c = MemcachedClient::from_config(MemcachedConfig {
-            username: Some("u".into()),
-            password: Some("p".into()),
-            ..Default::default()
-        })
-        .unwrap();
+        let c = MemcachedClient::from_config(MemcachedConfig::default()).unwrap();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             c.set("cfg", b"v", Duration::from_secs(60)).await.unwrap();
             assert_eq!(c.get("cfg").await.unwrap(), Some(b"v".to_vec()));
         });
+    }
+
+    #[tokio::test]
+    async fn expired_entry_returns_none_and_is_removed() {
+        let c = MemcachedClient::new();
+        c.set("k", b"v", Duration::from_millis(20)).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert_eq!(c.get("k").await.unwrap(), None, "过期键必须不可见");
+    }
+
+    #[tokio::test]
+    async fn zero_ttl_never_expires() {
+        let c = MemcachedClient::new();
+        c.set("k", b"v", Duration::ZERO).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(c.get("k").await.unwrap(), Some(b"v".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn set_overwrites_existing_key() {
+        let c = MemcachedClient::new();
+        c.set("k", b"old", Duration::from_secs(60)).await.unwrap();
+        c.set("k", b"new", Duration::from_secs(60)).await.unwrap();
+        assert_eq!(c.get("k").await.unwrap(), Some(b"new".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn get_after_expiry_then_set_restores() {
+        let c = MemcachedClient::new();
+        c.set("k", b"v", Duration::from_millis(10)).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert_eq!(c.get("k").await.unwrap(), None);
+        // 过期条目被惰性移除后，重新 set 不受影响
+        c.set("k", b"v2", Duration::from_secs(60)).await.unwrap();
+        assert_eq!(c.get("k").await.unwrap(), Some(b"v2".to_vec()));
     }
 }

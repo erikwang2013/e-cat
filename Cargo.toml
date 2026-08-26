@@ -27,11 +27,9 @@ members = [
     "ecat-mq",
     "ecat-events",
     "ecat-config-remote",
-    "ecat-testing",
     "ecat-openapi",
     "ecat-bench",
     "ecat-tracing",
-    "ecat-tracing-otlp",
     "ecat-registry-etcd",
     "ecat-mq-kafka",
     "ecat-mq-rabbitmq",
@@ -63,7 +61,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "3.0.1"
+version = "3.0.2"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erik/e-cat"
@@ -74,7 +72,7 @@ documentation = "https://docs.rs/e-cat"
 lto = "thin"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = "1"
 bytes = "1"
 prost = "0.13"
 prost-types = "0.13"

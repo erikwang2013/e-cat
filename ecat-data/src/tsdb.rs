@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use ecat_errors::{Error, ErrorCode};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -46,22 +47,18 @@ impl DataPoint {
 
 #[async_trait]
 pub trait TsdbClient: Send + Sync {
-    async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError>;
-    async fn query(&self, query: &str) -> Result<serde_json::Value, TsdbError>;
+    async fn write(&self, points: &[DataPoint]) -> Result<(), Error>;
+    async fn query(&self, query: &str) -> Result<serde_json::Value, Error>;
 
     /// Delete data using a backend-specific query (e.g. `DELETE FROM ...`).
     /// Backends that cannot delete return an error.
-    async fn delete(&self, _query: &str) -> Result<(), TsdbError> {
-        Err(TsdbError::Other(
-            "delete not supported by this backend".into(),
+    async fn delete(&self, _query: &str) -> Result<(), Error> {
+        Err(Error::new(
+            ErrorCode::Internal,
+            "tsdb",
+            "delete not supported by this backend",
         ))
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum TsdbError {
-    #[error("tsdb error: {0}")]
-    Other(String),
 }
 
 #[cfg(test)]
@@ -86,7 +83,10 @@ mod tests {
             matches!(dp.fields.get("usage"), Some(FieldValue::Float(v)) if (v - 0.85).abs() < 1e-9)
         );
         assert!(matches!(dp.fields.get("count"), Some(FieldValue::Int(3))));
-        assert!(matches!(dp.fields.get("active"), Some(FieldValue::Bool(true))));
+        assert!(matches!(
+            dp.fields.get("active"),
+            Some(FieldValue::Bool(true))
+        ));
         assert!(matches!(
             dp.fields.get("name"),
             Some(FieldValue::String(s)) if s == "web"
@@ -104,7 +104,9 @@ mod tests {
 
     #[test]
     fn datapoint_overwrites_existing_tag() {
-        let dp = DataPoint::new("cpu").with_tag("host", "a").with_tag("host", "b");
+        let dp = DataPoint::new("cpu")
+            .with_tag("host", "a")
+            .with_tag("host", "b");
         assert_eq!(dp.tags.get("host").map(String::as_str), Some("b"));
         assert_eq!(dp.tags.len(), 1);
     }
@@ -113,10 +115,10 @@ mod tests {
 
     #[async_trait]
     impl TsdbClient for NoDeleteClient {
-        async fn write(&self, _points: &[DataPoint]) -> Result<(), TsdbError> {
+        async fn write(&self, _points: &[DataPoint]) -> Result<(), Error> {
             Ok(())
         }
-        async fn query(&self, _query: &str) -> Result<serde_json::Value, TsdbError> {
+        async fn query(&self, _query: &str) -> Result<serde_json::Value, Error> {
             Ok(serde_json::Value::Null)
         }
     }

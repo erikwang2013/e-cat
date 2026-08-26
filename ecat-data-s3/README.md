@@ -4,7 +4,7 @@
 
 ```rust
 let client = S3Client::from_config(S3Config {
-    endpoint: "localhost:9000".into(),
+    endpoint: "http://localhost:9000".into(),
     region: "us-east-1".into(),
     access_key: "minioadmin".into(),
     secret_key: "minioadmin".into(),
@@ -19,4 +19,4 @@ client.delete("assets", "avatars/1.png").await?;
 
 Implements `StorageClient` from `ecat-data`.
 
-**Notes:** uses path-style addressing (S3 API compatible with MinIO); `tls: true` switches the endpoint scheme to `https`. All operations (including `list`) run with the rust-s3 client's 60-second default request timeout, so a hung server returns an error instead of blocking forever.
+**Notes:** uses path-style addressing (S3 API compatible with MinIO); an `endpoint` without a scheme defaults to `https://` — prefix an explicit `http://` (as above, for local MinIO) to opt out, and use `tls.skip_verify` for self-signed endpoints. All operations (including `list`) run with the client's 60-second default request timeout, so a hung server returns an error instead of blocking forever.

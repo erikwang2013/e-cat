@@ -4,8 +4,7 @@ use serde_json::Value;
 /// 单引号手动处理（serde_json 不支持单引号）。
 pub(super) fn parse_string_literal(token: &[u8]) -> Result<Value, String> {
     if token.first() == Some(&b'"') {
-        return serde_json::from_slice(token)
-            .map_err(|e| format!("invalid string literal: {e}"));
+        return serde_json::from_slice(token).map_err(|e| format!("invalid string literal: {e}"));
     }
     let inner = &token[1..token.len() - 1];
     let mut out = Vec::with_capacity(inner.len());

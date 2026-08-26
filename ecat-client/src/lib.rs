@@ -121,7 +121,7 @@ impl HttpClient {
             .balancer
             .pick(&endpoints)
             .ok_or_else(|| format!("no available endpoint for '{service}'"))?;
-        let url = format!("{endpoint}{path}");
+        let url = join_url(&endpoint, path)?;
         tracing::debug!(url, "http client: GET");
         self.client
             .get(&url)
@@ -142,7 +142,7 @@ impl HttpClient {
             .balancer
             .pick(&endpoints)
             .ok_or_else(|| format!("no available endpoint for '{service}'"))?;
-        let url = format!("{endpoint}{path}");
+        let url = join_url(&endpoint, path)?;
         self.client
             .post(&url)
             .body(body.to_vec())
@@ -203,6 +203,9 @@ impl HttpClientBuilder {
         let balancer = self.balancer.unwrap_or_else(|| Arc::new(RoundRobin::new()));
         Ok(HttpClient {
             client: reqwest::Client::builder()
+                // 不跟随任何重定向：注册服务可能把内部地址暴露给客户端
+                // （SSRF 风格），跨主机跳转一律拒绝
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|e| format!("failed to build http client: {e}"))?,
             resolver,
@@ -210,6 +213,15 @@ impl HttpClientBuilder {
             timeout: self.timeout,
         })
     }
+}
+
+/// RFC 3986 路径拼接：`endpoint` 带基础路径（如 `http://h:8080/base`）时
+/// `join("/health")` 会替换整段路径；保留 endpoint 的 scheme/host。
+fn join_url(endpoint: &str, path: &str) -> Result<String, String> {
+    reqwest::Url::parse(endpoint)
+        .and_then(|base| base.join(path))
+        .map(|u| u.to_string())
+        .map_err(|e| format!("invalid endpoint '{endpoint}': {e}"))
 }
 
 // ── gRPC Client ──
@@ -224,6 +236,8 @@ impl GrpcClient {
         GrpcClientBuilder::default()
     }
 
+    /// 端点必须带 scheme（`http://` 或 `https://`）；tonic 不提供默认
+    /// scheme，缺省会令 `Endpoint::from_shared` 报错。
     pub async fn connect(&self, service: &str) -> Result<tonic::transport::Channel, String> {
         let endpoints = self.resolver.resolve(service).await?;
         let endpoint = self
@@ -315,5 +329,83 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(client.timeout, Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn client_does_not_follow_redirects() {
+        // 本地 mini server：/first 302 → /target；Policy::none 时客户端
+        // 直接拿到 302 而不是跟随到 /target。
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            for _ in 0..2 {
+                let Ok((mut sock, _)) = listener.accept() else {
+                    break;
+                };
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let target = req.contains("GET /target");
+                let body: &[u8] = if target {
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                } else {
+                    b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:9999/target\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                };
+                let _ = sock.write_all(body);
+            }
+        });
+        let resolver = StaticResolver::single("svc", format!("http://{addr}"));
+        let client = HttpClient::builder()
+            .resolver(resolver)
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let resp = client.get("svc", "/first").await.unwrap();
+        assert_eq!(resp.status(), 302, "must not follow redirects");
+    }
+
+    #[test]
+    fn join_url_normalizes_paths() {
+        assert_eq!(
+            join_url("http://h:8080", "/health").unwrap(),
+            "http://h:8080/health"
+        );
+        // RFC 3986：无前导斜杠的相对引用替换末段路径
+        assert_eq!(
+            join_url("http://h:8080/base/", "sub").unwrap(),
+            "http://h:8080/base/sub"
+        );
+        assert_eq!(
+            join_url("http://h:8080/base", "sub").unwrap(),
+            "http://h:8080/sub"
+        );
+        assert_eq!(
+            join_url("http://h:8080/base", "/health").unwrap(),
+            "http://h:8080/health"
+        );
+        assert!(join_url("not a url", "/x").is_err());
+    }
+
+    /// 端点缺少 scheme 或格式非法时在 from_shared 阶段报错，不发起网络连接。
+    #[tokio::test]
+    async fn grpc_connect_rejects_invalid_endpoint_without_network() {
+        let client = GrpcClient::builder()
+            .resolver(StaticResolver::single("svc", "not a uri"))
+            .build()
+            .unwrap();
+        let err = client.connect("svc").await.unwrap_err();
+        assert!(err.contains("invalid endpoint"), "got: {err}");
+
+        // 无 scheme：tonic 不提供默认 scheme，同样在解析阶段拒绝
+        let client = GrpcClient::builder()
+            .resolver(StaticResolver::single("svc", "localhost:8080"))
+            .build()
+            .unwrap();
+        let err = client.connect("svc").await.unwrap_err();
+        assert!(
+            err.contains("invalid endpoint") || err.contains("grpc connect failed"),
+            "got: {err}"
+        );
     }
 }

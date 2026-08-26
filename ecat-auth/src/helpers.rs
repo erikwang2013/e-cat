@@ -1,6 +1,15 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::claims::AuthClaims;
-use http::{HeaderMap, Request};
+use http::{HeaderMap, Request, Response, StatusCode};
+
+/// Build an error response without any fallible step: for a valid StatusCode
+/// plus String body, `builder().body()` cannot fail, so construct it totally
+/// instead of unwrapping in non-test code.
+pub fn error_response(status: StatusCode, body: impl Into<String>) -> Response<axum::body::Body> {
+    let mut resp = Response::new(axum::body::Body::from(body.into()));
+    *resp.status_mut() = status;
+    resp
+}
 
 pub fn claims_from_request<B>(req: &Request<B>) -> Option<&AuthClaims> {
     req.extensions().get::<AuthClaims>()

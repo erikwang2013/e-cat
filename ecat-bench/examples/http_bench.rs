@@ -16,9 +16,9 @@
 //
 // 输出每个端点的 requests/QPS/p50/p95/p99，以及与 bare 的 QPS/p95/p99 开销对比。
 use axum::{Json, Router, routing::get};
-use ecat_bench::{run_bench_with_warmup, BenchResult};
-use ecat_middleware::{LoggingLayer, TracingLayer};
+use ecat_bench::{BenchResult, run_bench_with_warmup};
 use ecat_metrics::MetricsLayer;
+use ecat_middleware::{LoggingLayer, TracingLayer};
 use serde::Serialize;
 use tower::ServiceBuilder;
 
@@ -41,7 +41,9 @@ async fn start_server(port: u16) {
     let router = Router::new()
         .route("/", get(hello))
         .route("/health", get(health));
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
@@ -52,7 +54,9 @@ async fn start_metrics_server(port: u16) {
         .route("/", get(hello))
         .route("/health", get(health))
         .layer(MetricsLayer::new());
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
@@ -61,13 +65,15 @@ async fn start_metrics_server(port: u16) {
 async fn start_full_server(port: u16) {
     let middleware = ServiceBuilder::new()
         .layer(MetricsLayer::new())
-        .layer(TracingLayer)
+        .layer(TracingLayer::new("http_bench"))
         .layer(LoggingLayer);
     let router = Router::new()
         .route("/", get(hello))
         .route("/health", get(health))
         .layer(middleware);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap();
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
@@ -115,25 +121,66 @@ async fn main() {
         .build()
         .unwrap();
 
-    let total: u64 = std::env::var("BENCH_TOTAL").ok().and_then(|s| s.parse().ok()).unwrap_or(20_000);
-    let concurrency: usize = std::env::var("BENCH_CONCURRENCY").ok().and_then(|s| s.parse().ok()).unwrap_or(64);
-    let warmup: u64 = std::env::var("BENCH_WARMUP").ok().and_then(|s| s.parse().ok()).unwrap_or(2_000);
+    let total: u64 = std::env::var("BENCH_TOTAL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20_000);
+    let concurrency: usize = std::env::var("BENCH_CONCURRENCY")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(64);
+    let warmup: u64 = std::env::var("BENCH_WARMUP")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2_000);
 
     start_server(18081).await;
     start_metrics_server(18083).await;
     start_full_server(18082).await;
 
     let mut results = vec![
-        bench_endpoint(client.clone(), "bare (no layer)", "http://127.0.0.1:18081/", concurrency, total, warmup).await,
-        bench_endpoint(client.clone(), "+MetricsLayer", "http://127.0.0.1:18083/", concurrency, total, warmup).await,
-        bench_endpoint(client.clone(), "+MetricsLayer+TracingLayer+LoggingLayer", "http://127.0.0.1:18082/", concurrency, total, warmup).await,
+        bench_endpoint(
+            client.clone(),
+            "bare (no layer)",
+            "http://127.0.0.1:18081/",
+            concurrency,
+            total,
+            warmup,
+        )
+        .await,
+        bench_endpoint(
+            client.clone(),
+            "+MetricsLayer",
+            "http://127.0.0.1:18083/",
+            concurrency,
+            total,
+            warmup,
+        )
+        .await,
+        bench_endpoint(
+            client.clone(),
+            "+MetricsLayer+TracingLayer+LoggingLayer",
+            "http://127.0.0.1:18082/",
+            concurrency,
+            total,
+            warmup,
+        )
+        .await,
     ];
 
     // 可选外部服务对比行（如 release helloworld 起在 8000）：
     // BENCH_BASE_URL=http://127.0.0.1:8000/ cargo run -p ecat-bench --example http_bench --release
     if let Ok(base) = std::env::var("BENCH_BASE_URL") {
         results.push(
-            bench_endpoint(client, "external (BENCH_BASE_URL)", &base, concurrency, total, warmup).await,
+            bench_endpoint(
+                client,
+                "external (BENCH_BASE_URL)",
+                &base,
+                concurrency,
+                total,
+                warmup,
+            )
+            .await,
         );
     }
 

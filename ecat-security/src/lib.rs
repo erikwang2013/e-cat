@@ -12,6 +12,9 @@ pub use security_rust::{AttackCategory, DetectionResult, ScannerBuilder, Severit
 pub enum SecurityError {
     #[error("attack blocked: {0}")]
     AttackBlocked(String),
+    /// 请求体超过 body_limit 上限（读体阶段即拒绝，不进入扫描）。
+    #[error("request body too large")]
+    BodyTooLarge,
     #[error("inner error: {0}")]
     Inner(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -20,18 +23,27 @@ impl SecurityError {
     pub fn to_http_status(&self) -> StatusCode {
         match self {
             Self::AttackBlocked(_) => StatusCode::FORBIDDEN,
+            Self::BodyTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::Inner(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
 
-/// 拦截结果映射为 HTTP 响应：攻击拦截为 403，内部错误为 500。
+/// 拦截结果映射为 HTTP 响应：攻击拦截为 403，请求体超限为 413，内部
+/// 错误为 500。内部错误的原始信息只进日志，响应体保持通用文案，避免
+/// 把内部错误细节（文件路径、SQL、堆栈）泄露给客户端。
 impl axum::response::IntoResponse for SecurityError {
     fn into_response(self) -> axum::response::Response {
         let status = self.to_http_status();
         let body = match &self {
-            Self::AttackBlocked(types) => format!(r#"{{"error":"attack blocked","types":"{types}"}}"#),
-            Self::Inner(e) => format!(r#"{{"error":"{e}"}}"#),
+            Self::AttackBlocked(types) => {
+                format!(r#"{{"error":"attack blocked","types":"{types}"}}"#)
+            }
+            Self::BodyTooLarge => r#"{"error":"request body too large"}"#.to_string(),
+            Self::Inner(e) => {
+                tracing::error!(error = %e, "security middleware internal error");
+                r#"{"error":"internal server error"}"#.to_string()
+            }
         };
         (status, body).into_response()
     }
@@ -102,10 +114,42 @@ fn evaluate(results: &[DetectionResult]) -> Option<SecurityError> {
     None
 }
 
+/// 百分号解码，仅用于扫描检测；原始 URI 在响应/日志/转发中保持不变。
+/// 无效的 % 序列原样保留，非 UTF-8 解码结果按 replacement 字符处理。
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2]))
+        {
+            out.push(h * 16 + l);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Builds the scan list from URI and headers (shared by both middlewares).
+/// URI 先做百分号解码再扫描：`?q=SELECT%20*%20FROM%20users` 若不解码会绕过
+/// 要求字面空白的 SQLi 正则。解码仅用于检测，URI 本身不变。
 fn request_parts<B>(req: &Request<B>) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
-    parts.push(req.uri().to_string());
+    parts.push(percent_decode(&req.uri().to_string()));
     for value in req.headers().values() {
         if let Ok(v) = value.to_str() {
             parts.push(v.to_string());
@@ -207,7 +251,8 @@ impl SecurityBodyLayer {
     }
 
     /// Maximum body size (in bytes) that will be buffered and scanned.
-    /// Larger bodies are rejected with a 500 rather than buffered.
+    /// Larger bodies are rejected with a 413 (Payload Too Large) rather
+    /// than buffered.
     pub fn body_limit(mut self, limit: usize) -> Self {
         self.body_limit = limit;
         self
@@ -267,9 +312,20 @@ where
             let (parts, body) = req.into_parts();
             // Read the body exactly once; the collected bytes become the new
             // body so downstream handlers can still access the payload.
-            let bytes = axum::body::to_bytes(body, body_limit)
-                .await
-                .map_err(|e| SecurityError::Inner(Box::new(e)))?;
+            let bytes = match axum::body::to_bytes(body, body_limit).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    // LengthLimitError = 超限：413；其余读体错误为 500
+                    let inner: Box<dyn std::error::Error + Send + Sync> = e.into_inner();
+                    if inner
+                        .downcast_ref::<http_body_util::LengthLimitError>()
+                        .is_some()
+                    {
+                        return Err(SecurityError::BodyTooLarge);
+                    }
+                    return Err(SecurityError::Inner(inner));
+                }
+            };
 
             let mut results = header_results;
             results.extend(scanner.scan_body(&bytes));
@@ -329,8 +385,7 @@ mod tests {
     #[test]
     fn inner_error_maps_to_500() {
         use axum::response::IntoResponse;
-        let resp =
-            SecurityError::Inner(Box::new(std::io::Error::other("boom"))).into_response();
+        let resp = SecurityError::Inner(Box::new(std::io::Error::other("boom"))).into_response();
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -371,6 +426,232 @@ mod tests {
             .unwrap();
         let result = svc.oneshot(req).await;
         assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+    }
+
+    #[tokio::test]
+    async fn body_over_limit_maps_to_413() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityBodyLayer::new().body_limit(8);
+        let svc = layer.layer(tower::service_fn(|_: Request<axum::body::Body>| async {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::empty()))
+        }));
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/submit")
+            .body(axum::body::Body::from("x".repeat(64)))
+            .unwrap();
+        let result = svc.oneshot(req).await;
+        assert!(matches!(result, Err(SecurityError::BodyTooLarge)));
+        assert_eq!(
+            SecurityError::BodyTooLarge.to_http_status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+    }
+
+    #[tokio::test]
+    async fn inner_error_response_body_does_not_leak_detail() {
+        use axum::response::IntoResponse;
+        let resp = SecurityError::Inner(Box::new(std::io::Error::other(
+            "secret-db-dsn=s3://user:pass",
+        )))
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let (_, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 4096).await.unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(!text.contains("secret-db-dsn"), "leaked detail: {text}");
+        assert!(text.contains("internal server error"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn attack_blocked_response_body_shape() {
+        use axum::response::IntoResponse;
+        let resp = SecurityError::AttackBlocked("sqli, xss".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let (_, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert_eq!(
+            text,
+            r#"{"error":"attack blocked","types":"sqli, xss"}"#.to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn body_too_large_response_body_shape() {
+        use axum::response::IntoResponse;
+        let resp = SecurityError::BodyTooLarge.into_response();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let (_, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert_eq!(text, r#"{"error":"request body too large"}"#.to_string());
+    }
+
+    #[test]
+    fn request_parts_include_uri_and_headers() {
+        let req = http::Request::builder()
+            .uri("/search?q=abc")
+            .header("X-Custom", "val-1")
+            .body(())
+            .unwrap();
+        let parts = request_parts(&req);
+        assert_eq!(
+            parts,
+            vec!["/search?q=abc".to_string(), "val-1".to_string()]
+        );
+    }
+
+    #[test]
+    fn percent_decode_handles_encoded_sql_chars() {
+        assert_eq!(
+            percent_decode("/q?x=SELECT%20*%20FROM%20users"),
+            "/q?x=SELECT * FROM users"
+        );
+        assert_eq!(percent_decode("1%27%20OR%20%271%27%3D%271"), "1' OR '1'='1");
+        assert_eq!(
+            percent_decode("/clean?q=hello%20world"),
+            "/clean?q=hello world"
+        );
+        assert_eq!(percent_decode("%3cscript%3e"), "<script>");
+        // 无效 % 序列原样保留
+        assert_eq!(percent_decode("/%zz%"), "/%zz%");
+        assert_eq!(percent_decode("/100%25"), "/100%");
+    }
+
+    #[test]
+    fn request_parts_percent_decode_uri_only() {
+        let req = http::Request::builder()
+            .uri("/search?q=SELECT%20*%20FROM%20users")
+            .header("X-Custom", "val%201")
+            .body(())
+            .unwrap();
+        let parts = request_parts(&req);
+        // URI 解码后进入扫描列表；header 原样保留（header 无编码层）
+        assert_eq!(parts[0], "/search?q=SELECT * FROM users");
+        assert_eq!(parts[1], "val%201");
+    }
+
+    #[tokio::test]
+    async fn header_layer_blocks_attack_in_uri() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|_: Request<()>| async {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::empty()))
+        }));
+
+        // URI 不允许空格，SQLi 正则需字面空白 → 用 URI 合法字符即可命中的
+        // javascript: XSS 载荷
+        let req = http::Request::builder()
+            .uri("/redirect?url=javascript:alert(1)")
+            .body(())
+            .unwrap();
+        let result = svc.oneshot(req).await;
+        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+    }
+
+    #[tokio::test]
+    async fn header_layer_blocks_attack_in_header() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|_: Request<()>| async {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::empty()))
+        }));
+
+        let req = http::Request::builder()
+            .uri("/clean")
+            .header("X-Trace", "<script>alert(1)</script>")
+            .body(())
+            .unwrap();
+        let result = svc.oneshot(req).await;
+        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+    }
+
+    #[tokio::test]
+    async fn header_layer_blocks_encoded_sqli_in_uri() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|_: Request<()>| async {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::empty()))
+        }));
+
+        // %20 编码空格：解码后 `SELECT * FROM users` 命中 SQLi 正则
+        let req = http::Request::builder()
+            .uri("/search?q=SELECT%20*%20FROM%20users")
+            .body(())
+            .unwrap();
+        let result = svc.oneshot(req).await;
+        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+    }
+
+    #[tokio::test]
+    async fn header_layer_blocks_encoded_single_quote_sqli_in_uri() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|_: Request<()>| async {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::empty()))
+        }));
+
+        // %27 编码单引号 + %20 编码空格：解码后 `1' OR '1'='1` 命中 SQLi 正则
+        let req = http::Request::builder()
+            .uri("/login?u=1%27%20OR%20%271%27%3D%271")
+            .body(())
+            .unwrap();
+        let result = svc.oneshot(req).await;
+        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+    }
+
+    #[tokio::test]
+    async fn header_layer_passes_clean_encoded_query_through() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::from(
+                req.uri().path().to_string(),
+            )))
+        }));
+
+        // 正常请求含 %20 编码空格不应误拦截
+        let req = http::Request::builder()
+            .uri("/search?q=hello%20world")
+            .body(())
+            .unwrap();
+        let resp = svc.oneshot(req).await.expect("clean request passes");
+        let (_, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
+        assert_eq!(String::from_utf8_lossy(&bytes), "/search");
+    }
+
+    #[tokio::test]
+    async fn header_layer_passes_clean_request_through() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::from(
+                req.uri().path().to_string(),
+            )))
+        }));
+
+        let req = http::Request::builder().uri("/clean").body(()).unwrap();
+        let resp = svc.oneshot(req).await.expect("clean request passes");
+        let (_, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
+        assert_eq!(String::from_utf8_lossy(&bytes), "/clean");
     }
 
     #[tokio::test]

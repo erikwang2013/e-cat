@@ -60,7 +60,10 @@ impl EtcdRegistry {
                 }
             }
         });
-        self.keepalives.lock().unwrap().insert(id.to_string(), handle);
+        self.keepalives
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), handle);
     }
 }
 
@@ -206,20 +209,31 @@ mod tests {
         assert_eq!(decoded, input);
     }
 
-    /// mock etcd 的 lease/kv 端点：记录 keepalive 调用次数。
-    async fn spawn_mock_etcd() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    /// mock etcd 的 lease/kv 端点：记录 keepalive 调用次数与 deleterange 请求体。
+    async fn spawn_mock_etcd() -> (
+        String,
+        Arc<std::sync::atomic::AtomicUsize>,
+        Arc<Mutex<Vec<serde_json::Value>>>,
+    ) {
         let keepalives = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let ka = keepalives.clone();
+        let deletes = Arc::new(Mutex::new(Vec::new()));
+        let del = deletes.clone();
         let app = axum::Router::new()
             .route(
                 "/v3/lease/grant",
-                axum::routing::post(|| async {
-                    axum::Json(serde_json::json!({"ID": "123"}))
-                }),
+                axum::routing::post(|| async { axum::Json(serde_json::json!({"ID": "123"})) }),
             )
             .route(
                 "/v3/kv/put",
                 axum::routing::post(|| async { axum::Json(serde_json::json!({"header": {}})) }),
+            )
+            .route(
+                "/v3/kv/deleterange",
+                axum::routing::post(move |body: axum::Json<serde_json::Value>| async move {
+                    del.lock().unwrap_or_else(|e| e.into_inner()).push(body.0);
+                    axum::Json(serde_json::json!({"header": {}}))
+                }),
             )
             .route(
                 "/v3/lease/keepalive",
@@ -233,17 +247,14 @@ mod tests {
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
-        (format!("http://{addr}"), keepalives)
+        (format!("http://{addr}"), keepalives, deletes)
     }
 
     #[tokio::test]
     async fn register_keeps_lease_alive_until_deregister() {
-        let (base_url, keepalives) = spawn_mock_etcd().await;
+        let (base_url, keepalives, _) = spawn_mock_etcd().await;
         let reg = EtcdRegistry::new(vec![base_url], "ecat").lease_ttl(3);
-        let registration = reg
-            .register(ServiceInfo::new("svc", "1.0"))
-            .await
-            .unwrap();
+        let registration = reg.register(ServiceInfo::new("svc", "1.0")).await.unwrap();
 
         // lease_ttl=3 → 每 1 秒续约一次；等待首个 keepalive 到达
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
@@ -258,5 +269,155 @@ mod tests {
 
         reg.deregister(&registration.id).await.unwrap();
         assert!(reg.keepalives.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn prefix_end_bounds_empty_and_regular() {
+        // 空前缀：无字节可自增，走兜底原样返回（etcd 约定空 range_end 表示范围到末尾）
+        assert_eq!(prefix_end(""), "");
+        // 常规：末字节自增并截断
+        assert_eq!(prefix_end("/a/b"), "/a/c");
+        assert_eq!(
+            prefix_end("/ecat/services/ecat/svc/"),
+            "/ecat/services/ecat/svc0"
+        );
+        // 非 ASCII 末字节按字节自增（0xBF+1 越出合法 UTF-8 后 lossy 替换），与 etcd 字节键语义一致
+        assert_eq!(prefix_end("ÿ"), "\u{fffd}\u{fffd}");
+    }
+
+    #[tokio::test]
+    async fn deregister_deletes_registered_key_range() {
+        let (base_url, _, deletes) = spawn_mock_etcd().await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat");
+        let registration = reg.register(ServiceInfo::new("svc", "1.0")).await.unwrap();
+        assert_eq!(registration.id, "ecat/svc");
+
+        reg.deregister(&registration.id).await.unwrap();
+        let reqs = deletes.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(
+            reqs[0]["key"],
+            b64("/ecat/services/ecat/svc/"),
+            "deleterange 必须按注册前缀删除"
+        );
+        assert_eq!(reqs[0]["range_end"], b64("/ecat/services/ecat/svc0"));
+        assert!(reg.keepalives.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn deregister_unknown_id_still_sends_range_delete() {
+        let (base_url, _, deletes) = spawn_mock_etcd().await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat");
+        reg.deregister("missing").await.unwrap();
+
+        let reqs = deletes.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0]["key"], b64("/ecat/services/missing/"));
+        assert_eq!(reqs[0]["range_end"], b64("/ecat/services/missing0"));
+    }
+
+    /// 按 (路径, 响应体) 列表起一个 mock etcd 服务，返回 base_url。
+    async fn spawn_mock(routes: &[(&str, serde_json::Value)]) -> String {
+        let mut app = axum::Router::new();
+        for (path, body) in routes {
+            let body = body.clone();
+            app = app.route(
+                path,
+                axum::routing::post(move || {
+                    let body = body.clone();
+                    async move { axum::Json(body) }
+                }),
+            );
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn discover_decodes_and_parses_kvs_skipping_bad_values() {
+        let svc = ServiceInfo::new("web", "2.0").with_endpoint("http://10.0.0.5:8080");
+        let value = serde_json::to_string(&svc).unwrap();
+        let body = serde_json::json!({"kvs": [
+            {"key": b64("k1"), "value": b64(&value)},
+            {"key": b64("k2"), "value": "%%%not-base64%%%"},
+            {"key": b64("k3"), "value": b64("not json")},
+        ]});
+        let base_url = spawn_mock(&[("/v3/kv/range", body)]).await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat");
+        let services = reg.discover("web").await.unwrap();
+        assert_eq!(services.len(), 1, "invalid values must be skipped");
+        assert_eq!(services[0].name, "web");
+        assert_eq!(services[0].version, "2.0");
+        assert_eq!(services[0].endpoints, vec!["http://10.0.0.5:8080"]);
+    }
+
+    #[tokio::test]
+    async fn list_services_dedups_and_sorts() {
+        let a = serde_json::to_string(&ServiceInfo::new("b-svc", "1.0")).unwrap();
+        let b = serde_json::to_string(&ServiceInfo::new("a-svc", "1.0")).unwrap();
+        let body = serde_json::json!({"kvs": [
+            {"key": "x", "value": b64(&a)},
+            {"key": "y", "value": b64(&b)},
+            {"key": "z", "value": b64(&a)},
+        ]});
+        let base_url = spawn_mock(&[("/v3/kv/range", body)]).await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat");
+        assert_eq!(reg.list_services().await.unwrap(), vec!["a-svc", "b-svc"]);
+    }
+
+    #[tokio::test]
+    async fn register_puts_base64_encoded_key_value_with_lease() {
+        let puts = Arc::new(Mutex::new(Vec::new()));
+        let p = puts.clone();
+        let app = axum::Router::new()
+            .route(
+                "/v3/lease/grant",
+                axum::routing::post(|| async { axum::Json(serde_json::json!({"ID": "42"})) }),
+            )
+            .route(
+                "/v3/kv/put",
+                axum::routing::post(move |body: axum::Json<serde_json::Value>| async move {
+                    p.lock().unwrap().push(body.0);
+                    axum::Json(serde_json::json!({"header": {}}))
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let reg = EtcdRegistry::new(vec![format!("http://{addr}")], "ecat");
+        let registration = reg
+            .register(ServiceInfo::new("svc", "1.0").with_endpoint("http://h:1"))
+            .await
+            .unwrap();
+
+        let put = puts.lock().unwrap().first().expect("put body").clone();
+        assert_eq!(put["lease"], "42");
+        let key = decode_b64_str(put["key"].as_str().unwrap()).unwrap();
+        assert!(
+            key.starts_with("/ecat/services/ecat/svc/"),
+            "key must be under service prefix, got: {key}"
+        );
+        let val: ServiceInfo =
+            serde_json::from_str(&decode_b64_str(put["value"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(val.endpoints, vec!["http://h:1"]);
+
+        reg.deregister(&registration.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn register_fails_when_lease_grant_malformed() {
+        let base_url = spawn_mock(&[("/v3/lease/grant", serde_json::json!({"TTL": "30"}))]).await;
+        let reg = EtcdRegistry::new(vec![base_url], "ecat");
+        let err = match reg.register(ServiceInfo::new("svc", "1.0")).await {
+            Ok(_) => panic!("register must fail when lease grant lacks ID"),
+            Err(e) => e,
+        };
+        assert!(err.to_string().contains("no lease ID"), "got: {err}");
     }
 }

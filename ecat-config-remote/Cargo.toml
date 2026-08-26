@@ -7,7 +7,7 @@ description = "Remote configuration source for e-cat"
 
 [dependencies]
 ecat-config = { path = "../ecat-config" }
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "time", "macros"] }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

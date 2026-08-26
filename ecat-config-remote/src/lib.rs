@@ -191,6 +191,68 @@ mod tests {
         assert_eq!(String::from_utf8(result).unwrap(), "hello");
     }
 
+    #[test]
+    fn kv_entry_decoded_value_cases() {
+        let enc = |s: &str| base64::engine::general_purpose::STANDARD.encode(s);
+        let entry = ConsulKvEntry {
+            key: "k".into(),
+            value: Some(enc("hello")),
+        };
+        assert_eq!(entry.decoded_value().as_deref(), Some("hello"));
+
+        let entry = ConsulKvEntry {
+            key: "k".into(),
+            value: None,
+        };
+        assert_eq!(entry.decoded_value(), None);
+
+        let entry = ConsulKvEntry {
+            key: "k".into(),
+            value: Some("!!not-base64!!".into()),
+        };
+        assert_eq!(entry.decoded_value(), None);
+
+        // base64 合法但解码后不是 UTF-8
+        let entry = ConsulKvEntry {
+            key: "k".into(),
+            value: Some(base64::engine::general_purpose::STANDARD.encode(b"\xff\xfe")),
+        };
+        assert_eq!(entry.decoded_value(), None);
+    }
+
+    #[tokio::test]
+    async fn fetch_with_index_requires_x_consul_index_header() {
+        let base_url = spawn_mock_consul_no_index().await;
+        let source = ConsulConfigSource::new(base_url, "app");
+        let err = source.fetch(Some("1")).await.unwrap_err();
+        assert!(
+            err.to_string().contains("missing X-Consul-Index"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_nested_keys_become_dotted() {
+        let (base_url, tx) = spawn_mock_consul().await;
+        tx.send((
+            1u64,
+            vec![
+                ("app/nested/key".to_string(), "{\"a\":1}".to_string()),
+                ("app/simple".to_string(), "\"str\"".to_string()),
+                ("app/badjson".to_string(), "not-json".to_string()),
+            ],
+        ))
+        .unwrap();
+        let source = ConsulConfigSource::new(base_url, "app");
+        let map = source.load().await.unwrap();
+        assert_eq!(map.get("nested.key"), Some(&serde_json::json!({"a": 1})));
+        assert_eq!(map.get("simple"), Some(&serde_json::json!("str")));
+        assert_eq!(
+            map.get("badjson"),
+            Some(&serde_json::Value::String("not-json".into()))
+        );
+    }
+
     async fn spawn_mock_consul() -> (String, watch::Sender<MockConsulState>) {
         let (tx, rx) =
             watch::channel((1u64, vec![("app/key".to_string(), "{\"a\":1}".to_string())]));

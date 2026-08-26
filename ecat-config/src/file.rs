@@ -89,10 +89,7 @@ mod tests {
         std::fs::write(&path, "{invalid").unwrap();
 
         let err = FileSource::new(&path).load().await.unwrap_err();
-        assert!(
-            err.to_string().contains("line 1"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("line 1"), "got: {err}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -107,6 +104,51 @@ mod tests {
             err.to_string().contains("expected a JSON/YAML object"),
             "got: {err}"
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_missing_file_reports_path() {
+        let err = FileSource::new("/nonexistent/ecat-config-test.json")
+            .load()
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("read"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_empty_file_reports_error() {
+        let dir = tempdir();
+        let path = dir.join("config.json");
+        std::fs::write(&path, "").unwrap();
+
+        let err = FileSource::new(&path).load().await.unwrap_err();
+        assert!(err.to_string().contains("line 1"), "got: {err}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_yaml_non_object_top_level_rejected() {
+        let dir = tempdir();
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, "- a\n- b\n").unwrap();
+
+        let err = FileSource::new(&path).load().await.unwrap_err();
+        assert!(
+            err.to_string().contains("expected a JSON/YAML object"),
+            "got: {err}"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_invalid_yaml_reports_error() {
+        let dir = tempdir();
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, "a: [unclosed").unwrap();
+
+        let err = FileSource::new(&path).load().await.unwrap_err();
+        assert!(!err.to_string().is_empty(), "yaml parse must fail");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

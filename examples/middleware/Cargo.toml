@@ -11,7 +11,7 @@ ecat-transport-http = { path = "../../ecat-transport-http" }
 ecat-metrics = { path = "../../ecat-metrics" }
 ecat-middleware = { path = "../../ecat-middleware" }
 serde.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tower.workspace = true
 tracing.workspace = true
 axum.workspace = true

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{Cache, CacheError};
+use ecat_data::Cache;
+use ecat_errors::Error;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -31,11 +32,11 @@ struct InMemoryCache {
 
 #[async_trait]
 impl Cache for InMemoryCache {
-    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, CacheError> {
+    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
-    async fn set(&self, key: &str, value: &[u8], _ttl: Duration) -> Result<(), CacheError> {
+    async fn set(&self, key: &str, value: &[u8], _ttl: Duration) -> Result<(), Error> {
         self.store
             .lock()
             .unwrap()
@@ -43,7 +44,7 @@ impl Cache for InMemoryCache {
         Ok(())
     }
 
-    async fn delete(&self, key: &str) -> Result<(), CacheError> {
+    async fn delete(&self, key: &str) -> Result<(), Error> {
         self.store.lock().unwrap().remove(key);
         Ok(())
     }

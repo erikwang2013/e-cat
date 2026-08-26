@@ -96,7 +96,8 @@ where
     }
 
     // worker 若在预热阶段 panic，屏障永远不会释放——超时失败而不是挂死
-    let _ = tokio::time::timeout(Duration::from_secs(30), barrier.wait()).await
+    let _ = tokio::time::timeout(Duration::from_secs(30), barrier.wait())
+        .await
         .unwrap_or_else(|_| panic!("bench workers failed to reach steady state (warmup panic?)"));
     let start = Instant::now();
 
@@ -203,7 +204,10 @@ mod tests {
             }
         };
         let result = run_bench_with_warmup("warm", 2, 10, 6, f).await;
-        assert_eq!(result.total_requests, 10, "measured phase must exclude warmup");
+        assert_eq!(
+            result.total_requests, 10,
+            "measured phase must exclude warmup"
+        );
         assert_eq!(
             calls.load(Ordering::SeqCst),
             16,

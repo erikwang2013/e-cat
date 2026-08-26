@@ -118,4 +118,38 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "gw");
     }
+
+    #[tokio::test]
+    async fn discover_returns_all_instances_of_same_name() {
+        let reg = MemoryRegistry::new();
+        reg.register(test_service("dup")).await.unwrap();
+        reg.register(test_service("dup")).await.unwrap();
+        assert_eq!(reg.discover("dup").await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn registration_drop_auto_deregisters() {
+        let reg = MemoryRegistry::new();
+        let registration = reg.register(test_service("ephemeral")).await.unwrap();
+        drop(registration);
+        // drop 在运行时内 spawn 异步 deregister；yield 循环等待其生效
+        for _ in 0..10_000 {
+            if reg.discover("ephemeral").await.unwrap().is_empty() {
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("auto-deregister on drop never ran");
+    }
+
+    #[test]
+    fn service_info_builder_defaults() {
+        let svc = ServiceInfo::new("s", "1.0");
+        assert!(svc.endpoints.is_empty());
+        assert!(svc.metadata.is_empty());
+        let svc = svc.with_endpoint("http://x:1");
+        assert_eq!(svc.endpoints, vec!["http://x:1"]);
+        assert_eq!(svc.name, "s");
+        assert_eq!(svc.version, "1.0");
+    }
 }

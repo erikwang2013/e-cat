@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{GraphClient, GraphError};
+use ecat_data::GraphClient;
+use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 
@@ -34,9 +35,9 @@ impl Neo4jClient {
         }
     }
 
-    pub fn from_config(cfg: Neo4jConfig) -> Result<Self, GraphError> {
+    pub fn from_config(cfg: Neo4jConfig) -> Result<Self, Error> {
         let client = ecat_tls::build_reqwest_client(&cfg.tls)
-            .map_err(|e| GraphError::Other(format!("TLS: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "neo4j_tls", format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -52,7 +53,7 @@ impl GraphClient for Neo4jClient {
         &self,
         cypher: &str,
         params: &serde_json::Value,
-    ) -> Result<serde_json::Value, GraphError> {
+    ) -> Result<serde_json::Value, Error> {
         let body = serde_json::json!({"statements": [{"statement": cypher, "parameters": params}]});
         let resp = self
             .client
@@ -61,13 +62,17 @@ impl GraphClient for Neo4jClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| GraphError::Other(format!("neo4j: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "neo4j", format!("neo4j: {e}")))?;
         if !resp.status().is_success() {
-            return Err(GraphError::Other(resp.text().await.unwrap_or_default()));
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "neo4j",
+                resp.text().await.unwrap_or_default(),
+            ));
         }
         resp.json()
             .await
-            .map_err(|e| GraphError::Other(format!("neo4j parse: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "neo4j", format!("neo4j parse: {e}")))
     }
 }
 
@@ -131,7 +136,11 @@ mod tests {
             captured
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(CapturedRequest { path, headers, body: req_body.to_vec() });
+                .push(CapturedRequest {
+                    path,
+                    headers,
+                    body: req_body.to_vec(),
+                });
             if body.is_empty() {
                 Json(serde_json::json!({"results": [], "errors": []})).into_response()
             } else {
@@ -177,5 +186,29 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("boom"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn execute_404_returns_body_as_error() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock(Arc::clone(&captured), 404, "not found").await;
+        let client = Neo4jClient::new(base_url, "neo4j", "secret");
+        let err = client
+            .execute("MATCH (n) RETURN n", &serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not found"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn execute_non_json_body_returns_parse_error() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock(Arc::clone(&captured), 200, "definitely not json").await;
+        let client = Neo4jClient::new(base_url, "neo4j", "secret");
+        let err = client
+            .execute("MATCH (n) RETURN n", &serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("neo4j parse"), "got: {err}");
     }
 }

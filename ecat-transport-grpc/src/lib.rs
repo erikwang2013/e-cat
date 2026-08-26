@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use ecat_transport::{normalize_addr, Server as TransportServer, TlsConfig};
+use ecat_transport::{Server as TransportServer, TlsConfig, normalize_addr};
 use std::io;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -54,13 +54,11 @@ fn build_server_tls_config(tls: &TlsConfig) -> Result<ServerTlsConfig, io::Error
         .map_err(|e| io::Error::new(e.kind(), format!("read cert: {e}")))?;
     let key = std::fs::read_to_string(&tls.key_path)
         .map_err(|e| io::Error::new(e.kind(), format!("read key: {e}")))?;
-    let mut cfg =
-        ServerTlsConfig::new().identity(tonic::transport::Identity::from_pem(cert, key));
+    let mut cfg = ServerTlsConfig::new().identity(tonic::transport::Identity::from_pem(cert, key));
     if tls.require_client_auth {
-        let ca = tls
-            .ca_cert_path
-            .as_ref()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "mTLS requires ca_cert_path"))?;
+        let ca = tls.ca_cert_path.as_ref().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "mTLS requires ca_cert_path")
+        })?;
         let ca = std::fs::read_to_string(ca)
             .map_err(|e| io::Error::new(e.kind(), format!("read ca: {e}")))?;
         cfg = cfg.client_ca_root(tonic::transport::Certificate::from_pem(ca));
@@ -113,7 +111,11 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
 
-    fn write_pem_files(dir: &Path, suffix: &str, pair: &ecat_tls::CertPair) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn write_pem_files(
+        dir: &Path,
+        suffix: &str,
+        pair: &ecat_tls::CertPair,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
         let cert_path = dir.join(format!("{suffix}.crt"));
         let key_path = dir.join(format!("{suffix}.key"));
         std::fs::write(&cert_path, &pair.cert_pem).unwrap();
@@ -171,9 +173,10 @@ mod tests {
                 let certs = rustls_pemfile::certs(&mut std::io::Cursor::new(p.cert_pem.as_bytes()))
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|e| format!("parse cert: {e}"))?;
-                let key = rustls_pemfile::private_key(&mut std::io::Cursor::new(p.key_pem.as_bytes()))
-                    .map_err(|e| format!("parse key: {e}"))?
-                    .ok_or_else(|| "no private key".to_string())?;
+                let key =
+                    rustls_pemfile::private_key(&mut std::io::Cursor::new(p.key_pem.as_bytes()))
+                        .map_err(|e| format!("parse key: {e}"))?
+                        .ok_or_else(|| "no private key".to_string())?;
                 builder
                     .with_client_auth_cert(certs, key)
                     .map_err(|e| format!("client auth: {e}"))
@@ -184,11 +187,7 @@ mod tests {
     /// TLS 1.3 下客户端握手在收到服务端首条 flight（含 Finished）即视为完成，
     /// 服务端的 mTLS 拒绝告警（CertificateRequired）随后才到达 —— 拒绝必须以
     /// 握手后的后续 I/O 失败来断言。
-    async fn probe_rejected(
-        port: u16,
-        root_pem: &str,
-        pair: Option<&ecat_tls::CertPair>,
-    ) -> bool {
+    async fn probe_rejected(port: u16, root_pem: &str, pair: Option<&ecat_tls::CertPair>) -> bool {
         ensure_crypto_provider();
         let Ok(cfg) = client_config(root_pem, pair) else {
             return true;
@@ -214,7 +213,9 @@ mod tests {
         let _ = wr.write_all(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n").await;
         let mut buf = [0u8; 64];
         for _ in 0..10 {
-            match tokio::time::timeout(std::time::Duration::from_millis(200), rd.read(&mut buf)).await {
+            match tokio::time::timeout(std::time::Duration::from_millis(200), rd.read(&mut buf))
+                .await
+            {
                 Ok(Ok(_)) => return true,
                 Ok(Err(_)) => return true,
                 Err(_) => continue,
@@ -254,6 +255,77 @@ mod tests {
         let tls = TlsConfig::new("/nope.crt", "/nope.key").with_client_auth("/nope-ca.pem");
         let cfg = build_server_tls_config(&tls);
         assert!(cfg.is_err());
+    }
+
+    #[test]
+    fn build_server_tls_config_missing_files_errors() {
+        let tls = TlsConfig::new("/no-such.crt", "/no-such.key");
+        let err = build_server_tls_config(&tls).unwrap_err();
+        assert!(err.to_string().contains("read cert"), "got: {err}");
+    }
+
+    #[test]
+    fn mtls_without_ca_path_is_rejected() {
+        // require_client_auth 为 pub 字段，可绕过构造器直接置位以覆盖 ca 缺失分支；
+        // cert 先于 ca 检查读取，需用真实证书让错误落在 ca 检查上
+        let dir = std::env::temp_dir().join(format!("ecat-grpc-mtls-no-ca-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pair = generate_server_cert("localhost").unwrap();
+        let (cert_path, key_path) = write_pem_files(&dir, "server", &pair);
+        let tls = TlsConfig {
+            cert_path: cert_path.clone(),
+            key_path,
+            ca_cert_path: None,
+            require_client_auth: true,
+        };
+        let err = build_server_tls_config(&tls).unwrap_err();
+        assert!(err.to_string().contains("ca_cert_path"), "got: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tls_defaults_to_none_and_builder_sets_it() {
+        let plain = GrpcServer::new("0.0.0.0:50051");
+        assert!(plain.tls_config.is_none());
+        let with_tls = plain.tls(TlsConfig::new("c.pem", "k.pem"));
+        assert!(with_tls.tls_config.is_some());
+    }
+
+    #[tokio::test]
+    async fn stop_before_start_is_noop() {
+        let server = GrpcServer::new("127.0.0.1:0");
+        server.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn start_fails_on_occupied_port() {
+        let port = free_port();
+        let _hold = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
+        let server = GrpcServer::new(format!("127.0.0.1:{port}"));
+        assert!(server.start().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn plaintext_server_starts_and_stops_cleanly() {
+        let port = free_port();
+        let server = Arc::new(GrpcServer::new(format!("127.0.0.1:{port}")));
+        let task = tokio::spawn({
+            let server = Arc::clone(&server);
+            async move { server.start().await }
+        });
+        // 等监听就绪再 stop：start() 在 bind 后才存储 shutdown sender，
+        // stop 先行会漏发信号导致 start 永远阻塞（竞态，非必现）
+        for _ in 0..50 {
+            if tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        server.stop().await.unwrap();
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]

@@ -8,9 +8,7 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
 type Handler = Arc<
-    dyn Fn(Bytes) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-        + Send
-        + Sync,
+    dyn Fn(Bytes) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
 >;
 
 pub struct EventBus {
@@ -290,10 +288,12 @@ mod tests {
         });
         let bus = EventBus::remote(mq);
 
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         wait_for_consumer_finish(&bus).await;
 
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         assert_eq!(
             subscribe_count.load(Ordering::SeqCst),
             2,
@@ -313,11 +313,13 @@ mod tests {
         let bus = EventBus::remote(mq);
 
         // 第一次 subscribe：mq.subscribe 返回 Err → 占位回滚。
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         assert_eq!(subscribe_count.load(Ordering::SeqCst), 1);
 
         // 占位必须已回滚：再次 subscribe 能成功启动消费任务。
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         assert_eq!(
             subscribe_count.load(Ordering::SeqCst),
             2,
@@ -336,10 +338,12 @@ mod tests {
         });
         let bus = EventBus::remote(mq);
 
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         wait_for_consumer_finish(&bus).await;
 
-        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {}).await;
+        bus.subscribe::<TestEvent, _, _>(|_e: TestEvent| async {})
+            .await;
         assert_eq!(
             subscribe_count.load(Ordering::SeqCst),
             2,

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::claims::AuthClaims;
-use super::helpers::extract_bearer;
+use super::helpers::{error_response, extract_bearer};
 use http::{Request, Response, StatusCode};
 use std::future::Future;
 use std::pin::Pin;
@@ -25,21 +25,18 @@ impl std::fmt::Display for JwtAuthError {
 
 impl std::error::Error for JwtAuthError {}
 
-enum JwtSecret {
-    Shared(Vec<u8>),
-    #[allow(dead_code)]
-    RsaReserved(Vec<u8>),
-}
-
 #[derive(Clone)]
 pub struct JwtAuthLayer {
-    secret: Arc<JwtSecret>,
     required_claims: Vec<String>,
     header_name: String,
     /// 配置后强制校验 JWT 的 iss（签发者）声明，不匹配即拒绝。
     required_issuer: Option<String>,
     /// 配置后强制校验 JWT 的 aud（受众）声明，不匹配即拒绝。
     required_audience: Option<String>,
+    /// 构建一次复用：DecodingKey 持有密钥副本，逐请求重建是纯浪费（P1）。
+    decoding_key: Arc<jsonwebtoken::DecodingKey>,
+    /// 基准校验配置：每个请求 clone（Validation: Clone），避免重建。
+    validation: jsonwebtoken::Validation,
 }
 
 impl JwtAuthLayer {
@@ -53,8 +50,10 @@ impl JwtAuthLayer {
         if secret.len() < 32 {
             return Err(JwtAuthError::WeakKey);
         }
+        let secret_bytes = secret.into_bytes();
         Ok(Self {
-            secret: Arc::new(JwtSecret::Shared(secret.into_bytes())),
+            decoding_key: Arc::new(jsonwebtoken::DecodingKey::from_secret(&secret_bytes)),
+            validation: jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
             required_claims: vec!["sub".into()],
             header_name: "Authorization".into(),
             required_issuer: None,
@@ -70,14 +69,18 @@ impl JwtAuthLayer {
     /// 强制校验 iss（签发者）声明：缺失或不匹配即拒绝。
     /// 默认不校验 iss，保持向后兼容。
     pub fn required_issuer(mut self, issuer: impl Into<String>) -> Self {
-        self.required_issuer = Some(issuer.into());
+        let issuer = issuer.into();
+        self.validation.set_issuer(&[issuer.as_str()]);
+        self.required_issuer = Some(issuer);
         self
     }
 
     /// 强制校验 aud（受众）声明：缺失或不匹配即拒绝。
     /// 默认不校验 aud，保持向后兼容。
     pub fn required_audience(mut self, audience: impl Into<String>) -> Self {
-        self.required_audience = Some(audience.into());
+        let audience = audience.into();
+        self.validation.set_audience(&[audience.as_str()]);
+        self.required_audience = Some(audience);
         self
     }
 
@@ -128,30 +131,17 @@ where
             let token = match token {
                 Some(t) => t,
                 None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(
-                            r#"{"error":"missing authorization token"}"#,
-                        ))
-                        .unwrap());
+                    return Ok(error_response(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"missing authorization token"}"#,
+                    ));
                 }
             };
 
-            let secret_bytes = match config.secret.as_ref() {
-                JwtSecret::Shared(b) => b,
-                JwtSecret::RsaReserved(b) => b,
-            };
-
-            let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-            if let Some(iss) = &config.required_issuer {
-                validation.set_issuer(&[iss.as_str()]);
-            }
-            if let Some(aud) = &config.required_audience {
-                validation.set_audience(&[aud.as_str()]);
-            }
+            let validation = config.validation.clone();
             let token_data = match jsonwebtoken::decode::<AuthClaims>(
                 &token,
-                &jsonwebtoken::DecodingKey::from_secret(secret_bytes),
+                config.decoding_key.as_ref(),
                 &validation,
             ) {
                 Ok(data) => data,
@@ -165,10 +155,10 @@ where
                         expired,
                         "jwt validation failed"
                     );
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from(r#"{"error":"invalid token"}"#))
-                        .unwrap());
+                    return Ok(error_response(
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":"invalid token"}"#,
+                    ));
                 }
             };
 
@@ -179,10 +169,10 @@ where
                 || (config.required_audience.is_some()
                     && !token_data.claims.extra.contains_key("aud"))
             {
-                return Ok(Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .body(axum::body::Body::from(r#"{"error":"invalid token"}"#))
-                    .unwrap());
+                return Ok(error_response(
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"error":"invalid token"}"#,
+                ));
             }
 
             for claim in &config.required_claims {
@@ -192,12 +182,10 @@ where
                     _ => token_data.claims.extra.contains_key(claim),
                 };
                 if !satisfied {
-                    return Ok(Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .body(axum::body::Body::from(format!(
-                            r#"{{"error":"missing required claim: {claim}"}}"#
-                        )))
-                        .unwrap());
+                    return Ok(error_response(
+                        StatusCode::FORBIDDEN,
+                        format!(r#"{{"error":"missing required claim: {claim}"}}"#),
+                    ));
                 }
             }
 
@@ -267,7 +255,10 @@ mod tests {
         assert_eq!(call_layer(layer.clone(), &ok).await, StatusCode::OK);
 
         let wrong = make_token("user-1", Some("https://other.example"), None);
-        assert_eq!(call_layer(layer.clone(), &wrong).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            call_layer(layer.clone(), &wrong).await,
+            StatusCode::UNAUTHORIZED
+        );
 
         let missing = make_token("user-1", None, None);
         assert_eq!(call_layer(layer, &missing).await, StatusCode::UNAUTHORIZED);
@@ -276,15 +267,103 @@ mod tests {
     /// S4：配置 required_audience 后，aud 缺失或不匹配即拒绝。
     #[tokio::test]
     async fn required_audience_rejects_missing_and_wrong() {
-        let layer = JwtAuthLayer::new(SECRET).unwrap().required_audience(AUDIENCE);
+        let layer = JwtAuthLayer::new(SECRET)
+            .unwrap()
+            .required_audience(AUDIENCE);
 
         let ok = make_token("user-1", None, Some(AUDIENCE));
         assert_eq!(call_layer(layer.clone(), &ok).await, StatusCode::OK);
 
         let wrong = make_token("user-1", None, Some("other.example"));
-        assert_eq!(call_layer(layer.clone(), &wrong).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            call_layer(layer.clone(), &wrong).await,
+            StatusCode::UNAUTHORIZED
+        );
 
         let missing = make_token("user-1", None, None);
         assert_eq!(call_layer(layer, &missing).await, StatusCode::UNAUTHORIZED);
+    }
+
+    fn make_token_with_exp(exp: u64) -> String {
+        jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &serde_json::json!({ "sub": "user-1", "exp": exp }),
+            &jsonwebtoken::EncodingKey::from_secret(SECRET.as_bytes()),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn expired_token_is_rejected() {
+        let layer = JwtAuthLayer::new(SECRET).unwrap();
+        let token = make_token_with_exp(1_000_000_000u64); // 2001 年已过期
+        assert_eq!(call_layer(layer, &token).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn token_with_wrong_signature_is_rejected() {
+        let layer = JwtAuthLayer::new(SECRET).unwrap();
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &serde_json::json!({ "sub": "user-1", "exp": 4_102_444_800u64 }),
+            &jsonwebtoken::EncodingKey::from_secret(b"another-secret-0123456789abcdef"),
+        )
+        .unwrap();
+        assert_eq!(call_layer(layer, &token).await, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn missing_required_role_claim_is_forbidden() {
+        let layer = JwtAuthLayer::new(SECRET)
+            .unwrap()
+            .require_claims(&["sub", "role"]);
+        let token = make_token("user-1", None, None); // 无 role 声明
+        assert_eq!(call_layer(layer, &token).await, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn custom_header_name_is_used() {
+        let layer = JwtAuthLayer::new(SECRET)
+            .unwrap()
+            .header_name("X-Auth-Token");
+        let token = make_token("user-1", None, None);
+        let svc = layer.layer(axum::routing::get(|| async { "ok" }));
+        let resp = svc
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .header("X-Auth-Token", format!("Bearer {token}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // 默认 Authorization 头不带 token → 401
+        let resp = svc
+            .oneshot(
+                axum::http::Request::builder()
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn missing_bearer_token_is_unauthorized() {
+        let layer = JwtAuthLayer::new(SECRET).unwrap();
+        let svc = layer.layer(axum::routing::get(|| async { "ok" }));
+        let resp = svc
+            .oneshot(
+                axum::http::Request::builder()
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

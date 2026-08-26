@@ -156,4 +156,76 @@ mod tests {
             .with_check(FnCheck::new("a", || async { Ok(()) }))
             .with_check(FnCheck::new("b", || async { Err("err".into()) }));
     }
+
+    use tower::ServiceExt;
+
+    async fn get(router: Router, uri: &str) -> (StatusCode, String) {
+        let resp = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(uri)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        (status, String::from_utf8_lossy(&body).to_string())
+    }
+
+    // with_check 内部用 blocking_write，不能在 tokio runtime 内调用；
+    // 先同步构建 registry，再在 runtime 里 block_on 路由调用。
+    fn run(reg: HealthRegistry, uri: &str) -> (StatusCode, String) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(get(reg.into_router(), uri))
+    }
+
+    #[test]
+    fn liveness_returns_200() {
+        let reg = HealthRegistry::new().with_check(FnCheck::new("db", || async { Ok(()) }));
+        let (status, _) = run(reg, "/health");
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[test]
+    fn readiness_all_ok_is_200_with_results() {
+        let reg = HealthRegistry::new()
+            .with_check(FnCheck::new("db", || async { Ok(()) }))
+            .with_check(FnCheck::new("cache", || async { Ok(()) }));
+        let (status, body) = run(reg, "/ready");
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let results = json["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(
+            results
+                .iter()
+                .all(|r| r["status"] == "ok" && r.get("error").is_none())
+        );
+    }
+
+    #[test]
+    fn readiness_any_fail_is_503_with_error() {
+        let reg = HealthRegistry::new()
+            .with_check(FnCheck::new("db", || async { Ok(()) }))
+            .with_check(FnCheck::new("cache", || async { Err("down".into()) }));
+        let (status, body) = run(reg, "/ready");
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let results = json["results"].as_array().unwrap();
+        let failed = results.iter().find(|r| r["name"] == "cache").unwrap();
+        assert_eq!(failed["status"], "fail");
+        assert_eq!(failed["error"], "down");
+    }
+
+    #[tokio::test]
+    async fn readiness_empty_registry_is_200_plain() {
+        let reg = HealthRegistry::new();
+        let (status, body) = get(reg.into_router(), "/ready").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains("no checks registered"));
+    }
 }

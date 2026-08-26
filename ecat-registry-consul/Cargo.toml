@@ -7,7 +7,6 @@ description = "Consul service registry backend for e-cat"
 
 [dependencies]
 ecat-registry = { path = "../ecat-registry" }
-tokio.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
 serde.workspace = true
@@ -17,3 +16,4 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net"] }

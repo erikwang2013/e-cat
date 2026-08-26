@@ -216,12 +216,7 @@ mod tests {
         });
         sched.run().await;
 
-        let out = String::from_utf8(
-            buf.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone(),
-        )
-        .unwrap();
+        let out = String::from_utf8(buf.lock().unwrap_or_else(|e| e.into_inner()).clone()).unwrap();
         assert!(
             out.contains("panicked"),
             "run() must warn on task panic instead of swallowing it, got: {out}"

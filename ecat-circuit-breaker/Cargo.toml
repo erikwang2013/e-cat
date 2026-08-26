@@ -10,4 +10,4 @@ tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

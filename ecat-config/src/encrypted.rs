@@ -104,4 +104,55 @@ mod tests {
         assert_eq!(result.get("password").unwrap().as_str().unwrap(), "hello");
         assert_eq!(result.get("host").unwrap().as_str().unwrap(), "localhost");
     }
+
+    #[test]
+    fn deobfuscate_rejects_empty_key() {
+        let err = deobfuscate("aa", b"").unwrap_err();
+        assert!(err.to_string().contains("empty obfuscation key"));
+    }
+
+    #[test]
+    fn deobfuscate_rejects_odd_hex() {
+        let err = deobfuscate("abc", b"k").unwrap_err();
+        assert!(err.to_string().contains("odd hex length"));
+    }
+
+    #[test]
+    fn deobfuscate_rejects_invalid_hex() {
+        let err = deobfuscate("zz", b"k").unwrap_err();
+        assert!(err.to_string().contains("hex"));
+    }
+
+    #[test]
+    fn deobfuscate_rejects_non_utf8() {
+        // 0xff ^ 0x00 = 0xff：非法 UTF-8 字节
+        let err = deobfuscate("ff", b"\x00").unwrap_err();
+        assert!(err.to_string().contains("utf8"));
+    }
+
+    #[tokio::test]
+    async fn deobfuscated_json_values_become_typed() {
+        // 加密后值若本身是合法 JSON（如 "42"），还原为数字而非字符串
+        let key = b"x";
+        let obfuscated: Vec<u8> = b"42"
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, b)| b ^ key[i % key.len()])
+            .collect();
+        let hex: String = obfuscated.iter().map(|b| format!("{b:02x}")).collect();
+
+        let mut data = HashMap::new();
+        data.insert(
+            "port".into(),
+            serde_json::Value::String(format!("obfs:{hex}")),
+        );
+        // 非字符串值（布尔）原样透传
+        data.insert("flag".into(), serde_json::Value::Bool(true));
+
+        let source = ObfuscatedSource::new(data, key.to_vec());
+        let result = source.load().await.unwrap();
+        assert_eq!(result.get("port"), Some(&serde_json::json!(42)));
+        assert_eq!(result.get("flag"), Some(&serde_json::Value::Bool(true)));
+    }
 }

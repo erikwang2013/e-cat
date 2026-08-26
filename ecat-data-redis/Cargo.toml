@@ -7,11 +7,14 @@ description = "Redis cache client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }
+ecat-errors.workspace = true
 ecat-lock = { path = "../ecat-lock" }
-tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 uuid = { version = "1", features = ["v4"] }
 ecat-tls = { path = "../ecat-tls" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

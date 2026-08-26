@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{GraphClient, GraphError};
+use ecat_data::GraphClient;
+use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 
@@ -38,9 +39,9 @@ impl ArangoClient {
         }
     }
 
-    pub fn from_config(cfg: ArangoConfig) -> Result<Self, GraphError> {
+    pub fn from_config(cfg: ArangoConfig) -> Result<Self, Error> {
         let client = ecat_tls::build_reqwest_client(&cfg.tls)
-            .map_err(|e| GraphError::Other(format!("TLS: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "arango_tls", format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -72,7 +73,7 @@ impl GraphClient for ArangoClient {
         &self,
         aql: &str,
         params: &serde_json::Value,
-    ) -> Result<serde_json::Value, GraphError> {
+    ) -> Result<serde_json::Value, Error> {
         let body = serde_json::json!({"query": aql, "bindVars": params});
         let resp = self
             .client
@@ -85,13 +86,17 @@ impl GraphClient for ArangoClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| GraphError::Other(format!("arango: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "arango", format!("arango: {e}")))?;
         if !resp.status().is_success() {
-            return Err(GraphError::Other(resp.text().await.unwrap_or_default()));
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "arango",
+                resp.text().await.unwrap_or_default(),
+            ));
         }
         resp.json()
             .await
-            .map_err(|e| GraphError::Other(format!("arango parse: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "arango", format!("arango parse: {e}")))
     }
 }
 
@@ -155,7 +160,11 @@ mod tests {
             captured
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(CapturedRequest { path, headers, body: req_body.to_vec() });
+                .push(CapturedRequest {
+                    path,
+                    headers,
+                    body: req_body.to_vec(),
+                });
             if body.is_empty() {
                 Json(serde_json::json!({"result": []})).into_response()
             } else {
@@ -176,6 +185,27 @@ mod tests {
         assert_eq!(percent_encode_segment("mydb"), "mydb");
         assert_eq!(percent_encode_segment("my db/1"), "my%20db%2F1");
         assert_eq!(percent_encode_segment("你好"), "%E4%BD%A0%E5%A5%BD");
+    }
+
+    #[test]
+    fn config_deserializes() {
+        let cfg: ArangoConfig = serde_json::from_value(serde_json::json!({
+            "base_url": "http://localhost:8529",
+            "db": "mydb",
+            "username": "root",
+            "password": "secret",
+        }))
+        .unwrap();
+        assert_eq!(cfg.db, "mydb");
+        assert!(cfg.tls.is_none());
+    }
+
+    #[test]
+    fn config_missing_db_is_error() {
+        let result: Result<ArangoConfig, _> = serde_json::from_str(
+            r#"{"base_url":"http://localhost:8529","username":"root","password":"s"}"#,
+        );
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -223,5 +253,17 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("boom"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn execute_non_json_body_returns_parse_error() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock(Arc::clone(&captured), 200, "not json").await;
+        let client = ArangoClient::new(base_url, "mydb", "root", "");
+        let err = client
+            .execute("RETURN 1", &serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("arango parse"), "got: {err}");
     }
 }

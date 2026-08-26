@@ -24,7 +24,7 @@ async fn health() -> &'static str {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let middleware = ServiceBuilder::new()
-        .layer(TracingLayer)
+        .layer(TracingLayer::new("helloworld"))
         .layer(LoggingLayer);
 
     let router = Router::new()

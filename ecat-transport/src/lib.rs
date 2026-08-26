@@ -60,7 +60,10 @@ mod tests {
     fn normalize_addr_leaves_hosted_addrs_alone() {
         assert_eq!(normalize_addr("127.0.0.1:8000".into()), "127.0.0.1:8000");
         assert_eq!(normalize_addr("[::1]:8000".into()), "[::1]:8000");
-        assert_eq!(normalize_addr("example.com:8000".into()), "example.com:8000");
+        assert_eq!(
+            normalize_addr("example.com:8000".into()),
+            "example.com:8000"
+        );
     }
 
     struct TestServer;
@@ -86,5 +89,31 @@ mod tests {
     async fn test_server_trait_stop() {
         let server = TestServer;
         assert!(server.stop().await.is_ok());
+    }
+
+    #[test]
+    fn tls_config_new_defaults_to_no_client_auth() {
+        let cfg = TlsConfig::new("cert.pem", "key.pem");
+        assert_eq!(cfg.cert_path, PathBuf::from("cert.pem"));
+        assert_eq!(cfg.key_path, PathBuf::from("key.pem"));
+        assert!(cfg.ca_cert_path.is_none());
+        assert!(!cfg.require_client_auth);
+    }
+
+    #[test]
+    fn tls_config_with_client_auth_sets_ca_and_flag() {
+        let cfg = TlsConfig::new("cert.pem", "key.pem").with_client_auth("ca.pem");
+        assert_eq!(
+            cfg.ca_cert_path.as_deref(),
+            Some(std::path::Path::new("ca.pem"))
+        );
+        assert!(cfg.require_client_auth);
+    }
+
+    #[test]
+    fn normalize_addr_handles_edge_cases() {
+        assert_eq!(normalize_addr(":8000".into()), "0.0.0.0:8000");
+        assert_eq!(normalize_addr("".into()), "");
+        assert_eq!(normalize_addr("0.0.0.0:9000".into()), "0.0.0.0:9000");
     }
 }

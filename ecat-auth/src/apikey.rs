@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::claims::AuthClaims;
-use super::helpers::{extract_header, extract_query_param};
+use super::helpers::{error_response, extract_header, extract_query_param};
 use http::{Request, Response, StatusCode};
 use std::collections::HashMap;
 use std::future::Future;
@@ -107,10 +107,10 @@ where
                     req.extensions_mut().insert(c);
                     inner.call(req).await.map_err(|e| Box::new(e) as _)
                 }
-                None => Ok(Response::builder()
-                    .status(StatusCode::UNAUTHORIZED)
-                    .body(axum::body::Body::from(r#"{"error":"invalid api key"}"#))
-                    .unwrap()),
+                None => Ok(error_response(
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"error":"invalid api key"}"#,
+                )),
             }
         })
     }

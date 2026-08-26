@@ -189,11 +189,8 @@ mod tests {
 
     #[tokio::test]
     async fn query_returns_err_on_http_400() {
-        let base_url = spawn_mock_exec(
-            400,
-            r#"{"code":"invalid","error":"table not found"}"#,
-        )
-        .await;
+        let base_url =
+            spawn_mock_exec(400, r#"{"code":"invalid","error":"table not found"}"#).await;
         let client = QuestdbClient::new(base_url);
         let err = client.query("select * from nope").await.unwrap_err();
         assert!(err.to_string().contains("table not found"));
@@ -205,5 +202,60 @@ mod tests {
         let client = QuestdbClient::new(base_url);
         let err = client.query("select 1").await.unwrap_err();
         assert!(err.to_string().contains("no columns"));
+    }
+
+    #[tokio::test]
+    async fn query_parses_dataset_into_rows() {
+        let body = r#"{
+            "columns": [{"name": "id", "type": "INT"}, {"name": "name", "type": "STRING"}],
+            "dataset": [[1, "alice"], [2, "bob"]],
+            "count": 2
+        }"#;
+        let base_url = spawn_mock_exec(200, body).await;
+        let client = QuestdbClient::new(base_url);
+        let rows = client.query("select * from t").await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].get("id"), Some(&serde_json::json!(1)));
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("alice")));
+        assert_eq!(rows[1].get("id"), Some(&serde_json::json!(2)));
+    }
+
+    #[tokio::test]
+    async fn query_handles_empty_dataset() {
+        let body = r#"{"columns": [{"name": "id", "type": "INT"}], "dataset": [], "count": 0}"#;
+        let base_url = spawn_mock_exec(200, body).await;
+        let client = QuestdbClient::new(base_url);
+        let rows = client.query("select * from t").await.unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn query_skips_malformed_dataset_rows() {
+        // 行不是数组时跳过，不 panic
+        let body = r#"{"columns": [{"name": "id", "type": "INT"}], "dataset": [[1], "oops", [3]]}"#;
+        let base_url = spawn_mock_exec(200, body).await;
+        let client = QuestdbClient::new(base_url);
+        let rows = client.query("select * from t").await.unwrap();
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn execute_returns_zero_on_success() {
+        let base_url = spawn_mock_exec(200, r#"{"ddl":"OK"}"#).await;
+        let client = QuestdbClient::new(base_url);
+        assert_eq!(client.execute("create table t (i int)").await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn transaction_returns_not_supported_error() {
+        let client = QuestdbClient::new("http://localhost:9000");
+        let err = match client.transaction().await {
+            Err(e) => e,
+            Ok(_) => panic!("expected unsupported error"),
+        };
+        assert!(
+            err.to_string().contains("does not support transactions"),
+            "got: {err}"
+        );
     }
 }

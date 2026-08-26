@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::Router;
-use ecat_transport::{normalize_addr, Server as TransportServer, TlsConfig};
+use ecat_transport::{Server as TransportServer, TlsConfig, normalize_addr};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -103,8 +103,8 @@ impl TransportServer for HttpServer {
 mod tests {
     use super::*;
     use axum::{response::IntoResponse, routing::get};
-    use tokio::net::TcpStream;
     use tls_listener::ensure_crypto_provider;
+    use tokio::net::TcpStream;
 
     async fn health() -> impl IntoResponse {
         "ok"
@@ -152,7 +152,11 @@ mod tests {
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
     }
 
-    fn write_pem_files(dir: &std::path::Path, suffix: &str, pair: &ecat_tls::CertPair) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn write_pem_files(
+        dir: &std::path::Path,
+        suffix: &str,
+        pair: &ecat_tls::CertPair,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
         let cert_path = dir.join(format!("{suffix}-cert.pem"));
         let key_path = dir.join(format!("{suffix}-key.pem"));
         std::fs::write(&cert_path, &pair.cert_pem).unwrap();
@@ -218,8 +222,8 @@ mod tests {
     ) -> Result<tokio_rustls::client::TlsStream<TcpStream>, String> {
         let cfg = client_config(root_pem, client_pair)?;
         let connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
-        let server_name = rustls::pki_types::ServerName::try_from("localhost")
-            .map_err(|e| e.to_string())?;
+        let server_name =
+            rustls::pki_types::ServerName::try_from("localhost").map_err(|e| e.to_string())?;
         // 服务端绑定存在竞争窗口：连接被拒时重试，直到超时。
         let mut last_err = String::new();
         for _ in 0..50 {
@@ -250,8 +254,8 @@ mod tests {
         use std::os::unix::net::UnixStream;
         let (server_side, mut client_side) = UnixStream::pair().expect("unix stream pair");
         let server_task = std::thread::spawn(move || {
-            let mut server = rustls::ServerConnection::new(Arc::new(server_cfg))
-                .map_err(|e| e.to_string())?;
+            let mut server =
+                rustls::ServerConnection::new(Arc::new(server_cfg)).map_err(|e| e.to_string())?;
             loop {
                 match server.complete_io(&mut &server_side) {
                     Ok(_) if server.is_handshaking() => {}
@@ -275,7 +279,9 @@ mod tests {
                 Err(e) => break Err(format!("client: {e}")),
             }
         };
-        let server_result = server_task.join().unwrap_or_else(|_| Err("server thread panicked".into()));
+        let server_result = server_task
+            .join()
+            .unwrap_or_else(|_| Err("server thread panicked".into()));
         (server_result, client_result)
     }
 
@@ -299,7 +305,10 @@ mod tests {
         // 匿名客户端：服务端必须拒绝（TLS 1.3 下以服务端结果为准）。
         let (server_r, _client_r) =
             in_memory_handshake(server_cfg.clone(), client_cfg_without_cert(&srv.cert_pem));
-        assert!(server_r.is_err(), "anonymous client must be rejected, got {server_r:?}");
+        assert!(
+            server_r.is_err(),
+            "anonymous client must be rejected, got {server_r:?}"
+        );
 
         // 不受信任的客户端证书：服务端必须拒绝。
         let wrong = ecat_tls::generate_client_cert("wrong-client").unwrap();
@@ -307,15 +316,24 @@ mod tests {
             server_cfg.clone(),
             client_config(&srv.cert_pem, Some(&wrong)).unwrap(),
         );
-        assert!(server_r.is_err(), "untrusted client cert must be rejected, got {server_r:?}");
+        assert!(
+            server_r.is_err(),
+            "untrusted client cert must be rejected, got {server_r:?}"
+        );
 
         // 受信任的客户端证书：双方握手成功。
         let (server_r, client_r) = in_memory_handshake(
             server_cfg,
             client_config(&srv.cert_pem, Some(&client)).unwrap(),
         );
-        assert!(server_r.is_ok(), "trusted client must be accepted, got {server_r:?}");
-        assert!(client_r.is_ok(), "trusted client handshake failed: {client_r:?}");
+        assert!(
+            server_r.is_ok(),
+            "trusted client must be accepted, got {server_r:?}"
+        );
+        assert!(
+            client_r.is_ok(),
+            "trusted client handshake failed: {client_r:?}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -398,21 +416,15 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // 有效客户端必须不被僵尸阻塞：握手 + 请求在 3s 内完成并返回 200。
-        let body = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
-                let tls = tls_client(&srv.cert_pem, None, port)
-                    .await
-                    .expect("valid client tls handshake failed");
-                request_over_tls(tls).await
-            },
-        )
+        let body = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            let tls = tls_client(&srv.cert_pem, None, port)
+                .await
+                .expect("valid client tls handshake failed");
+            request_over_tls(tls).await
+        })
         .await
         .expect("valid client blocked by zombie handshake");
-        assert!(
-            body.contains("200 OK"),
-            "unexpected response: {body:?}"
-        );
+        assert!(body.contains("200 OK"), "unexpected response: {body:?}");
 
         drop(zombie);
         server.stop().await.unwrap();

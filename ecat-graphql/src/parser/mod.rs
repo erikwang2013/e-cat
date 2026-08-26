@@ -49,7 +49,8 @@ pub fn parse_query(query: &str, variables: &Value) -> Result<ParsedField, String
     ] {
         if b[i..].starts_with(kw) {
             let after = i + kw.len();
-            if after >= n || b[after].is_ascii_whitespace() || b[after] == b'(' || b[after] == b'{' {
+            if after >= n || b[after].is_ascii_whitespace() || b[after] == b'(' || b[after] == b'{'
+            {
                 operation = op;
                 i = after;
                 break;
@@ -159,7 +160,12 @@ fn parse_field(
     })
 }
 
-fn parse_selection_set(b: &[u8], i: &mut usize, depth: usize, variables: &Value) -> Result<SelectionSet, String> {
+fn parse_selection_set(
+    b: &[u8],
+    i: &mut usize,
+    depth: usize,
+    variables: &Value,
+) -> Result<SelectionSet, String> {
     if depth > MAX_DEPTH {
         return Err("selection too deep".into());
     }
@@ -182,10 +188,13 @@ fn parse_selection_set(b: &[u8], i: &mut usize, depth: usize, variables: &Value)
             b'.' => return Err("fragment spreads are not supported".into()),
             _ => {
                 let f = parse_field(b, i, depth, Operation::Query, variables)?;
-                set.insert(f.name, FieldNode {
-                    args: f.args,
-                    selection: f.selection,
-                });
+                set.insert(
+                    f.name,
+                    FieldNode {
+                        args: f.args,
+                        selection: f.selection,
+                    },
+                );
                 skip_ws(b, i);
             }
         }

@@ -232,4 +232,53 @@ mod tests {
         assert_eq!(Encoding::Protobuf, Encoding::Protobuf);
         assert_ne!(Encoding::Json, Encoding::Protobuf);
     }
+
+    // --- 边界情况 ---
+
+    #[test]
+    fn json_codec_encode_nan_as_null() {
+        // serde_json 默认将非有限浮点编码为 null（不会报错）
+        let bytes = json::JsonCodec.encode(&f64::NAN).unwrap();
+        assert_eq!(bytes, b"null");
+        let decoded: Option<f64> = json::JsonCodec.decode(&bytes).unwrap();
+        assert_eq!(decoded, None);
+    }
+
+    #[test]
+    fn json_codec_decode_empty_bytes_fails() {
+        let result: Result<TestPayload, _> = json::JsonCodec.decode(b"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn codec_box_decode_rejects_invalid_json() {
+        let codec = CodecBox::Json(json::JsonCodec);
+        assert!(codec.decode::<TestPayload>(b"{").is_err());
+    }
+
+    #[test]
+    fn proto_codec_empty_message_roundtrip() {
+        let payload = ProtoPayload {
+            name: String::new(),
+            count: 0,
+        };
+        let bytes = proto::ProtoCodec.encode_message(&payload).unwrap();
+        assert!(bytes.is_empty());
+        let decoded: ProtoPayload = proto::ProtoCodec.decode_message(&bytes).unwrap();
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn codec_error_variants_display() {
+        assert!(
+            CodecError::Encode("e".into())
+                .to_string()
+                .contains("encode")
+        );
+        assert!(
+            CodecError::Decode("d".into())
+                .to_string()
+                .contains("decode")
+        );
+    }
 }

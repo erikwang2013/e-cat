@@ -7,8 +7,8 @@ description = "S3/MinIO object storage client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }
+ecat-errors = { path = "../ecat-errors" }
 ecat-tls = { path = "../ecat-tls" }
-tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,3 +17,6 @@ hmac = "0.12"
 sha2.workspace = true
 time = { version = "0.3", features = ["formatting", "macros"] }
 quick-xml = "0.41"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

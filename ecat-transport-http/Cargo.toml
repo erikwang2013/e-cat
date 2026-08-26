@@ -9,7 +9,7 @@ description = "HTTP/Axum transport implementation for e-cat"
 ecat-transport = { path = "../ecat-transport" }
 ecat-metrics = { path = "../ecat-metrics" }
 axum.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "sync", "macros", "rt"] }
 tower.workspace = true
 async-trait.workspace = true
 tracing.workspace = true

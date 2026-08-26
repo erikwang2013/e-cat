@@ -7,7 +7,10 @@ description = "⚠️ 内存实现，仅用于开发/测试，禁止生产使用
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 async-trait.workspace = true
 serde.workspace = true
 ecat-tls = { path = "../ecat-tls" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

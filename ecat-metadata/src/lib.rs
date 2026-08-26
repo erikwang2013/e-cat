@@ -168,4 +168,26 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn trace_id_propagates_from_http_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(TRACE_ID, "t-123".parse().unwrap());
+        let m = Metadata::from(&headers);
+        assert_eq!(m.trace_id(), Some("t-123"));
+    }
+
+    #[test]
+    fn http_header_keys_are_lowercased() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("X-Trace-Id", "abc".parse().unwrap());
+        let m = Metadata::from(&headers);
+        assert_eq!(m.get("x-trace-id"), Some("abc"));
+    }
+
+    #[test]
+    fn empty_header_map_yields_empty_metadata() {
+        let m = Metadata::from(&http::HeaderMap::new());
+        assert!(m.into_iter().next().is_none());
+    }
 }

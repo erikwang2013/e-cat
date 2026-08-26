@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, RdbmsClient, RdbmsError, Row, TsdbClient, TsdbError};
+use ecat_data::{DataPoint, FieldValue, RdbmsClient, RdbmsError, Row, TsdbClient};
+use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 
@@ -21,6 +22,9 @@ fn default_database() -> String {
     "default".into()
 }
 
+/// 建表缓存 TTL：外部 drop/改表后，超过 TTL 的下一次写入会重新 CREATE。
+const CREATE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
 pub struct ClickhouseClient {
     client: reqwest::Client,
     base_url: String,
@@ -28,8 +32,9 @@ pub struct ClickhouseClient {
     username: Option<String>,
     password: Option<String>,
     // 建表缓存：每 client 一份，避免跨 client/database 误跳过建表；
-    // CREATE IF NOT EXISTS 本身幂等，这里只是省一次建表往返。
-    created: std::sync::Mutex<std::collections::HashSet<String>>,
+    // 记录建表时间，超过 create_ttl 后重新 CREATE（CREATE IF NOT EXISTS 幂等）。
+    created: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    create_ttl: std::time::Duration,
 }
 
 impl ClickhouseClient {
@@ -40,7 +45,8 @@ impl ClickhouseClient {
             database: database.into(),
             username: None,
             password: None,
-            created: std::sync::Mutex::new(std::collections::HashSet::new()),
+            created: std::sync::Mutex::new(std::collections::HashMap::new()),
+            create_ttl: CREATE_TTL,
         }
     }
 
@@ -56,7 +62,8 @@ impl ClickhouseClient {
             database: database.into(),
             username: Some(username.into()),
             password: Some(password.into()),
-            created: std::sync::Mutex::new(std::collections::HashSet::new()),
+            created: std::sync::Mutex::new(std::collections::HashMap::new()),
+            create_ttl: CREATE_TTL,
         }
     }
 
@@ -69,8 +76,46 @@ impl ClickhouseClient {
             database: cfg.database,
             username: cfg.username,
             password: cfg.password,
-            created: std::sync::Mutex::new(std::collections::HashSet::new()),
+            created: std::sync::Mutex::new(std::collections::HashMap::new()),
+            create_ttl: CREATE_TTL,
         })
+    }
+
+    /// 建表缓存缺失或已过期（需要重新 CREATE）。
+    fn table_needs_create(&self, measurement: &str) -> bool {
+        let created = self.created.lock().unwrap_or_else(|e| e.into_inner());
+        match created.get(measurement) {
+            Some(at) => at.elapsed() >= self.create_ttl,
+            None => true,
+        }
+    }
+
+    /// 执行 CREATE TABLE IF NOT EXISTS 并刷新缓存；失败不缓存，下次调用重试。
+    async fn create_table(
+        &self,
+        measurement: &str,
+        tag_keys: &[String],
+        field_cols: &[(String, &'static str)],
+    ) -> Result<(), Error> {
+        let create = build_create_table(measurement, tag_keys, field_cols);
+        let resp = self.post(&create, &[]).send().await.map_err(|e| {
+            Error::new(ErrorCode::Internal, "clickhouse", format!("ch create: {e}"))
+        })?;
+        if !resp.status().is_success() {
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "clickhouse",
+                format!(
+                    "ch create failed: {}",
+                    resp.text().await.unwrap_or_default()
+                ),
+            ));
+        }
+        self.created
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(measurement.to_string(), std::time::Instant::now());
+        Ok(())
     }
 
     fn apply_auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -247,7 +292,7 @@ impl RdbmsClient for ClickhouseClient {
 
 #[async_trait]
 impl TsdbClient for ClickhouseClient {
-    async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError> {
+    async fn write(&self, points: &[DataPoint]) -> Result<(), Error> {
         // 按 measurement 分组，保持首见顺序；分组只存引用，避免克隆整点
         let mut order: Vec<&str> = Vec::new();
         let mut groups: std::collections::HashMap<&str, Vec<&DataPoint>> =
@@ -280,35 +325,12 @@ impl TsdbClient for ClickhouseClient {
             };
             let field_keys: Vec<String> = field_cols.iter().map(|(k, _)| k.clone()).collect();
 
-            // 建表（每表只建一次，按 client 缓存；CREATE IF NOT EXISTS 幂等）。
-            // 锁在 await 前释放（MutexGuard 非 Send，不能跨 await 存活）。
+            // 建表（按 client 缓存 + TTL；CREATE IF NOT EXISTS 幂等）。
             // 列类型由首批点的字段类型决定并固定；后续批次若出现同名不同型的字段，
             // ClickHouse 不会自动 ALTER 列，写入会以服务端错误失败（调用方需保证类型一致）。
-            let create = {
-                let created = self.created.lock().unwrap_or_else(|e| e.into_inner());
-                if created.contains(measurement) {
-                    None
-                } else {
-                    Some(build_create_table(measurement, &tag_keys, &field_cols))
-                }
-            };
-            if let Some(create) = create {
-                let resp = self
-                    .post(&create, &[])
-                    .send()
-                    .await
-                    .map_err(|e| TsdbError::Other(format!("ch create: {e}")))?;
-                if !resp.status().is_success() {
-                    return Err(TsdbError::Other(format!(
-                        "ch create failed: {}",
-                        resp.text().await.unwrap_or_default()
-                    )));
-                }
-                // 建表成功后才写缓存；失败不缓存，下次调用重试
-                self.created
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(measurement.to_string());
+            if self.table_needs_create(measurement) {
+                self.create_table(measurement, &tag_keys, &field_cols)
+                    .await?;
             }
 
             let body = build_insert_body(pts, &tag_keys, &field_keys);
@@ -325,62 +347,90 @@ impl TsdbClient for ClickhouseClient {
                 cols.join(", "),
                 body
             );
-            let resp = self
-                .post(&insert, &[])
-                .send()
-                .await
-                .map_err(|e| TsdbError::Other(format!("ch write: {e}")))?;
+            let resp = self.post(&insert, &[]).send().await.map_err(|e| {
+                Error::new(ErrorCode::Internal, "clickhouse", format!("ch write: {e}"))
+            })?;
             if !resp.status().is_success() {
-                return Err(TsdbError::Other(format!(
-                    "ch write failed: {}",
-                    resp.text().await.unwrap_or_default()
-                )));
+                let text = resp.text().await.unwrap_or_default();
+                // 表被外部 drop/改表：清缓存重新建表后重试一次
+                if text.contains("doesn't exist") || text.contains("Unknown table") {
+                    self.created
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(measurement);
+                    self.create_table(measurement, &tag_keys, &field_cols)
+                        .await?;
+                    let resp = self.post(&insert, &[]).send().await.map_err(|e| {
+                        Error::new(ErrorCode::Internal, "clickhouse", format!("ch write: {e}"))
+                    })?;
+                    if !resp.status().is_success() {
+                        return Err(Error::new(
+                            ErrorCode::Internal,
+                            "clickhouse",
+                            format!("ch write failed: {}", resp.text().await.unwrap_or_default()),
+                        ));
+                    }
+                } else {
+                    return Err(Error::new(
+                        ErrorCode::Internal,
+                        "clickhouse",
+                        format!("ch write failed: {text}"),
+                    ));
+                }
             }
         }
         Ok(())
     }
 
-    async fn query(&self, query: &str) -> Result<serde_json::Value, TsdbError> {
+    async fn query(&self, query: &str) -> Result<serde_json::Value, Error> {
         let resp = self
             .post(query, &[("default_format", "JSONEachRow".to_string())])
             .send()
             .await
-            .map_err(|e| TsdbError::Other(format!("ch query: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "clickhouse", format!("ch query: {e}")))?;
         if !resp.status().is_success() {
-            return Err(TsdbError::Other(format!(
-                "ch query failed: {}",
-                resp.text().await.unwrap_or_default()
-            )));
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "clickhouse",
+                format!("ch query failed: {}", resp.text().await.unwrap_or_default()),
+            ));
         }
         let text = resp
             .text()
             .await
-            .map_err(|e| TsdbError::Other(format!("ch read: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "clickhouse", format!("ch read: {e}")))?;
         let mut rows = Vec::new();
         for line in text.lines() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            let v: serde_json::Value = serde_json::from_str(line)
-                .map_err(|e| TsdbError::Other(format!("ch query parse: {e}")))?;
+            let v: serde_json::Value = serde_json::from_str(line).map_err(|e| {
+                Error::new(
+                    ErrorCode::Internal,
+                    "clickhouse",
+                    format!("ch query parse: {e}"),
+                )
+            })?;
             rows.push(v);
         }
         Ok(serde_json::json!(rows))
     }
 
-    async fn delete(&self, query: &str) -> Result<(), TsdbError> {
+    async fn delete(&self, query: &str) -> Result<(), Error> {
         // ClickHouse 轻量删除语法：ALTER TABLE <t> DELETE WHERE ...
-        let resp = self
-            .post(query, &[])
-            .send()
-            .await
-            .map_err(|e| TsdbError::Other(format!("ch delete: {e}")))?;
+        let resp = self.post(query, &[]).send().await.map_err(|e| {
+            Error::new(ErrorCode::Internal, "clickhouse", format!("ch delete: {e}"))
+        })?;
         if !resp.status().is_success() {
-            return Err(TsdbError::Other(format!(
-                "ch delete failed: {}",
-                resp.text().await.unwrap_or_default()
-            )));
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "clickhouse",
+                format!(
+                    "ch delete failed: {}",
+                    resp.text().await.unwrap_or_default()
+                ),
+            ));
         }
         Ok(())
     }

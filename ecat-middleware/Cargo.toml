@@ -8,7 +8,8 @@ description = "Tower middleware (rate limiting, timeout) for e-cat"
 [dependencies]
 tower = { workspace = true, features = ["retry"] }
 tracing.workspace = true
-tokio.workspace = true
+ecat-tracing = { path = "../ecat-tracing" }
+tokio = { workspace = true, features = ["sync", "rt", "time"] }
 async-trait.workspace = true
 http.workspace = true
 axum.workspace = true
@@ -19,3 +20,6 @@ redis = { version = "0.27", optional = true, features = ["tokio-comp", "aio"] }
 [features]
 cors = ["dep:tower-http"]
 redis = ["dep:redis"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

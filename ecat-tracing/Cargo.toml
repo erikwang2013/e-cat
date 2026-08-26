@@ -14,4 +14,4 @@ uuid = { version = "1", features = ["v4"] }
 ecat-metadata = { path = "../ecat-metadata" }
 
 [dev-dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

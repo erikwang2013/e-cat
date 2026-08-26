@@ -36,6 +36,9 @@ ecat-circuit-breaker = { workspace = true, optional = true }
 ecat-registry-consul = { workspace = true, optional = true }
 ecat-config-remote = { workspace = true, optional = true }
 ecat-data-redis = { workspace = true, optional = true }
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true
 async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

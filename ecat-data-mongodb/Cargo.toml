@@ -7,10 +7,13 @@ description = "MongoDB document database client for e-cat"
 
 [dependencies]
 ecat-data = { path = "../ecat-data" }
+ecat-errors.workspace = true
 ecat-tls = { path = "../ecat-tls" }
-tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 mongodb = "3"
 futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

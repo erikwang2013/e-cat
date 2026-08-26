@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::routing::get;
-use ecat_transport::{normalize_addr, Server as TransportServer};
+use ecat_transport::{Server as TransportServer, normalize_addr};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
@@ -20,6 +20,7 @@ pub struct WsServer {
     addr: String,
     path: String,
     handler: Option<WsHandler>,
+    max_message_size: Option<usize>,
     shutdown_tx: std::sync::Mutex<Option<tokio::sync::watch::Sender<()>>>,
     serve_task: std::sync::Mutex<Option<tokio::task::JoinHandle<std::io::Result<()>>>>,
     close_tx: std::sync::Mutex<Option<tokio::sync::watch::Sender<()>>>,
@@ -34,6 +35,7 @@ impl WsServer {
             addr: normalize_addr(addr.into()),
             path: "/ws".into(),
             handler: None,
+            max_message_size: None,
             shutdown_tx: std::sync::Mutex::new(None),
             serve_task: std::sync::Mutex::new(None),
             close_tx: std::sync::Mutex::new(None),
@@ -50,6 +52,13 @@ impl WsServer {
         self.handler = Some(handler);
         self
     }
+
+    /// 单条消息大小上限（字节），缺省用底层默认（tungstenite 上限
+    /// 64 MiB）。超限消息被拒绝并断开连接。
+    pub fn max_message_size(mut self, max: usize) -> Self {
+        self.max_message_size = Some(max);
+        self
+    }
 }
 
 #[async_trait]
@@ -57,6 +66,7 @@ impl TransportServer for WsServer {
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let handler = self.handler.clone().ok_or("ws handler not set")?;
         let path = self.path.clone();
+        let max_message_size = self.max_message_size;
 
         // 已升级连接统一进 JoinSet：stop() 能等待全部连接结束。
         // 关闭信号经 watch 广播给每个连接任务。
@@ -70,6 +80,11 @@ impl TransportServer for WsServer {
             get(move |ws: WebSocketUpgrade| {
                 let conns = Arc::clone(&conns);
                 let close_rx = close_rx.clone();
+                let ws = if let Some(max) = max_message_size {
+                    ws.max_message_size(max)
+                } else {
+                    ws
+                };
                 async move {
                     ws.on_upgrade(move |socket| async move {
                         conns.lock().await.spawn(ws_loop(socket, handler, close_rx));
@@ -124,11 +139,7 @@ impl TransportServer for WsServer {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)??;
         }
         // 3) 等待已升级连接全部结束；超时强制 abort（防挂死）。
-        let conns = self
-            .conns
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take();
+        let conns = self.conns.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(conns) = conns {
             let mut set = conns.lock().await;
             let deadline = tokio::time::Instant::now() + CONNECTION_DRAIN_TIMEOUT;
@@ -235,20 +246,20 @@ mod tests {
         let mut buf = [0u8; 1];
         let r = tokio::time::timeout(std::time::Duration::from_millis(200), stream.read(&mut buf))
             .await;
-        assert!(r.is_err(), "connection must stay open before stop, got {r:?}");
+        assert!(
+            r.is_err(),
+            "connection must stay open before stop, got {r:?}"
+        );
 
         // stop() 必须及时返回（远小于 5s 的 drain 超时上限）。
-        tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            srv.stop(),
-        )
-        .await
-        .expect("stop() must not hang")
-        .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), srv.stop())
+            .await
+            .expect("stop() must not hang")
+            .unwrap();
 
         // 关闭信号到达后 handler 被放弃，连接随之关闭：对端读 EOF。
-        let r = tokio::time::timeout(std::time::Duration::from_secs(2), stream.read(&mut buf))
-            .await;
+        let r =
+            tokio::time::timeout(std::time::Duration::from_secs(2), stream.read(&mut buf)).await;
         assert!(
             matches!(r, Ok(Ok(0)) | Ok(Err(_))),
             "connection must be closed after stop, got {r:?}"
@@ -263,10 +274,72 @@ mod tests {
         assert_eq!(srv.path, "/chat");
     }
 
+    #[test]
+    fn max_message_size_knob_is_optional_and_configurable() {
+        assert_eq!(WsServer::new("0.0.0.0:3000").max_message_size, None);
+        let srv = WsServer::new("0.0.0.0:3000").max_message_size(1024);
+        assert_eq!(srv.max_message_size, Some(1024));
+    }
+
     /// N3：空 host 地址（":3000"）必须规范化为 IPv4 通配，与 HttpServer 一致。
     #[test]
     fn new_normalizes_empty_host_addr() {
         let srv = WsServer::new(":3000");
         assert_eq!(srv.addr, "0.0.0.0:3000");
+    }
+
+    #[tokio::test]
+    async fn start_without_handler_fails() {
+        let port = free_port();
+        let srv = WsServer::new(format!("127.0.0.1:{port}"));
+        assert!(srv.start().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn start_fails_on_occupied_port() {
+        let hold = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = hold.local_addr().unwrap().port();
+        let srv = WsServer::new(format!("127.0.0.1:{port}")).handler(echo_handler());
+        assert!(srv.start().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn stop_before_start_is_noop() {
+        let srv = WsServer::new("127.0.0.1:0");
+        srv.stop().await.unwrap();
+    }
+
+    /// 端到端 echo：手写掩码文本帧（客户端→服务端必须带掩码），
+    /// 服务端回帧不带掩码（RFC 6455 服务端不发掩码）。
+    #[tokio::test]
+    async fn echo_roundtrip_text_message() {
+        let port = free_port();
+        let srv = WsServer::new(format!("127.0.0.1:{port}")).handler(echo_handler());
+        srv.start().await.unwrap();
+        let mut stream = ws_upgrade(port).await;
+
+        let payload = b"hey";
+        let mask = [0x11u8, 0x22, 0x33, 0x44];
+        let mut frame = Vec::new();
+        frame.push(0x81); // FIN + text
+        frame.push(0x80 | payload.len() as u8); // masked, len=3
+        frame.extend_from_slice(&mask);
+        for (i, b) in payload.iter().enumerate() {
+            frame.push(b ^ mask[i % 4]);
+        }
+        stream.write_all(&frame).await.unwrap();
+
+        let mut buf = [0u8; 5];
+        let n = tokio::time::timeout(std::time::Duration::from_secs(2), stream.read(&mut buf))
+            .await
+            .expect("echo frame timed out")
+            .unwrap();
+        assert_eq!(
+            &buf[..n],
+            &[0x81, 0x03, b'h', b'e', b'y'],
+            "echo frame mismatch: {buf:?}"
+        );
+        drop(stream);
+        srv.stop().await.unwrap();
     }
 }

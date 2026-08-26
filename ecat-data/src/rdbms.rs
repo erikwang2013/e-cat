@@ -174,7 +174,9 @@ mod tests {
     #[tokio::test]
     async fn commit_delegates_to_inner() {
         let track = Tracked::default();
-        let tx = Transaction::with_inner(Box::new(TrackingInner { track: track.clone() }));
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: track.clone(),
+        }));
         tx.commit().await.unwrap();
         assert_eq!(track.commits.load(Ordering::SeqCst), 1);
         assert_eq!(track.rollbacks.load(Ordering::SeqCst), 0);
@@ -183,7 +185,9 @@ mod tests {
     #[tokio::test]
     async fn rollback_delegates_to_inner() {
         let track = Tracked::default();
-        let tx = Transaction::with_inner(Box::new(TrackingInner { track: track.clone() }));
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: track.clone(),
+        }));
         tx.rollback().await.unwrap();
         assert_eq!(track.rollbacks.load(Ordering::SeqCst), 1);
         assert_eq!(track.commits.load(Ordering::SeqCst), 0);
@@ -193,6 +197,69 @@ mod tests {
     async fn commit_without_inner_succeeds() {
         let tx = Transaction::new();
         tx.commit().await.unwrap();
+    }
+
+    /// 只统计 WARN 事件的最小 Subscriber，用于验证 Drop guard 的告警行为。
+    #[derive(Clone)]
+    struct WarnCounter(Arc<AtomicUsize>);
+
+    impl tracing::Subscriber for WarnCounter {
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+        fn event(&self, event: &tracing::Event<'_>) {
+            if *event.metadata().level() == tracing::Level::WARN {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        fn enter(&self, _: &tracing::span::Id) {}
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    fn with_warn_counter(counts: Arc<AtomicUsize>, f: impl FnOnce()) {
+        tracing::subscriber::with_default(WarnCounter(counts), f);
+    }
+
+    #[test]
+    fn drop_after_explicit_rollback_does_not_warn() {
+        let warns = Arc::new(AtomicUsize::new(0));
+        let track = Tracked::default();
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: track.clone(),
+        }));
+        with_warn_counter(Arc::clone(&warns), || {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(tx.rollback())
+                .unwrap();
+        });
+        assert_eq!(track.rollbacks.load(Ordering::SeqCst), 1);
+        assert_eq!(track.commits.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            warns.load(Ordering::SeqCst),
+            0,
+            "rollback 后 Drop 不得再告警"
+        );
+    }
+
+    #[test]
+    fn drop_without_commit_warns_once() {
+        let warns = Arc::new(AtomicUsize::new(0));
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: Tracked::default(),
+        }));
+        with_warn_counter(Arc::clone(&warns), || drop(tx));
+        assert_eq!(
+            warns.load(Ordering::SeqCst),
+            1,
+            "未提交即 Drop 必须告警一次"
+        );
     }
 
     struct RawOnlyClient;
@@ -215,12 +282,14 @@ mod tests {
         let client = RawOnlyClient;
         let err = client.execute_with("SELECT 1", &[]).await.unwrap_err();
         assert!(
-            err.to_string().contains("parameterized execute not supported"),
+            err.to_string()
+                .contains("parameterized execute not supported"),
             "got: {err}"
         );
         let err = client.query_with("SELECT 1", &[]).await.unwrap_err();
         assert!(
-            err.to_string().contains("parameterized query not supported"),
+            err.to_string()
+                .contains("parameterized query not supported"),
             "got: {err}"
         );
     }

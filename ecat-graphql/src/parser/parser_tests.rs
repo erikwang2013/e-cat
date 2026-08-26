@@ -6,16 +6,46 @@ fn parses_simple_field() {
     assert_eq!(f.name, "hello");
     assert!(f.args.is_empty());
     assert!(f.selection.is_none());
-    assert_eq!(parse_query("query { hello }", &serde_json::Value::Null).unwrap().name, "hello");
-    assert_eq!(parse_query("mutation { x }", &serde_json::Value::Null).unwrap().name, "x");
+    assert_eq!(
+        parse_query("query { hello }", &serde_json::Value::Null)
+            .unwrap()
+            .name,
+        "hello"
+    );
+    assert_eq!(
+        parse_query("mutation { x }", &serde_json::Value::Null)
+            .unwrap()
+            .name,
+        "x"
+    );
 }
 
 #[test]
 fn operation_keyword_is_parsed() {
-    assert_eq!(parse_query("{ hello }", &serde_json::Value::Null).unwrap().operation, Operation::Query);
-    assert_eq!(parse_query("query Hello { hello }", &serde_json::Value::Null).unwrap().operation, Operation::Query);
-    assert_eq!(parse_query("mutation { x }", &serde_json::Value::Null).unwrap().operation, Operation::Mutation);
-    assert_eq!(parse_query("subscription { s }", &serde_json::Value::Null).unwrap().operation, Operation::Subscription);
+    assert_eq!(
+        parse_query("{ hello }", &serde_json::Value::Null)
+            .unwrap()
+            .operation,
+        Operation::Query
+    );
+    assert_eq!(
+        parse_query("query Hello { hello }", &serde_json::Value::Null)
+            .unwrap()
+            .operation,
+        Operation::Query
+    );
+    assert_eq!(
+        parse_query("mutation { x }", &serde_json::Value::Null)
+            .unwrap()
+            .operation,
+        Operation::Mutation
+    );
+    assert_eq!(
+        parse_query("subscription { s }", &serde_json::Value::Null)
+            .unwrap()
+            .operation,
+        Operation::Subscription
+    );
     // 嵌套字段不携带 operation（转 FieldNode 时丢弃），无歧义
     let f = parse_query("mutation { write { ok } }", &serde_json::Value::Null).unwrap();
     assert_eq!(f.operation, Operation::Mutation);
@@ -41,7 +71,11 @@ fn parses_all_literal_arg_types() {
 
 #[test]
 fn parses_args_with_braces_and_escapes_in_strings() {
-    let f = parse_query(r#"{ f(a: "} ) {", b: "(\"x\")") }"#, &serde_json::Value::Null).unwrap();
+    let f = parse_query(
+        r#"{ f(a: "} ) {", b: "(\"x\")") }"#,
+        &serde_json::Value::Null,
+    )
+    .unwrap();
     assert_eq!(f.args["a"], "} ) {");
     assert_eq!(f.args["b"], "(\"x\")");
 }
@@ -57,13 +91,7 @@ fn resolves_variables() {
     let vars = serde_json::json!({"id": 42, "name": "erik"});
     parse_query("{ user(id: $id) { name } }", &vars).unwrap();
     let mut i = 0;
-    let v = parse_value(
-        r#"{id: $id}"#.as_bytes(),
-        &mut i,
-        &vars,
-        0,
-    )
-    .unwrap();
+    let v = parse_value(r#"{id: $id}"#.as_bytes(), &mut i, &vars, 0).unwrap();
     assert_eq!(v["id"], 42);
 }
 
@@ -71,12 +99,19 @@ fn resolves_variables() {
 fn variable_missing_is_error() {
     let mut i = 0;
     let err = parse_value(b"$nope", &mut i, &serde_json::Value::Null, 0).unwrap_err();
-    assert!(err.contains("variable 'nope' is not provided"), "got: {err}");
+    assert!(
+        err.contains("variable 'nope' is not provided"),
+        "got: {err}"
+    );
 }
 
 #[test]
 fn parses_nested_selection_tree_with_args() {
-    let f = parse_query("{ user { posts(limit: 5) { title } } }", &serde_json::Value::Null).unwrap();
+    let f = parse_query(
+        "{ user { posts(limit: 5) { title } } }",
+        &serde_json::Value::Null,
+    )
+    .unwrap();
     // selection 是顶层字段的嵌套子节点集合（非顶层字段自身）
     assert_eq!(f.name, "user");
     let posts = f.selection.as_ref().unwrap().get("posts").unwrap();
@@ -88,7 +123,11 @@ fn parses_nested_selection_tree_with_args() {
 
 #[test]
 fn nested_args_in_selection() {
-    let f = parse_query("{ user(id: 1) { posts(limit: 5) { title } } }", &serde_json::Value::Null).unwrap();
+    let f = parse_query(
+        "{ user(id: 1) { posts(limit: 5) { title } } }",
+        &serde_json::Value::Null,
+    )
+    .unwrap();
     assert_eq!(f.args["id"], 1);
     assert_eq!(f.selection.as_ref().unwrap()["posts"].args["limit"], 5);
 }
@@ -140,4 +179,3 @@ fn operation_variable_definitions_with_defaults_are_skipped() {
     let f = parse_query("query ($v: Int = 3) { hello }", &serde_json::Value::Null).unwrap();
     assert_eq!(f.name, "hello");
 }
-

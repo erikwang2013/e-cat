@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, TsdbClient, TsdbError};
+use ecat_data::{DataPoint, FieldValue, TsdbClient};
+use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 
@@ -34,9 +35,9 @@ impl IotdbClient {
         }
     }
 
-    pub fn from_config(cfg: IotdbConfig) -> Result<Self, TsdbError> {
+    pub fn from_config(cfg: IotdbConfig) -> Result<Self, Error> {
         let client = ecat_tls::build_reqwest_client(&cfg.tls)
-            .map_err(|e| TsdbError::Other(format!("TLS: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("TLS: {e}")))?;
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -48,7 +49,7 @@ impl IotdbClient {
 
 #[async_trait]
 impl TsdbClient for IotdbClient {
-    async fn write(&self, points: &[DataPoint]) -> Result<(), TsdbError> {
+    async fn write(&self, points: &[DataPoint]) -> Result<(), Error> {
         for p in points {
             // Apache IoTDB REST v2 insertTablet body:
             // {"device": "...", "is_aligned": false, "timestamps": [...],
@@ -89,9 +90,15 @@ impl TsdbClient for IotdbClient {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| TsdbError::Other(format!("iotdb write: {e}")))?;
+                .map_err(|e| {
+                    Error::new(ErrorCode::Internal, "iotdb", format!("iotdb write: {e}"))
+                })?;
             if !resp.status().is_success() {
-                return Err(TsdbError::Other(resp.text().await.unwrap_or_default()));
+                return Err(Error::new(
+                    ErrorCode::Internal,
+                    "iotdb",
+                    resp.text().await.unwrap_or_default(),
+                ));
             }
             // IoTDB REST v2 may return HTTP 200 with a body `code` != 200 on
             // some failures; surface those too.
@@ -99,18 +106,22 @@ impl TsdbClient for IotdbClient {
                 && let Some(code) = v.get("code").and_then(|c| c.as_i64())
                 && code != 200
             {
-                return Err(TsdbError::Other(format!(
-                    "iotdb write failed: code {code}: {}",
-                    v.get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("no message")
-                )));
+                return Err(Error::new(
+                    ErrorCode::Internal,
+                    "iotdb",
+                    format!(
+                        "iotdb write failed: code {code}: {}",
+                        v.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("no message")
+                    ),
+                ));
             }
         }
         Ok(())
     }
 
-    async fn query(&self, sql: &str) -> Result<serde_json::Value, TsdbError> {
+    async fn query(&self, sql: &str) -> Result<serde_json::Value, Error> {
         let resp = self
             .client
             .post(format!("{}/rest/v2/query", self.base_url))
@@ -119,13 +130,17 @@ impl TsdbClient for IotdbClient {
             .body(sql.to_string())
             .send()
             .await
-            .map_err(|e| TsdbError::Other(format!("iotdb query: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("iotdb query: {e}")))?;
         if !resp.status().is_success() {
-            return Err(TsdbError::Other(resp.text().await.unwrap_or_default()));
+            return Err(Error::new(
+                ErrorCode::Internal,
+                "iotdb",
+                resp.text().await.unwrap_or_default(),
+            ));
         }
         resp.json()
             .await
-            .map_err(|e| TsdbError::Other(format!("iotdb parse: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("iotdb parse: {e}")))
     }
 }
 
@@ -173,10 +188,7 @@ mod tests {
             .route("/rest/v2/insertTablet", axum::routing::post(handle_insert))
             .with_state(config);
 
-        async fn handle_insert(
-            State(config): State<Arc<MockConfig>>,
-            req: Request,
-        ) -> Response {
+        async fn handle_insert(State(config): State<Arc<MockConfig>>, req: Request) -> Response {
             let path = req.uri().path().to_string();
             let (parts, req_body) = req.into_parts();
             let headers = parts
@@ -196,7 +208,11 @@ mod tests {
                 .captured
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(CapturedRequest { path, headers, body: req_body.to_vec() });
+                .push(CapturedRequest {
+                    path,
+                    headers,
+                    body: req_body.to_vec(),
+                });
             if config.body.is_empty() {
                 axum::Json(serde_json::json!({"code": 200})).into_response()
             } else {
@@ -241,10 +257,7 @@ mod tests {
             Some(expected_type),
             "type for {field}"
         );
-        assert_eq!(
-            body["values"][0][idx], expected_value,
-            "value for {field}"
-        );
+        assert_eq!(body["values"][0][idx], expected_value, "value for {field}");
     }
 
     #[tokio::test]
@@ -266,15 +279,15 @@ mod tests {
         assert_eq!(reqs[0].path, "/rest/v2/insertTablet");
         assert_eq!(reqs[0].header("content-type"), Some("application/json"));
         // reqwest basic_auth("root", "root") → base64("root:root")
-        assert_eq!(
-            reqs[0].header("authorization"),
-            Some("Basic cm9vdDpyb290")
-        );
+        assert_eq!(reqs[0].header("authorization"), Some("Basic cm9vdDpyb290"));
 
         let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
         assert_eq!(body["device"], "cpu");
         assert_eq!(body["is_aligned"], false);
-        assert_eq!(body["timestamps"], serde_json::json!([1_700_000_000_000_i64]));
+        assert_eq!(
+            body["timestamps"],
+            serde_json::json!([1_700_000_000_000_i64])
+        );
         // values 为 [时间戳] × [字段] 的二维数组，单点单时间戳
         assert_eq!(body["values"].as_array().unwrap().len(), 1);
         // 字段类型编码与取值逐一对齐（HashMap 顺序不定，按名断言）
@@ -351,5 +364,64 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("table not exists"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn write_converts_non_finite_float_to_zero() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let base_url = spawn_mock_insert(captured.clone(), 200, "").await;
+        let client = IotdbClient::new(base_url, "root", "root");
+        client
+            .write(&[DataPoint::new("cpu").with_field("x", FieldValue::Float(f64::NAN))])
+            .await
+            .unwrap();
+        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
+        let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
+        assert_field(&body, "x", "DOUBLE", serde_json::json!(0));
+    }
+
+    /// mock IoTDB /rest/v2/query 端点：按给定状态码与响应体应答。
+    async fn spawn_mock_query(status: u16, body: &'static str) -> String {
+        let app = axum::Router::new().route(
+            "/rest/v2/query",
+            axum::routing::post(move || async move {
+                (
+                    axum::http::StatusCode::from_u16(status).unwrap(),
+                    axum::response::Response::new(axum::body::Body::from(body)),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn query_parses_successful_json_response() {
+        let body = r#"{"code":200,"expression":[{"alias":"x"}],"timestamp":[],"values":[]}"#;
+        let base_url = spawn_mock_query(200, body).await;
+        let client = IotdbClient::new(base_url, "root", "root");
+        let v = client.query("select x from root.s").await.unwrap();
+        assert_eq!(v["code"], 200);
+        assert_eq!(v["expression"][0]["alias"], "x");
+    }
+
+    #[tokio::test]
+    async fn query_returns_err_on_http_error() {
+        let base_url = spawn_mock_query(500, "query failed").await;
+        let client = IotdbClient::new(base_url, "root", "root");
+        let err = client.query("select 1").await.unwrap_err();
+        assert!(err.to_string().contains("query failed"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn query_non_json_body_returns_parse_error() {
+        let base_url = spawn_mock_query(200, "not json").await;
+        let client = IotdbClient::new(base_url, "root", "root");
+        let err = client.query("select 1").await.unwrap_err();
+        assert!(err.to_string().contains("iotdb parse"), "got: {err}");
     }
 }

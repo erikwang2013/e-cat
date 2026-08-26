@@ -6,7 +6,7 @@ license.workspace = true
 description = "Benchmarking utilities for e-cat services"
 
 [dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 
 [dev-dependencies]
 axum.workspace = true

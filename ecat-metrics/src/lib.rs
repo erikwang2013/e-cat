@@ -100,4 +100,49 @@ mod tests {
             "got content-type: {ct}"
         );
     }
+
+    #[test]
+    fn metrics_text_includes_registered_metrics() {
+        let reg = Registry::new();
+        let counter =
+            prometheus::Counter::with_opts(prometheus::Opts::new("ecat_test_total", "test"))
+                .unwrap();
+        reg.register(Box::new(counter.clone())).unwrap();
+        counter.inc();
+        let text = metrics_text_for(&reg);
+        assert!(text.contains("ecat_test_total 1"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn metrics_router_404_on_other_paths() {
+        use tower::ServiceExt;
+        let router = metrics_router();
+        let resp = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/other")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn metrics_router_rejects_post() {
+        use tower::ServiceExt;
+        let router = metrics_router();
+        let resp = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::METHOD_NOT_ALLOWED);
+    }
 }

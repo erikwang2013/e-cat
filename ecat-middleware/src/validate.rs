@@ -152,7 +152,10 @@ where
                 let status = e.status;
                 let message = e.message;
                 Box::pin(async move {
-                    Ok((status, axum::Json(serde_json::json!({ "error": message }))).into_response())
+                    Ok(
+                        (status, axum::Json(serde_json::json!({ "error": message })))
+                            .into_response(),
+                    )
                 })
             }
         }
@@ -169,8 +172,8 @@ mod tests {
     #[tokio::test]
     async fn passes_through_valid_requests() {
         let calls = Arc::new(AtomicU32::new(0));
-        let svc = ValidateLayer::from_fn(|_req: &http::Request<()>| Ok(())).layer(
-            tower::service_fn({
+        let svc =
+            ValidateLayer::from_fn(|_req: &http::Request<()>| Ok(())).layer(tower::service_fn({
                 let calls = Arc::clone(&calls);
                 move |_req: http::Request<()>| {
                     let calls = Arc::clone(&calls);
@@ -181,8 +184,7 @@ mod tests {
                         ))
                     }
                 }
-            }),
-        );
+            }));
         let resp = svc
             .oneshot(http::Request::builder().body(()).unwrap())
             .await
@@ -258,12 +260,7 @@ mod tests {
             ))
         }));
         let resp = svc
-            .oneshot(
-                http::Request::builder()
-                    .uri("/admin")
-                    .body(())
-                    .unwrap(),
-            )
+            .oneshot(http::Request::builder().uri("/admin").body(()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), http::StatusCode::BAD_REQUEST);

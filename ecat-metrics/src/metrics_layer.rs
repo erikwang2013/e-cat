@@ -76,7 +76,9 @@ impl MetricsLayer {
     where
         F: Fn(&axum::http::Uri) -> String + Send + Sync + 'static,
     {
-        Self { path_fn: Arc::new(f) }
+        Self {
+            path_fn: Arc::new(f),
+        }
     }
 }
 
@@ -174,8 +176,7 @@ mod tests {
             .get_metric_with_label_values(&["GET", "/hello", "200"])
             .expect("counter recorded");
         assert!(counter.get() >= 1.0);
-        let hist = request_duration()
-            .get_metric_with_label_values(&["GET", "/hello", "200"]);
+        let hist = request_duration().get_metric_with_label_values(&["GET", "/hello", "200"]);
         assert!(hist.is_ok(), "duration histogram recorded");
     }
 
@@ -233,7 +234,11 @@ mod tests {
         let redacted = requests_total()
             .get_metric_with_label_values(&["GET", "/users/:id", "200"])
             .expect("redacted path counter recorded");
-        assert_eq!(redacted.get(), 2.0, "both requests share the redacted label");
+        assert_eq!(
+            redacted.get(),
+            2.0,
+            "both requests share the redacted label"
+        );
         // get_metric_with_label_values 是 get-or-create 语义（查询即创建空指标），
         // 无法用 NotFound 断言；改查 gathered 文本确认原始路径从未作为标签出现。
         let text = crate::metrics_text();

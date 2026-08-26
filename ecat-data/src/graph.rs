@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
+use ecat_errors::Error;
 
 #[async_trait]
 pub trait GraphClient: Send + Sync {
@@ -7,11 +8,5 @@ pub trait GraphClient: Send + Sync {
         &self,
         query: &str,
         params: &serde_json::Value,
-    ) -> Result<serde_json::Value, GraphError>;
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum GraphError {
-    #[error("graph error: {0}")]
-    Other(String),
+    ) -> Result<serde_json::Value, Error>;
 }

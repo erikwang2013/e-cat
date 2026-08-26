@@ -1,10 +1,23 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use serde::Deserialize;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// 数据库连接默认超时：连接 5s、整体请求 30s，防止后端挂起时请求永久悬挂
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// 安装默认 rustls CryptoProvider（ring）。
+/// reqwest 以 rustls-tls-no-provider 编译时不会自带 provider，未安装的进程在
+/// 构造 TLS 客户端时会 panic；与 ecat-transport-* 的安装保持一致（首装生效）。
+fn ensure_crypto_provider() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let _ = rustls::crypto::CryptoProvider::install_default(
+            rustls::crypto::ring::default_provider(),
+        );
+    });
+}
 
 /// TLS client configuration for database connections.
 /// All fields optional — omit to skip TLS entirely.
@@ -32,6 +45,7 @@ impl TlsClientConfig {
     }
 
     pub fn build_reqwest_client(&self) -> Result<reqwest::Client, String> {
+        ensure_crypto_provider();
         // S5：skip_verify 与 ca_cert 是矛盾配置（跳过校验却配置信任锚），
         // 构建时拒绝，防止误配静默关闭证书校验。
         if self.skip_verify == Some(true) && self.ca_cert.is_some() {
@@ -76,6 +90,7 @@ impl TlsClientConfig {
 /// Build a `reqwest::Client` with optional TLS configuration.
 /// Returns a default client when `tls` is `None` or not enabled.
 pub fn build_reqwest_client(tls: &Option<TlsClientConfig>) -> Result<reqwest::Client, String> {
+    ensure_crypto_provider();
     match tls {
         Some(cfg) if cfg.is_enabled() => cfg.build_reqwest_client(),
         _ => reqwest::Client::builder()
@@ -219,14 +234,83 @@ mod tests {
     /// 构建客户端必须报错，防止误配静默关闭证书校验。
     #[test]
     fn skip_verify_conflicts_with_ca_cert() {
-        let cfg: TlsClientConfig = serde_json::from_str(
-            r#"{"skip_verify": true, "ca_cert": "/nonexistent/ca.pem"}"#,
-        )
-        .unwrap();
+        let cfg: TlsClientConfig =
+            serde_json::from_str(r#"{"skip_verify": true, "ca_cert": "/nonexistent/ca.pem"}"#)
+                .unwrap();
         let err = cfg.build_reqwest_client().unwrap_err();
         assert!(
             err.contains("skip_verify"),
             "expected skip_verify conflict error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_ca_file_reports_read_error() {
+        let cfg: TlsClientConfig =
+            serde_json::from_str(r#"{"ca_cert": "/nonexistent/ecat-ca.pem"}"#).unwrap();
+        let err = cfg.build_reqwest_client().unwrap_err();
+        assert!(err.contains("read ca"), "got: {err}");
+    }
+
+    #[test]
+    fn each_field_alone_enables_tls() {
+        let ca: TlsClientConfig = serde_json::from_str(r#"{"ca_cert": "/ca.pem"}"#).unwrap();
+        let cert: TlsClientConfig = serde_json::from_str(r#"{"client_cert": "/c.pem"}"#).unwrap();
+        let key: TlsClientConfig = serde_json::from_str(r#"{"client_key": "/k.pem"}"#).unwrap();
+        assert!(ca.is_enabled());
+        assert!(cert.is_enabled());
+        assert!(key.is_enabled());
+    }
+
+    #[test]
+    fn build_default_client_without_tls() {
+        let _client = build_reqwest_client(&None).unwrap();
+        let cfg: TlsClientConfig = serde_json::from_str(r#"{}"#).unwrap();
+        let _client = build_reqwest_client(&Some(cfg)).unwrap();
+    }
+
+    #[test]
+    fn apply_basic_auth_sets_header_when_both_present() {
+        let req = reqwest::Client::new().get("http://example.com");
+        let req = apply_basic_auth(req, &Some("user".into()), &Some("pass".into()));
+        let auth = req
+            .build()
+            .unwrap()
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(auth.starts_with("Basic "), "got: {auth}");
+    }
+
+    #[test]
+    fn apply_basic_auth_skips_when_partial() {
+        let client = reqwest::Client::new();
+        let req = apply_basic_auth(
+            client.get("http://example.com"),
+            &Some("user".into()),
+            &None,
+        );
+        assert!(
+            req.build()
+                .unwrap()
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .is_none()
+        );
+        let req = apply_basic_auth(
+            client.get("http://example.com"),
+            &None,
+            &Some("pass".into()),
+        );
+        assert!(
+            req.build()
+                .unwrap()
+                .headers()
+                .get(reqwest::header::AUTHORIZATION)
+                .is_none()
         );
     }
 }

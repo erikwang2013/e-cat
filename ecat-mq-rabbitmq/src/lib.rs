@@ -12,6 +12,8 @@ use std::task::{Context, Poll};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RabbitmqConfig {
+    /// `amqp://` 或 `amqps://`。amqps 由 lapin 默认特性（rustls）原生支持，
+    /// 使用系统信任根；自定义 CA 暂不支持（如需请改用服务端签发系统信任的证书）。
     pub url: String,
     #[serde(default)]
     pub exchange: Option<String>,
@@ -123,5 +125,25 @@ mod tests {
     async fn connect_fails_bad_url() {
         let result = RabbitmqMq::connect("amqp://127.0.0.1:1").await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn config_exchange_defaults_to_none() {
+        let cfg: RabbitmqConfig =
+            serde_json::from_value(serde_json::json!({"url": "amqp://localhost"})).unwrap();
+        assert_eq!(cfg.url, "amqp://localhost");
+        assert!(cfg.exchange.is_none());
+    }
+
+    #[test]
+    fn config_rejects_missing_url() {
+        let r = serde_json::from_value::<RabbitmqConfig>(serde_json::json!({}));
+        assert!(r.is_err(), "url is required");
+    }
+
+    #[test]
+    fn config_rejects_non_string_url() {
+        let r = serde_json::from_value::<RabbitmqConfig>(serde_json::json!({"url": 42}));
+        assert!(r.is_err());
     }
 }

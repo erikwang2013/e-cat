@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{Cache, CacheError};
+use ecat_data::Cache;
+use ecat_errors::{Error, ErrorCode};
 use ecat_lock::{DistributedLock, LockError};
 use ecat_tls::TlsClientConfig;
 use redis::AsyncCommands;
@@ -34,28 +35,28 @@ pub struct RedisCache {
 }
 
 impl RedisCache {
-    pub async fn connect(url: &str) -> Result<Self, CacheError> {
-        let client =
-            redis::Client::open(url).map_err(|e| CacheError::Other(format!("redis open: {e}")))?;
+    pub async fn connect(url: &str) -> Result<Self, Error> {
+        let client = redis::Client::open(url)
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis open: {e}")))?;
         let conn = client
             .get_multiplexed_async_connection()
             .await
-            .map_err(|e| CacheError::Other(format!("redis connect: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
         Ok(Self { conn })
     }
 
-    pub async fn connect_with_password(url: &str, password: &str) -> Result<Self, CacheError> {
+    pub async fn connect_with_password(url: &str, password: &str) -> Result<Self, Error> {
         // 通过 ConnectionInfo 单独传密码，避免密码嵌入 URL（否则错误消息会泄露口令）
         let mut info: ConnectionInfo = url
             .parse()
-            .map_err(|e| CacheError::Other(format!("redis url: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis url: {e}")))?;
         info.redis.password = Some(password.to_string());
-        let client =
-            redis::Client::open(info).map_err(|e| CacheError::Other(format!("redis open: {e}")))?;
+        let client = redis::Client::open(info)
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis open: {e}")))?;
         let conn = client
             .get_multiplexed_async_connection()
             .await
-            .map_err(|e| CacheError::Other(format!("redis connect: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
         Ok(Self { conn })
     }
 
@@ -63,7 +64,7 @@ impl RedisCache {
     // The underlying redis::aio::MultiplexedConnection reconnects
     // internally on transient failures; a dropped connection is detected
     // on the next command, which will return an error.
-    pub async fn from_config(cfg: RedisConfig) -> Result<Self, CacheError> {
+    pub async fn from_config(cfg: RedisConfig) -> Result<Self, Error> {
         let url = build_url(&cfg);
         match &cfg.password {
             Some(pw) if !pw.is_empty() => Self::connect_with_password(&url, pw).await,
@@ -78,14 +79,14 @@ impl RedisCache {
 
 #[async_trait]
 impl Cache for RedisCache {
-    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, CacheError> {
+    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         let mut conn = self.conn.clone();
         conn.get(key)
             .await
-            .map_err(|e| CacheError::Other(format!("redis get: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis get: {e}")))
     }
 
-    async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), CacheError> {
+    async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), Error> {
         let mut conn = self.conn.clone();
         let millis = ttl.as_millis();
         if millis > 0 {
@@ -94,50 +95,49 @@ impl Cache for RedisCache {
             } else {
                 millis as u64
             };
-            let (): () = conn
-                .pset_ex(key, value, ms)
-                .await
-                .map_err(|e| CacheError::Other(format!("redis psetex: {e}")))?;
+            let (): () = conn.pset_ex(key, value, ms).await.map_err(|e| {
+                Error::new(ErrorCode::Internal, "redis", format!("redis psetex: {e}"))
+            })?;
         } else {
             let (): () = conn
                 .set(key, value)
                 .await
-                .map_err(|e| CacheError::Other(format!("redis set: {e}")))?;
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis set: {e}")))?;
         }
         Ok(())
     }
 
-    async fn delete(&self, key: &str) -> Result<(), CacheError> {
+    async fn delete(&self, key: &str) -> Result<(), Error> {
         let mut conn = self.conn.clone();
         conn.del(key)
             .await
-            .map_err(|e| CacheError::Other(format!("redis del: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis del: {e}")))
     }
 
-    async fn increment(&self, key: &str, delta: i64) -> Result<i64, CacheError> {
+    async fn increment(&self, key: &str, delta: i64) -> Result<i64, Error> {
         let mut conn = self.conn.clone();
         conn.incr(key, delta)
             .await
-            .map_err(|e| CacheError::Other(format!("redis incr: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis incr: {e}")))
     }
 
-    async fn ttl(&self, key: &str) -> Result<Option<Duration>, CacheError> {
+    async fn ttl(&self, key: &str) -> Result<Option<Duration>, Error> {
         let mut conn = self.conn.clone();
         let ttl: i64 = conn
             .ttl(key)
             .await
-            .map_err(|e| CacheError::Other(format!("redis ttl: {e}")))?;
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis ttl: {e}")))?;
         Ok(ttl_to_duration(ttl))
     }
 
-    async fn multi_get(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>, CacheError> {
+    async fn multi_get(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>, Error> {
         if keys.is_empty() {
             return Ok(Vec::new());
         }
         let mut conn = self.conn.clone();
         conn.mget(keys)
             .await
-            .map_err(|e| CacheError::Other(format!("redis mget: {e}")))
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis mget: {e}")))
     }
 }
 
@@ -297,5 +297,99 @@ mod tests {
                 b"k3".to_vec()
             ]
         );
+    }
+
+    #[test]
+    fn config_deserializes_with_password() {
+        let cfg: RedisConfig =
+            serde_json::from_str(r#"{"url": "redis://localhost:6379", "password": "secret"}"#)
+                .unwrap();
+        assert_eq!(cfg.url, "redis://localhost:6379");
+        assert_eq!(cfg.password.as_deref(), Some("secret"));
+        assert!(cfg.tls.is_none());
+    }
+
+    #[test]
+    fn config_missing_url_is_error() {
+        let result: Result<RedisConfig, _> = serde_json::from_str(r#"{"password": "x"}"#);
+        assert!(result.is_err());
+    }
+
+    fn tls_enabled() -> TlsClientConfig {
+        TlsClientConfig {
+            ca_cert: None,
+            client_cert: None,
+            client_key: None,
+            skip_verify: Some(true),
+        }
+    }
+
+    fn tls_disabled() -> TlsClientConfig {
+        TlsClientConfig {
+            ca_cert: None,
+            client_cert: None,
+            client_key: None,
+            skip_verify: None,
+        }
+    }
+
+    #[test]
+    fn build_url_swaps_to_rediss_when_tls_enabled() {
+        let cfg = RedisConfig {
+            url: "redis://localhost:6379".into(),
+            password: None,
+            tls: Some(tls_enabled()),
+        };
+        assert_eq!(build_url(&cfg), "rediss://localhost:6379");
+    }
+
+    #[test]
+    fn build_url_keeps_redis_when_tls_disabled() {
+        let cfg = RedisConfig {
+            url: "redis://localhost:6379".into(),
+            password: None,
+            tls: Some(tls_disabled()),
+        };
+        assert_eq!(build_url(&cfg), "redis://localhost:6379");
+    }
+
+    #[test]
+    fn build_url_keeps_non_redis_scheme_unchanged() {
+        // TLS 只换 redis:// 前缀；非标准 scheme 原样保留
+        let cfg = RedisConfig {
+            url: "unix:///tmp/redis.sock".into(),
+            password: None,
+            tls: Some(tls_enabled()),
+        };
+        assert_eq!(build_url(&cfg), "unix:///tmp/redis.sock");
+    }
+
+    #[tokio::test]
+    async fn from_config_with_password_path_fails_on_unreachable() {
+        // 走 connect_with_password 分支：密码经 ConnectionInfo 传递而非嵌入 URL
+        let cfg = RedisConfig {
+            url: "redis://127.0.0.1:59999".into(),
+            password: Some("pw".into()),
+            tls: None,
+        };
+        // RedisCache 无 Debug，用 match 拿错误文本
+        match RedisCache::from_config(cfg).await {
+            Err(e) => assert!(!e.to_string().contains("pw"), "password leaked: {e}"),
+            Ok(_) => panic!("unreachable redis should fail"),
+        }
+    }
+
+    #[tokio::test]
+    async fn lock_from_config_with_password_path_fails_on_unreachable() {
+        let cfg = RedisConfig {
+            url: "redis://127.0.0.1:59999".into(),
+            password: Some("pw".into()),
+            tls: None,
+        };
+        // RedisLock 无 Debug，用 match 拿错误文本
+        match RedisLock::from_config(cfg).await {
+            Err(e) => assert!(!e.to_string().contains("pw"), "password leaked: {e}"),
+            Ok(_) => panic!("unreachable redis should fail"),
+        }
     }
 }

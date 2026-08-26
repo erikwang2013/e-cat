@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ecat_http_requests_total / ecat_http_request_duration_seconds。
     let middleware = ServiceBuilder::new()
         .layer(MetricsLayer::new())
-        .layer(TracingLayer)
+        .layer(TracingLayer::new("middleware"))
         .layer(LoggingLayer);
 
     let router = Router::new()
