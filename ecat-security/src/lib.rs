@@ -154,6 +154,8 @@ fn hex_val(b: u8) -> Option<u8> {
 /// 要求字面空白的 SQLi 正则。解码仅用于检测，URI 本身不变。
 /// 代理拓扑头（X-Forwarded-For/X-Real-IP/Forwarded 等）由网关重写，携带
 /// 内网 IP（如 docker 网关 172.x），SSRF 检测会误伤内网部署，跳过不扫。
+/// Authorization 同理：JWT 是本站正常鉴权流量，jwt_attack 规则会误报，
+/// 扫描跳过（token 的校验由 JwtAuthLayer 负责）。
 fn is_proxy_header(name: &http::header::HeaderName) -> bool {
     matches!(
         name.as_str(),
@@ -163,6 +165,7 @@ fn is_proxy_header(name: &http::header::HeaderName) -> bool {
             | "x-forwarded-host"
             | "x-forwarded-proto"
             | "x-forwarded-port"
+            | "authorization"
     )
 }
 
@@ -578,8 +581,8 @@ mod tests {
             .uri("/redirect?url=javascript:alert(1)")
             .body(())
             .unwrap();
-        let result = svc.oneshot(req).await;
-        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+        let resp = svc.oneshot(req).await.expect("blocked as response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -597,8 +600,8 @@ mod tests {
             .header("X-Trace", "<script>alert(1)</script>")
             .body(())
             .unwrap();
-        let result = svc.oneshot(req).await;
-        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+        let resp = svc.oneshot(req).await.expect("blocked as response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -616,8 +619,8 @@ mod tests {
             .uri("/search?q=SELECT%20*%20FROM%20users")
             .body(())
             .unwrap();
-        let result = svc.oneshot(req).await;
-        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+        let resp = svc.oneshot(req).await.expect("blocked as response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -635,8 +638,8 @@ mod tests {
             .uri("/login?u=1%27%20OR%20%271%27%3D%271")
             .body(())
             .unwrap();
-        let result = svc.oneshot(req).await;
-        assert!(matches!(result, Err(SecurityError::AttackBlocked(_))));
+        let resp = svc.oneshot(req).await.expect("blocked as response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -660,6 +663,29 @@ mod tests {
         let (_, body) = resp.into_parts();
         let bytes = axum::body::to_bytes(body, 1024).await.unwrap();
         assert_eq!(String::from_utf8_lossy(&bytes), "/search");
+    }
+
+    #[tokio::test]
+    async fn header_layer_passes_proxy_headers_with_internal_ip() {
+        use tower::Layer as _;
+        use tower::ServiceExt;
+
+        let layer = SecurityLayer::new();
+        let svc = layer.layer(tower::service_fn(|req: Request<()>| async move {
+            Ok::<_, std::convert::Infallible>(http::Response::new(axum::body::Body::from(
+                req.uri().path().to_string(),
+            )))
+        }));
+
+        // nginx 网关注入的代理头携带 docker 内网 IP，不应触发 SSRF 拦截
+        let req = http::Request::builder()
+            .uri("/api/v1/booking/dates?region_id=1")
+            .header("X-Real-IP", "172.19.0.1")
+            .header("X-Forwarded-For", "172.19.0.1")
+            .body(())
+            .unwrap();
+        let resp = svc.oneshot(req).await.expect("proxy headers pass");
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]
