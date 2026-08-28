@@ -95,6 +95,7 @@ impl Default for SecurityScanner {
 /// Logs detections and returns a blocking error when a High/Critical attack
 /// was found. Shared by the header-scanning and body-scanning middlewares.
 fn evaluate(results: &[DetectionResult]) -> Option<SecurityError> {
+    let mut blocked = false;
     for r in results {
         tracing::warn!(
             attack_type = %r.attack_type,
@@ -103,11 +104,15 @@ fn evaluate(results: &[DetectionResult]) -> Option<SecurityError> {
             matched = %r.matched_pattern,
             "attack detected"
         );
+        // jwt_attack 的宽正则（ey..ey.. 匹配一切标准 JWT）会误伤合法 token：
+        // 服务端鉴权由 JwtAuthLayer 验签把关（alg:none/伪造签名在验签层拒绝），
+        // 此处仅记日志不拦截。
+        if r.attack_type != "jwt_attack" && matches!(r.severity, Severity::High | Severity::Critical)
+        {
+            blocked = true;
+        }
     }
-    if results
-        .iter()
-        .any(|r| matches!(r.severity, Severity::High | Severity::Critical))
-    {
+    if blocked {
         let attack_types: Vec<String> = results.iter().map(|r| r.attack_type.to_string()).collect();
         return Some(SecurityError::AttackBlocked(attack_types.join(", ")));
     }
@@ -147,10 +152,27 @@ fn hex_val(b: u8) -> Option<u8> {
 /// Builds the scan list from URI and headers (shared by both middlewares).
 /// URI 先做百分号解码再扫描：`?q=SELECT%20*%20FROM%20users` 若不解码会绕过
 /// 要求字面空白的 SQLi 正则。解码仅用于检测，URI 本身不变。
+/// 代理拓扑头（X-Forwarded-For/X-Real-IP/Forwarded 等）由网关重写，携带
+/// 内网 IP（如 docker 网关 172.x），SSRF 检测会误伤内网部署，跳过不扫。
+fn is_proxy_header(name: &http::header::HeaderName) -> bool {
+    matches!(
+        name.as_str(),
+        "x-forwarded-for"
+            | "x-real-ip"
+            | "forwarded"
+            | "x-forwarded-host"
+            | "x-forwarded-proto"
+            | "x-forwarded-port"
+    )
+}
+
 fn request_parts<B>(req: &Request<B>) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     parts.push(percent_decode(&req.uri().to_string()));
-    for value in req.headers().values() {
+    for (name, value) in req.headers() {
+        if is_proxy_header(name) {
+            continue;
+        }
         if let Ok(v) = value.to_str() {
             parts.push(v.to_string());
         }
@@ -201,6 +223,9 @@ where
     S: tower::Service<Request<B>> + Send + 'static,
     S::Future: Send + 'static,
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    // 拦截时直接返回 403 响应而非 Err：Err 经服务端 no_error 归一到
+    // Infallible 时触发 unreachable panic，会打崩 worker 线程
+    S::Response: From<axum::response::Response> + Send,
     B: Send + 'static,
 {
     type Response = S::Response;
@@ -220,7 +245,9 @@ where
         let results = scanner.scan_parts(&strings);
 
         if let Some(err) = evaluate(&results) {
-            return Box::pin(async move { Err(err) });
+            use axum::response::IntoResponse;
+            let resp: S::Response = err.into_response().into();
+            return Box::pin(async move { Ok(resp) });
         }
 
         let fut = self.inner.call(req);
