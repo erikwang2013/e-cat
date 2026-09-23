@@ -59,6 +59,9 @@ members = [
     "examples/websocket",
 ]
 resolver = "2"
+exclude = [
+    "examples/*",
+]
 
 [workspace.package]
 version = "3.0.3"
