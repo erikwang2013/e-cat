@@ -6,7 +6,7 @@ license.workspace = true
 description = "NATS message queue backend for e-cat"
 
 [dependencies]
-ecat-mq = { path = "../ecat-mq" }
+ecat-mq = { version = "3.0.3", path = "../ecat-mq" }
 bytes.workspace = true
 async-trait.workspace = true
 serde.workspace = true

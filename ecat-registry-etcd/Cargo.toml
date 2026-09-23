@@ -6,7 +6,7 @@ license.workspace = true
 description = "etcd service registry backend for e-cat"
 
 [dependencies]
-ecat-registry = { path = "../ecat-registry" }
+ecat-registry = { version = "3.0.3", path = "../ecat-registry" }
 tokio = { workspace = true, features = ["rt", "time"] }
 async-trait.workspace = true
 serde.workspace = true

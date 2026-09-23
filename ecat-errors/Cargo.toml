@@ -6,7 +6,7 @@ license.workspace = true
 description = "Unified error types for e-cat services"
 
 [dependencies]
-ecat-protos = { path = "../ecat-protos" }
+ecat-protos = { version = "3.0.3", path = "../ecat-protos" }
 prost.workspace = true
 thiserror.workspace = true
 serde.workspace = true

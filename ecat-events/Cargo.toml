@@ -6,7 +6,7 @@ license.workspace = true
 description = "Event bus abstraction for e-cat"
 
 [dependencies]
-ecat-mq = { path = "../ecat-mq" }
+ecat-mq = { version = "3.0.3", path = "../ecat-mq" }
 bytes.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 tracing.workspace = true

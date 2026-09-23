@@ -6,11 +6,11 @@ license.workspace = true
 description = "Hello World example for the e-cat framework"
 
 [dependencies]
-ecat = { path = "../../ecat" }
-ecat-transport-http = { path = "../../ecat-transport-http" }
-ecat-transport-grpc = { path = "../../ecat-transport-grpc" }
-ecat-logging = { path = "../../ecat-logging" }
-ecat-middleware = { path = "../../ecat-middleware" }
+ecat = { version = "3.0.3", path = "../../ecat" }
+ecat-transport-http = { version = "3.0.3", path = "../../ecat-transport-http" }
+ecat-transport-grpc = { version = "3.0.3", path = "../../ecat-transport-grpc" }
+ecat-logging = { version = "3.0.3", path = "../../ecat-logging" }
+ecat-middleware = { version = "3.0.3", path = "../../ecat-middleware" }
 serde.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tower.workspace = true

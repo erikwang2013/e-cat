@@ -8,4 +8,4 @@ description = "Structured logging via tracing for e-cat"
 [dependencies]
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-ecat-tracing = { path = "../ecat-tracing" }
+ecat-tracing = { version = "3.0.3", path = "../ecat-tracing" }

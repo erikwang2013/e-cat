@@ -8,7 +8,7 @@ description = "Tower middleware (rate limiting, timeout) for e-cat"
 [dependencies]
 tower = { workspace = true, features = ["retry"] }
 tracing.workspace = true
-ecat-tracing = { path = "../ecat-tracing" }
+ecat-tracing = { version = "3.0.3", path = "../ecat-tracing" }
 tokio = { workspace = true, features = ["sync", "rt", "time"] }
 async-trait.workspace = true
 http.workspace = true

@@ -6,10 +6,10 @@ license.workspace = true
 description = "Middleware chain example (metrics, tracing, logging) for the e-cat framework"
 
 [dependencies]
-ecat = { path = "../../ecat" }
-ecat-transport-http = { path = "../../ecat-transport-http" }
-ecat-metrics = { path = "../../ecat-metrics" }
-ecat-middleware = { path = "../../ecat-middleware" }
+ecat = { version = "3.0.3", path = "../../ecat" }
+ecat-transport-http = { version = "3.0.3", path = "../../ecat-transport-http" }
+ecat-metrics = { version = "3.0.3", path = "../../ecat-metrics" }
+ecat-middleware = { version = "3.0.3", path = "../../ecat-middleware" }
 serde.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tower.workspace = true

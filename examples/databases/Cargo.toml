@@ -6,7 +6,7 @@ license.workspace = true
 description = "Data access example for the e-cat framework (inline JSON config)"
 
 [dependencies]
-ecat-data = { path = "../../ecat-data" }
+ecat-data = { version = "3.0.3", path = "../../ecat-data" }
 ecat-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true

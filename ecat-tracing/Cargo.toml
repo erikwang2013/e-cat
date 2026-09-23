@@ -11,7 +11,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 http.workspace = true
 tower.workspace = true
 uuid = { version = "1", features = ["v4"] }
-ecat-metadata = { path = "../ecat-metadata" }
+ecat-metadata = { version = "3.0.3", path = "../ecat-metadata" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

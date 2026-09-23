@@ -6,9 +6,9 @@ license.workspace = true
 description = "S3/MinIO object storage client for e-cat"
 
 [dependencies]
-ecat-data = { path = "../ecat-data" }
-ecat-errors = { path = "../ecat-errors" }
-ecat-tls = { path = "../ecat-tls" }
+ecat-data = { version = "3.0.3", path = "../ecat-data" }
+ecat-errors = { version = "3.0.3", path = "../ecat-errors" }
+ecat-tls = { version = "3.0.3", path = "../ecat-tls" }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

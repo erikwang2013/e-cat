@@ -6,8 +6,8 @@ license.workspace = true
 description = "Transport layer abstraction for e-cat"
 
 [dependencies]
-ecat-metadata = { path = "../ecat-metadata" }
-ecat-encoding = { path = "../ecat-encoding" }
+ecat-metadata = { version = "3.0.3", path = "../ecat-metadata" }
+ecat-encoding = { version = "3.0.3", path = "../ecat-encoding" }
 ecat-errors.workspace = true
 tower.workspace = true
 async-trait.workspace = true

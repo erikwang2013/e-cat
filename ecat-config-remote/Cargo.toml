@@ -6,7 +6,7 @@ license.workspace = true
 description = "Remote configuration source for e-cat"
 
 [dependencies]
-ecat-config = { path = "../ecat-config" }
+ecat-config = { version = "3.0.3", path = "../ecat-config" }
 tokio = { workspace = true, features = ["sync", "rt", "time", "macros"] }
 async-trait.workspace = true
 serde.workspace = true
