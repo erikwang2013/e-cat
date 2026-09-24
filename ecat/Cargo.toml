@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 description = "Aggregate crate: batteries-included entry point for e-cat"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [features]
 default = ["http", "grpc"]
