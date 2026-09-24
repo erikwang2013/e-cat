@@ -62,7 +62,6 @@ wait_seconds=$INTERVAL
 
 while (( remaining > 0 )); do
   progressed=0
-  rate_limited=0
 
   for name in "${!ver[@]}"; do
     [[ -n "${done[$name]:-}" ]] && continue
@@ -73,9 +72,27 @@ while (( remaining > 0 )); do
       done[$name]=1; ((remaining--)); continue
     fi
 
-    log "publish $name $version ..."
-    out="$(cargo publish -p "$name" 2>&1)"
-    rc=$?
+    # 限流和网络抖动都在原地重试，不跳出重扫整轮：重扫要为每个剩余 crate
+    # 跑一次 cargo 依赖解析（~3s），43 个约 110s/轮，叠在 ~500s 的限流等待上
+    # 白多花近 20% 时间。
+    while :; do
+      log "publish $name $version ..."
+      out="$(cargo publish -p "$name" 2>&1)"
+      rc=$?
+      (( rc == 0 )) && break
+
+      case "$out" in
+        *"status 429"*|*"Too Many Requests"*)
+          wait_seconds=$(retry_after "$out" || printf '%s' "$INTERVAL")
+          log "429     $name —— 限流，等待 ${wait_seconds}s（至 $(date -d "+${wait_seconds} seconds" '+%H:%M:%S')）"
+          sleep "$wait_seconds" ;;
+        *"failed to update registry"*|*"network failure"*|*"timed out"*|*"connection refused"*|*"connection reset"*)
+          # crates.io 索引拉取偶发失败，不是发布本身的问题，重试即可
+          log "net     $name —— 网络抖动，60s 后重试"
+          sleep 60 ;;
+        *) break ;;
+      esac
+    done
 
     if (( rc == 0 )); then
       log "ok      $name $version"
@@ -88,30 +105,18 @@ while (( remaining > 0 )); do
       *"already uploaded"*|*"already exists on crates.io"*)
         log "skip    $name $version（已上传）"
         done[$name]=1; ((remaining--)); continue ;;
-      *"status 429"*|*"Too Many Requests"*)
-        # 限流是按 token 全局的，本轮再试别的 crate 也是白撞，直接跳出本轮
-        wait_seconds=$(retry_after "$out" || printf '%s' "$INTERVAL")
-        log "429     $name —— 限流，等待 ${wait_seconds}s（至 $(date -d "+${wait_seconds} seconds" '+%H:%M:%S')）"
-        rate_limited=1; break ;;
       *"no matching package"*|*"failed to select a version"*|*"not found in registry"*)
         # 依赖尚未发布，本轮跳过，等下一轮
         log "wait    $name（依赖尚未发布）"
         continue ;;
       *)
         log "FAIL    $name $version"
-        printf '%s\n' "$out" | grep -E '^(error|Caused by)' | head -6 | tee -a "$LOG"
+        printf '%s\n' "$out" | tail -12 | tee -a "$LOG"
         done[$name]=1; ((remaining--)) ;;   # 真实错误，不再重试
     esac
   done
 
   (( remaining == 0 )) && break
-
-  if (( rate_limited )); then
-    log "-- 限流冷却，等待 ${wait_seconds}s 后重开一轮"
-    sleep "$wait_seconds"
-    stalls=0
-    continue
-  fi
 
   if (( progressed == 0 )); then
     ((stalls++))
