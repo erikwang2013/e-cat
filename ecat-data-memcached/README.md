@@ -14,4 +14,4 @@ It exists to exercise the `Cache` trait locally during development and
 testing. **Do not use it in production** — use a real memcached/redis client
 before deployment.
 
-Part of the [e-cat](https://github.com/erik/e-cat) ecosystem.
+Part of the [e-cat](https://github.com/erikwang2013/e-cat) ecosystem.

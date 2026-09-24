@@ -3,6 +3,10 @@ name = "ecat-security"
 version.workspace = true
 edition.workspace = true
 description = "WAF/security scanning middleware for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
 license = "Apache-2.0"
 
 [dependencies]

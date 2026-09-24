@@ -2,4 +2,4 @@
 
 Tower middleware (rate limiting, timeout) for e-cat.
 
-Part of the [e-cat](https://github.com/erik/e-cat) ecosystem.
+Part of the [e-cat](https://github.com/erikwang2013/e-cat) ecosystem.

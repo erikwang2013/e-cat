@@ -2,4 +2,4 @@
 
 Health check endpoint and registry for e-cat services.
 
-Part of the [e-cat](https://github.com/erik/e-cat) ecosystem.
+Part of the [e-cat](https://github.com/erikwang2013/e-cat) ecosystem.

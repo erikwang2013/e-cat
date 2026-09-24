@@ -19,4 +19,4 @@ Implements `TsdbClient` from `ecat-data`.
 
 **Limitations:** tags are flattened as columns in the generated `INSERT` statement (measurement = table name), so all points written to one measurement must share the same tag set.
 
-Part of the [e-cat](https://github.com/erik/e-cat) ecosystem.
+Part of the [e-cat](https://github.com/erikwang2013/e-cat) ecosystem.

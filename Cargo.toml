@@ -67,8 +67,12 @@ exclude = [
 version = "3.0.3"
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://github.com/erik/e-cat"
-documentation = "https://docs.rs/e-cat"
+repository = "https://github.com/erikwang2013/e-cat"
+homepage = "https://github.com/erikwang2013/e-cat"
+keywords = ["web", "framework", "async", "http", "microservices"]
+categories = ["web-programming::http-server", "asynchronous"]
+# 不设 documentation：docs.rs 会按 crate 名自动生成 https://docs.rs/<crate>，
+# 写死 workspace 级别反而会让 52 个 crate 的文档链接全部指向 ecat。
 
 
 [profile.release]
