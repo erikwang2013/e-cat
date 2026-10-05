@@ -1262,6 +1262,34 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 - Modify: `ecat-data-sqlx/src/lib.rs`
 - Test: `ecat-data-sqlx/src/pool.rs` 内联测试
 
+> ### 实施记录（2026-10-06）：下面片段里的**三处是错的**，已由实现者实测纠正
+>
+> 这三处都是**「在 `AnyPool` 下成立、在原生池下静默出错」**——计划的代码片段继承自
+> `AnyPool` 时代，而原生驱动的类型系统更宽松，宽松处正是错误发生地。
+>
+> **① `cell_to_json` 的类型链：`bool` 不能排最前。**
+> 原生 sqlite 的 `bool::compatible` 把 `Int4 | Integer` 也算兼容，MySQL 的含全部整数类型，
+> 而两者 `bool::decode` 都是 `int64() != 0`。bool 排最前时 **sqlite 的任意整数都变成
+> `true`**（`SELECT 42` → `Bool(true)`）。实测：改回 bool 最前有 4 个测试变红。
+> **正确链序**：`NULL闸门 → i64 → i32 → f64 → bool → time → String → blob`。
+>
+> **② 链首必须加 NULL 闸门。**
+> sqlite 的 `bool::decode` 直通 C API `sqlite3_value_int64`，**对 NULL 返回 0 而不报错** ——
+> 没有闸门则 NULL 静默变 `false`。正确做法：`row.try_get_raw(col)?.is_null()` → 直接返回
+> `Value::Null`。
+>
+> **③ 时间分支必须用 `format(&Rfc3339)`，不能用 `.to_string()`。**
+> `time::OffsetDateTime` 的 `Display` **不是 RFC3339**，是
+> `2026-10-05 12:34:56.0 +00:00:00`。且计划给的测试输入 `Z` 会走 String 分支拿到
+> 相同字符串 —— **等于时间分支零覆盖**。正确做法：`dt.format(&Rfc3339)`，
+> 测试输入用带非零偏移的（如 `+08:00`）才能证明分支被走到。
+>
+> **另外两处适配**（非缺陷，是实现约束）：
+> - 全部测试外移到 `src/tests.rs`（`#[cfg(test)] mod tests;`）—— 内联会让 `lib.rs`
+>   达 ~740 行。**一个测试都没删、名字未变**，这是与仓库内联约定的偏离，为 500 行规则让步。
+> - `warm_up_without_min_connections_is_a_noop` 的断言改为 before/after 比较：
+>   `pool_size() == 0` **不可能成立** —— sqlx 建池时立刻建一条连接，connect 后 size 恒 ≥ 1。
+
 - [ ] **Step 1: 改依赖**
 
 `ecat-data-sqlx/Cargo.toml`：
