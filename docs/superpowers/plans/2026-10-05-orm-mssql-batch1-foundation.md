@@ -434,7 +434,11 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
 - [ ] **Step 5: 跑全 workspace 测试**
 
 Run: `cargo test --workspace`
-Expected: 全绿（既有 675 个测试一个不少）
+Expected: 全绿；**测试数不下降，且 0 failed**
+
+> 初版计划写「既有 675 个测试一个不少」—— 675 出自 `CHANGELOG.md` 的 3.0.2 条目
+> （2026-08-27），**早已过期**，不是任何一次实测。改为「不下降」这个可验证的判据：
+> 本任务改动前实测 **681**（Task 2 后为 683，本任务恰好 +2），只增不减即通过。
 
 - [ ] **Step 6: 提交**
 
