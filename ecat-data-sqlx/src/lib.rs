@@ -146,17 +146,22 @@ impl SqlExecutor for SqlxClient {
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
         run_with_timeout(self.query_timeout, async {
             let rows = match &self.pool {
-                Pool::Pg(p) => sqlx::query(sql).fetch_all(p).await.map(pg_rows_to_result),
+                Pool::Pg(p) => sqlx::query(sql)
+                    .fetch_all(p)
+                    .await
+                    .map_err(db_err)
+                    .and_then(pg_rows_to_result),
                 Pool::My(p) => sqlx::query(sql)
                     .fetch_all(p)
                     .await
-                    .map(mysql_rows_to_result),
+                    .map_err(db_err)
+                    .and_then(mysql_rows_to_result),
                 Pool::Sq(p) => sqlx::query(sql)
                     .fetch_all(p)
                     .await
-                    .map(sqlite_rows_to_result),
-            }
-            .map_err(db_err)?;
+                    .map_err(db_err)
+                    .and_then(sqlite_rows_to_result),
+            }?;
             Ok(rows)
         })
         .await
@@ -265,7 +270,10 @@ impl SqlExecutor for SqlxClient {
                             _ => q.bind(param.to_string()),
                         };
                     }
-                    q.fetch_all(p).await.map(pg_rows_to_result)
+                    q.fetch_all(p)
+                        .await
+                        .map_err(db_err)
+                        .and_then(pg_rows_to_result)
                 }
                 Pool::My(p) => {
                     let mut q = sqlx::query(sql);
@@ -286,7 +294,10 @@ impl SqlExecutor for SqlxClient {
                             _ => q.bind(param.to_string()),
                         };
                     }
-                    q.fetch_all(p).await.map(mysql_rows_to_result)
+                    q.fetch_all(p)
+                        .await
+                        .map_err(db_err)
+                        .and_then(mysql_rows_to_result)
                 }
                 Pool::Sq(p) => {
                     let mut q = sqlx::query(sql);
@@ -307,10 +318,12 @@ impl SqlExecutor for SqlxClient {
                             _ => q.bind(param.to_string()),
                         };
                     }
-                    q.fetch_all(p).await.map(sqlite_rows_to_result)
+                    q.fetch_all(p)
+                        .await
+                        .map_err(db_err)
+                        .and_then(sqlite_rows_to_result)
                 }
-            }
-            .map_err(db_err)?;
+            }?;
             Ok(rows)
         })
         .await
@@ -366,7 +379,7 @@ macro_rules! tx_wrapper {
             async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
                 let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
                 let rows = tx.fetch_all(sql).await.map_err(db_err)?;
-                Ok($rows(rows))
+                $rows(rows)
             }
 
             async fn execute_with(
@@ -424,7 +437,7 @@ macro_rules! tx_wrapper {
                     };
                 }
                 let rows = q.fetch_all(&mut **tx).await.map_err(db_err)?;
-                Ok($rows(rows))
+                $rows(rows)
             }
 
             fn dialect(&self) -> Dialect {

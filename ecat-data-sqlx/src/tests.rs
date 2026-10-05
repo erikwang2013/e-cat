@@ -350,6 +350,125 @@ async fn warm_up_creates_min_connections() {
     );
 }
 
+/// `min > max` 时 `warm_up()` 不能卡到 acquire_timeout：配置层把 min 夹到 max
+/// （夹取本身在 config.rs 的用例里钉住，这里钉端到端行为；`acquire_timeout` 特意
+/// 调到 1 秒，回归时会**快速失败**而不是默默等满 30 秒）。
+#[tokio::test]
+async fn warm_up_does_not_hang_when_min_exceeds_max() {
+    let cfg: SqlxConfig = serde_json::from_str(
+        r#"{"url": "sqlite::memory:", "max_connections": 2, "min_connections": 5,
+            "acquire_timeout_secs": 1}"#,
+    )
+    .unwrap();
+    let db = SqlxClient::from_config(cfg).await.unwrap();
+    db.warm_up().await.unwrap();
+    assert!(
+        db.pool_size() >= 2,
+        "warm_up 后应有 2 条连接，实际 {}",
+        db.pool_size()
+    );
+}
+
+/// 真库连接串。未设置就打印一行并跳过 —— **本地 SQLite 全绿不能冒充三驱动验证**：
+/// `int2` / `UNSIGNED` 这两类静默 null 在 SQLite 上根本复现不出来。
+fn env_url(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|s| !s.is_empty())
+}
+
+/// PG 的 `smallint`(int2) / `real`(float4) / `date` / `timestamp` 都要走原生分支；
+/// 链外类型（numeric/uuid/jsonb…）必须报错而不是静默 null。
+#[tokio::test]
+async fn pg_native_types_decode_and_unsupported_type_errors() {
+    let Some(url) = env_url("ECAT_TEST_PG_URL") else {
+        println!("skip: ECAT_TEST_PG_URL 未设置");
+        return;
+    };
+    let db = SqlxClient::connect(&url).await.unwrap();
+    let rows = db
+        .query(
+            "SELECT 7::int2 AS s, 3000000000::int8 AS b, 1.5::float4 AS r, \
+             DATE '2026-10-05' AS d, TIMESTAMP '2026-10-05 12:34:56' AS ts",
+        )
+        .await
+        .unwrap();
+    assert_eq!(rows[0].get("s"), Some(&serde_json::json!(7)), "int2 落空");
+    assert_eq!(rows[0].get("b"), Some(&serde_json::json!(3000000000i64)));
+    assert_eq!(
+        rows[0].get("r"),
+        Some(&serde_json::json!(1.5)),
+        "float4 落空"
+    );
+    assert_eq!(
+        rows[0].get("d"),
+        Some(&serde_json::json!("2026-10-05T00:00:00Z"))
+    );
+    assert_eq!(
+        rows[0].get("ts"),
+        Some(&serde_json::json!("2026-10-05T12:34:56Z"))
+    );
+
+    let msg = db
+        .query("SELECT 1.5::numeric AS n")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("unsupported column type"), "{msg}");
+    // 类型名来自 `PgTypeInfo::name()`，实测是大写 `NUMERIC`；大小写不敏感地断言。
+    assert!(
+        msg.to_uppercase().contains("(NUMERIC)"),
+        "错误信息要带类型名: {msg}"
+    );
+}
+
+/// MySQL 的 `* UNSIGNED` 列（含最常见自增主键 `BIGINT UNSIGNED`）不能被 bool
+/// 分支吃掉、也不能落成 null；`DECIMAL` 等链外类型必须报错。
+#[tokio::test]
+async fn mysql_unsigned_columns_decode_and_unsupported_type_errors() {
+    let Some(url) = env_url("ECAT_TEST_MYSQL_URL") else {
+        println!("skip: ECAT_TEST_MYSQL_URL 未设置");
+        return;
+    };
+    // 单连接池：临时表是会话级的，多连接池下 CREATE / INSERT / SELECT 会落到
+    // 不同连接上（实测报 `Table doesn't exist`）。
+    let params = PoolParams {
+        max_connections: 1,
+        ..PoolParams::for_url(&url)
+    };
+    let db = SqlxClient::connect_with_params(&url, &params)
+        .await
+        .unwrap();
+    db.execute("CREATE TEMPORARY TABLE t6_unsigned (big BIGINT UNSIGNED, tiny TINYINT UNSIGNED)")
+        .await
+        .unwrap();
+    db.execute("INSERT INTO t6_unsigned VALUES (5000000000, 128)")
+        .await
+        .unwrap();
+    let rows = db.query("SELECT big, tiny FROM t6_unsigned").await.unwrap();
+    assert_eq!(rows[0].get("big"), Some(&serde_json::json!(5000000000u64)));
+    assert_eq!(rows[0].get("tiny"), Some(&serde_json::json!(128)));
+
+    // 实测（真 MySQL 8.0）：`BOOLEAN` 就是 `TINYINT(1)`，被整数分支先接住 → 数字 1
+    // （SQLite 侧同样如此，见 `execute_with_binds_all_json_value_types`；Any 时代
+    // `ColumnType::Tiny` 不在 Any 的类型表里，这一列会让**整条查询报错**）。
+    // `BIT(1)` 由 u64 分支按整数解出（`uint_compatible` 含 Bit），不再静默 null。
+    db.execute("CREATE TEMPORARY TABLE t6_types (flag BOOLEAN, bits BIT(1))")
+        .await
+        .unwrap();
+    db.execute("INSERT INTO t6_types VALUES (TRUE, b'1')")
+        .await
+        .unwrap();
+    let rows = db.query("SELECT flag, bits FROM t6_types").await.unwrap();
+    assert_eq!(rows[0].get("flag"), Some(&serde_json::json!(1)));
+    assert_eq!(rows[0].get("bits"), Some(&serde_json::json!(1)));
+
+    let msg = db
+        .query("SELECT CAST(1.5 AS DECIMAL(10,2)) AS d")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("unsupported column type"), "{msg}");
+}
+
 #[tokio::test]
 async fn warm_up_without_min_connections_is_a_noop() {
     let params = PoolParams {

@@ -104,9 +104,17 @@ impl SqlxConfig {
     /// 避免与 [`PoolParams::for_url`] 静默分叉。
     pub fn pool(&self) -> PoolParams {
         let d = PoolParams::default();
+        let max_connections = self.max_connections.unwrap_or(d.max_connections);
         PoolParams {
-            max_connections: self.max_connections.unwrap_or(d.max_connections),
-            min_connections: self.min_connections.unwrap_or(d.min_connections),
+            max_connections,
+            // min 必须 ≤ max：sqlx 自己的后台保底是「尽力而为」—— 拿不到 permit 就
+            // 安静收手（`sqlx-core-0.8.6/src/pool/inner.rs:396` 的 `try_min_connections`），
+            // 但 `warm_up()` 是**持着已取的连接**再去 acquire 到 min 条，池上限更低
+            // 时永远取不满，只会阻塞到 acquire_timeout 后报错。
+            min_connections: self
+                .min_connections
+                .unwrap_or(d.min_connections)
+                .min(max_connections),
             acquire_timeout: self
                 .acquire_timeout_secs
                 .map_or(d.acquire_timeout, Duration::from_secs),
@@ -213,6 +221,18 @@ mod tests {
             assert_eq!(a.test_before_acquire, b.test_before_acquire, "{url}");
             assert_eq!(a.session_init, b.session_init, "{url}");
         }
+    }
+
+    /// `min > max` 必须夹到 max：否则 `warm_up()` 阻塞到 acquire_timeout 才报错。
+    #[test]
+    fn min_connections_is_clamped_to_max() {
+        let cfg: SqlxConfig = serde_json::from_str(
+            r#"{"url": "sqlite::memory:", "max_connections": 2, "min_connections": 5}"#,
+        )
+        .unwrap();
+        let p = cfg.pool();
+        assert_eq!(p.max_connections, 2);
+        assert_eq!(p.min_connections, 2);
     }
 
     /// `query_timeout_secs: 0` 是「禁用」而非「0 秒立刻超时」。
