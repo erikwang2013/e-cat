@@ -7,7 +7,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     /// ANSI 近似（双引号标识符、`?` 占位符、`LIMIT`）。
-    /// 第三方 `SqlExecutor` 实现未声明方言时的默认值。
+    /// 第三方 `SqlExecutor` 实现未声明方言时的回退值。
     Standard,
     Sqlite,
     Postgres,
@@ -21,14 +21,18 @@ impl Dialect {
     /// 同时兼容有 `://` 的形式（`postgres://host/db`）与 sqlite 的无 authority
     /// 形式（`sqlite:app.db`）。
     pub fn from_url(url: &str) -> Self {
+        // RFC 3986 §3.1：scheme 大小写不敏感。sqlx 用 url crate 解析连接串时会
+        // 小写化 scheme，因此 "POSTGRES://host/db" 能连通 —— 这里不归一化就会
+        // 静默返回 Standard，与后端实际行为不一致。
         let scheme = url
             .split("://")
             .next()
             .unwrap_or("")
             .split(':')
             .next()
-            .unwrap_or("");
-        match scheme {
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        match scheme.as_str() {
             "postgres" | "postgresql" => Self::Postgres,
             "mysql" | "mariadb" => Self::MySql,
             "sqlite" => Self::Sqlite,
@@ -57,6 +61,11 @@ mod tests {
         assert_eq!(Dialect::from_url("sqlite::memory:"), Dialect::Sqlite);
         assert_eq!(Dialect::from_url("sqlite:app.db"), Dialect::Sqlite);
         assert_eq!(Dialect::from_url("mssql://host:1433/db"), Dialect::Mssql);
+        assert_eq!(
+            Dialect::from_url("sqlserver://host:1433/db"),
+            Dialect::Mssql
+        );
+        assert_eq!(Dialect::from_url("postgres"), Dialect::Postgres);
     }
 
     #[test]
@@ -64,6 +73,18 @@ mod tests {
         assert_eq!(Dialect::from_url("oracle://host/db"), Dialect::Standard);
         assert_eq!(Dialect::from_url(""), Dialect::Standard);
         assert_eq!(Dialect::from_url("nonsense"), Dialect::Standard);
+    }
+
+    /// RFC 3986 §3.1：scheme 大小写不敏感。sqlx 侧同样会小写化，
+    /// 不归一化就会在能连通的情况下静默给出 Standard。
+    #[test]
+    fn from_url_is_case_insensitive() {
+        assert_eq!(
+            Dialect::from_url("POSTGRES://localhost/db"),
+            Dialect::Postgres
+        );
+        assert_eq!(Dialect::from_url("MySQL://localhost/db"), Dialect::MySql);
+        assert_eq!(Dialect::from_url("SQLite:app.db"), Dialect::Sqlite);
     }
 
     /// sqlite 的 URL 没有 `://`，是最容易写错的一类，单独钉住。
