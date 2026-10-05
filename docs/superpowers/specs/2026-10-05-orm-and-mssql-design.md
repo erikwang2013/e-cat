@@ -62,6 +62,14 @@
 | 可观测性三 feature（metrics / health / tracing） | §7.5 |
 | **取消迁移 CLI**（`ecat-cli` 看不到用户实体） | §7 |
 
+第三轮（同日，用户追问「连接池还有提升吗」）：
+
+| 项 | 位置 |
+|---|---|
+| 路由跳过已熔断端点（避免稳定 1/N 失败率）+ 副本全挂时降级策略 | §2.5 |
+| sqlx `test_before_acquire` 默认改 `false`，与 deadpool 侧智能 recycle 对齐 | §2.8 |
+| 会话初始化钩子（PG/MySQL 会话级 UTC、MSSQL `ARITHABORT ON`） | §2.7 |
+
 ## 1. 新增 crate
 
 ```
@@ -203,6 +211,23 @@ let replicas = replica_clients.into_iter()
 let db = RdbmsRouting::new(primary, replicas);
 ```
 
+**路由必须跳过已熔断的端点。** 只做"逐端点包熔断"是不够的：从库挂掉后，轮询仍会把
+1/N 的读请求转过去，靠熔断快速失败 —— 那不是故障隔离，是**稳定的 1/N 失败率**。
+因此 `RdbmsRouting` 选端点时读取各端点的熔断状态，`Open` 的直接跳过：
+
+```rust
+pub struct RdbmsRouting {
+    primary: Endpoint,                    // Endpoint = CircuitBreakerExecutor<...>
+    replicas: Vec<Endpoint>,
+    next: AtomicUsize,
+    fallback_to_primary: bool,            // 副本全不可用时是否降级读主，默认 true
+    // fallback_to_primary = false 时直接返回 RdbmsError::NoAvailableReplica
+}
+```
+
+副本全部熔断时：`fallback_to_primary = true`（默认）读请求降级到主库；
+`false` 则快速失败。两种行为都要有测试。
+
 ### 2.6 查询超时（在 `RdbmsClient` 实现内部，不做成包装器）
 
 超时若做成包装器，`transaction()` 的返回类型会变形（`TimeoutExecutor<S>::transaction()`
@@ -218,6 +243,34 @@ where F: Future<Output = Result<T, RdbmsError>>;
 
 配置字段 `query_timeout_secs`（后端 config 内，默认 30，`0` = 禁用）。
 sqlx 侧另设服务端兜底：PG 连接参数 `statement_timeout`、MySQL `max_execution_time`。
+
+### 2.7 会话初始化钩子
+
+sqlx 侧用 `PoolOptions::after_connect`、deadpool 侧用 `PoolBuilder::post_create`，
+在每条新连接建立后执行一组会话设置语句。配置字段
+`session_init: Option<Vec<String>>`（`None` 时用各后端默认值）：
+
+| 后端 | 默认语句 | 作用 |
+|---|---|---|
+| PostgreSQL | `SET TIME ZONE 'UTC'`、`SET application_name = 'ecat'` | 库侧直接返回 UTC（加固 §5.4 的 UTC 约定）；`application_name` 让连接在 `pg_stat_activity` 里可辨识 |
+| MySQL | `SET time_zone = '+00:00'` | 同上 |
+| SQL Server | `SET ARITHABORT ON` | 避免**计划缓存污染**（ARITHABORT 取值不同会让同一查询产生多份执行计划），也是索引视图可用性的前提 |
+| SQLite | 无 | 无会话概念 |
+
+任一条语句执行失败 → **连接创建失败**（`Manager::create` 返回 Err），不静默降级。
+
+### 2.8 取连接的探活策略（两个后端对齐）
+
+两个池的取用路径都有一次多余往返，必须都处理：
+
+| 后端 | 机制 | 默认 | 决策 |
+|---|---|---|---|
+| sqlx | `test_before_acquire`（每次 acquire 发一次 ping，不论上次 ping 多近 —— sqlx issue #1743） | `true` | 暴露为 `test_before_acquire` 配置，**默认改 `false`** |
+| deadpool | 我们自己的 `Manager::recycle` | — | 按空闲时长决定是否 `SELECT 1`（§3） |
+
+关闭每次 ping 后，死连接的兜底由三件事共同保证：`max_lifetime` 轮换、
+查询超时（§2.6）、以及首次使用时的报错。这正是本设计要"两个后端行为一致"的原因
+—— 只优化一侧会造成同一问题只解决一半。
 
 ## 3. `ecat-data-mssql`
 
@@ -238,6 +291,7 @@ pub struct MssqlConfig {
     #[serde(default)] pub acquire_timeout_secs: Option<u64>,   // 默认 30
     #[serde(default)] pub idle_timeout_secs: Option<u64>,      // 默认 600
     #[serde(default)] pub query_timeout_secs: Option<u64>,     // 默认 30，0 = 禁用
+    #[serde(default)] pub session_init: Option<Vec<String>>,   // 默认 SET ARITHABORT ON（§2.7）
 }
 
 pub struct MssqlClient { pool: deadpool::managed::Pool<MssqlManager> }
@@ -323,6 +377,8 @@ pub struct SqlxConfig {
     #[serde(default)] pub idle_timeout_secs: Option<u64>,      // 默认 600
     #[serde(default)] pub max_lifetime_secs: Option<u64>,      // 默认 1800
     #[serde(default)] pub query_timeout_secs: Option<u64>,     // 默认 30，0 = 禁用
+    #[serde(default)] pub test_before_acquire: Option<bool>,   // 默认 false（§2.8）
+    #[serde(default)] pub session_init: Option<Vec<String>>,   // 默认按方言取（§2.7）
 }
 ```
 
@@ -611,8 +667,11 @@ CI 无数据库服务（`.github/workflows/ci.yml` 仅 `cargo test --workspace`�
 **新增覆盖点**（对应本次评审补充）：
 - 每后端一枚方言单测：批量分块边界（2100 / 999 / 65535 各超一行的输入）
 - MySQL `InsertThen` 路径断言其包在事务内执行（用一个记录调用序列的假 executor）
-- `RdbmsRouting`：写语句落 primary、读语句落 replica、`query_write` 落 primary
+- `RdbmsRouting`：写语句落 primary、读语句落 replica、`query_write` 落 primary、
+  **端点熔断后轮询跳过它**、副本全熔断时 `fallback_to_primary` 两种取值的行为
 - `CircuitBreakerExecutor`：失败率超阈值后快速失败，冷却后半开探测
+- 会话初始化：假 executor 断言连接建立后按序执行了初始化语句；
+  某条语句失败 → 连接创建失败
 - 标识符白名单：未声明的列名被拒（不拼进 SQL）
 - 时间归一化：带 `+08:00` 偏移的输入在写前被转为 UTC
 
@@ -672,5 +731,8 @@ CI 无数据库服务（`.github/workflows/ci.yml` 仅 `cargo test --workspace`�
 6. MSSQL 客户端可编译、可配置，且有 env 门控集成测试（本地 docker 实跑通过）
 7. 池增强逐项可验证：查询超时触发并计数、`warm_up()` 建满 `min_connections`、
    智能 recycle 在短空闲时跳过探活、熔断在失败率超阈后快速失败、
-   `RdbmsRouting` 写落主读落从
-8. `ecat-circuit-breaker` 既有 12 个测试保持全绿（`Breaker` 抽取未改行为）
+   `RdbmsRouting` 写落主读落从、**副本熔断时读请求被跳过该副本**
+   （`fallback_to_primary` 两种取值各一个用例）
+8. 会话初始化生效可验证：PG 连接后 `SHOW timezone` 为 `UTC`；
+   MSSQL 连接后 `ARITHABORT` 为 ON；初始化语句失败时连接创建失败（不静默）
+9. `ecat-circuit-breaker` 既有 12 个测试保持全绿（`Breaker` 抽取未改行为）
