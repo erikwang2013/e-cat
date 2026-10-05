@@ -54,6 +54,18 @@ mod tests {
         assert_eq!(Dialect::from_url("SQLite:app.db"), Dialect::Sqlite);
     }
 
+    /// url crate 会 trim 首尾 U+0000–U+0020，故带空白的 URL 能连通 sqlx；
+    /// 不 trim 就会静默返回 Standard。
+    #[test]
+    fn from_url_tolerates_surrounding_whitespace() {
+        assert_eq!(Dialect::from_url(" postgres://host/db"), Dialect::Postgres);
+        assert_eq!(Dialect::from_url("\tmysql://host/db"), Dialect::MySql);
+        assert_eq!(Dialect::from_url("sqlite:app.db\n"), Dialect::Sqlite);
+        // 谓词与 url crate 一致（U+0000–U+0020）：NUL/控制字符同样被 trim。
+        assert_eq!(Dialect::from_url("\0postgres://host/db"), Dialect::Postgres);
+        assert_eq!(Dialect::from_url("\u{1}mysql://host/db"), Dialect::MySql);
+    }
+
     #[test]
     fn from_url_unknown_scheme_is_standard() {
         assert_eq!(Dialect::from_url("oracle://host/db"), Dialect::Standard);
@@ -97,13 +109,17 @@ pub enum Dialect {
 impl Dialect {
     /// 从连接串推断方言，无法识别时返回 [`Dialect::Standard`]。
     ///
+    /// scheme 的大小写，以及前导/尾随的 C0 控制字符与空格（U+0000–U+0020），
+    /// 均被忽略（与 sqlx 底层 `url` crate 的判定一致）。
     /// 同时兼容有 `://` 的形式（`postgres://host/db`）与 sqlite 的无 authority
     /// 形式（`sqlite:app.db`）。
     pub fn from_url(url: &str) -> Self {
-        // RFC 3986 §3.1：scheme 大小写不敏感。sqlx 用 url crate 解析连接串时会
-        // 小写化 scheme，因此 "POSTGRES://host/db" 能连通 —— 这里不归一化就会
-        // 静默返回 Standard，与后端实际行为不一致。
+        // 谓词必须与 sqlx 底层 url crate 一致：url-2.5.8/src/parser.rs:1745-1747 的
+        // `c0_control_or_space` 是 `ch <= ' '`（U+0000–U+0020，含 C0 控制字符）。
+        // 不能用 str::trim()：它走 Unicode White_Space 属性，不含 NUL 等 C0 控制字符，
+        // 会让 "\0postgres://host/db" 落回 Standard —— sqlx 侧却能连通，又是静默错答。
         let scheme = url
+            .trim_matches(|c: char| c <= ' ')
             .split("://")
             .next()
             .unwrap_or("")
@@ -122,10 +138,18 @@ impl Dialect {
 }
 ```
 
-> **大小写归一化是必需的，不是润色**（代码质量审查发现）：sqlx 侧用 `url` crate
-> 解析连接串并把 scheme 小写化，所以 `"POSTGRES://host/db"` 能正常连通；
-> 不归一化则 `from_url` 静默返回 `Standard` —— 静默错答而非报错，下游会一路劣化
-> （会话初始化被跳过、错误信息误导、ORM 对 PostgreSQL 生成 ANSI SQL）。
+> **归一化是必需的，三轮各暴露一条同类的静默错答**（代码质量审查 + 实现者实测）：
+> ① scheme 大小写不敏感（RFC 3986 §3.1）；② 首尾空白被 url crate 的
+> `new_trim_c0_control_and_space` trim 掉；③ 该 trim 的谓词是 `ch <= ' '`
+> （含 NUL 等 C0 控制字符），**不等于** `str::trim()` 的 Unicode White_Space。
+> 不处理则 `"POSTGRES://host/db"` / `" postgres://host/db"` / `"\0postgres://host/db"`
+> 三种输入都会被 sqlx 正常连通，而 `from_url` 静默返回 `Standard` ——
+> **静默错答而非报错**，下游一路劣化（会话初始化被跳过、错误信息误导、
+> ORM 对 PostgreSQL 生成 ANSI SQL）。
+>
+> 注释里那句「不能用 str::trim()」是**故意留的**：后来者看到
+> `trim_matches(|c| c <= ' ')` 的第一反应必然是「这不就是 `.trim()` 吗」，
+> 抹掉就退回这个 bug。
 
 - [ ] **Step 4: 跑测试确认通过**
 
