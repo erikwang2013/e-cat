@@ -687,11 +687,29 @@ CI 无数据库服务（`.github/workflows/ci.yml` 仅 `cargo test --workspace`�
 | `ecat-orm-derive` | **新建** |
 | `ecat-circuit-breaker` | 抽出公开 `Breaker` 类型（tower 层改为调用它，行为不变） |
 | `ecat`（聚合） | 新增 feature `orm` / `mssql` |
-| `config/databases.example.yaml` | 补 `mssql:` 段与 sql 池参数注释 |
-| `README.md` / `README.en.md` | 后端表补 SQL Server（第 16 个），补 ORM 用法段 |
-| `docs/ecosystem-plan-v3.md` | 后端覆盖表补一行 |
 | `docker-compose.dev.yml` | **新建**（本地三库联调，不进 CI） |
 | 版本 | workspace 3.0.3 → 4.0.0 |
+
+### 9.1 文档更新清单
+
+**文档更新必须与代码同批落地。** README 系文档带状态列（`✅ 已实现` /
+`✅ Реализовано` / `✅ 実装済み`），代码未落地前更新即为不实描述 ——
+用户照文档使用会直接失败。因此本清单随实现批次执行，不提前写。
+
+| 文档 | 根文件 | i18n 副本 | 更新内容 |
+|---|---|---|---|
+| README | `README.md` / `README.en.md` | `docs/i18n/{12}/README.md` | 后端表补 SQL Server 行（第 16 个）；`RDBMS \| sqlx` 依赖行补 `tiberius-ng`；新增 ORM 用法段；目录树补 3 个新 crate |
+| 数据库配置教程 | `docs/database-config-tutorial.md` | `docs/i18n/{12}/database-config-tutorial.md` | 补 `MssqlConfig` 段、sql 池参数（`max_connections` / `query_timeout_secs` / `session_init` 等）、`RdbmsRouting` 与熔断组合示例 |
+| API 参考 | `docs/api.md` | `docs/i18n/{12}/api.md` | 补 ORM / 迁移的公开 API；`/metrics` 新增的池指标名 |
+| TLS 教程 | `docs/tls-certificate-tutorial.md` | `docs/i18n/{12}/tls-certificate-tutorial.md` | SQL Server 的 TLS 连接串参数（`encrypt=mandatory` / `trust_server_certificate`） |
+| 依赖 CVE 跟踪 | `docs/dependency-cve-tracking.md` | `docs/i18n/{12}/dependency-cve-tracking.md` | `tiberius-ng` 进入 `Cargo.lock` 后按常规流程补录（选型排除记录已在 2026-10-05 提前写入根文件） |
+| 生态规划 | `docs/ecosystem-plan-v3.md` | `docs/i18n/{12}/ecosystem-plan-v3.md` | v4.0 规划段去掉「尚未实现」标记，并入「当前覆盖」 |
+| 配置示例 | `config/databases.example.yaml` | — | 补 `mssql:` 段与 sql 池参数注释 |
+| 变更日志 | `CHANGELOG.md` | — | 4.0.0 段：新增 / 变更 / 破坏性变更 / 迁移指引 |
+
+i18n 共 12 个语言目录（`ar` `bn` `de` `en` `es` `fr` `hi` `id` `ja` `ko` `pt` `ru`），
+按上表逐份同步 —— **受影响文件约 80 个**，是本次改动中体量最大的单项。
+`docs/i18n/*/audit-report-*.md` 等历史记录文档**不更新**（审计报告是历史存档）。
 
 > `ecat-cli` **不改动**（迁移 CLI 方案已取消，见 §7）。
 
