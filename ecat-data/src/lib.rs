@@ -6,6 +6,7 @@ mod graph;
 mod rdbms;
 mod search;
 mod storage;
+mod timeout;
 mod tsdb;
 
 pub use cache::Cache;
@@ -16,4 +17,5 @@ pub use graph::GraphClient;
 pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner};
 pub use search::SearchClient;
 pub use storage::StorageClient;
+pub use timeout::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED, run_with_timeout};
 pub use tsdb::{DataPoint, FieldValue, TsdbClient};

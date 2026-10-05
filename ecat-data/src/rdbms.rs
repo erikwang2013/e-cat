@@ -159,9 +159,10 @@ impl SqlExecutor for Transaction {
 
 impl Drop for Transaction {
     fn drop(&mut self) {
-        // 这里只记日志：Drop 里无法执行异步回滚，实际回滚依赖
+        // 这里只记日志与计数：Drop 里无法执行异步回滚，实际回滚依赖
         // 底层 sqlx / tiberius 事务在未提交时 Drop 自动回滚。
         if !self.committed && !self.rolled_back {
+            crate::timeout::TRANSACTIONS_LEAKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             tracing::warn!("transaction dropped without commit — rolling back");
         }
     }
@@ -411,6 +412,14 @@ mod tests {
         }));
         with_warn_counter(Arc::clone(&warns), || drop(tx));
         assert_eq!(warns.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn dropped_uncommitted_transaction_counts_as_leak() {
+        use crate::timeout::TRANSACTIONS_LEAKED;
+        let before = TRANSACTIONS_LEAKED.load(Ordering::SeqCst);
+        drop(Transaction::new());
+        assert!(TRANSACTIONS_LEAKED.load(Ordering::SeqCst) > before); // 并行测试也会递增
     }
 
     struct RawOnlyClient;
