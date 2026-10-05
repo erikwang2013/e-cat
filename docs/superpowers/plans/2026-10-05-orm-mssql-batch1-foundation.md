@@ -1153,15 +1153,27 @@ impl Default for PoolParams {
 }
 
 impl SqlxConfig {
+    /// 未配置的字段一律取 [`PoolParams::default`]，**字面量只保留一份**。
+    ///
+    /// 初版这里逐个 `unwrap_or(<字面量>)`，与 `PoolParams::default()` 形成两处定义 ——
+    /// 改一处默认值会让 `for_url`（`connect` 走）与 `pool()`（`from_config` 走）
+    /// 静默分叉，且现有测试抓不到。实施时由实现者发现并订正。
     pub fn pool(&self) -> PoolParams {
+        let d = PoolParams::default();
         PoolParams {
-            max_connections: self.max_connections.unwrap_or(10),
-            min_connections: self.min_connections.unwrap_or(0),
-            acquire_timeout: Duration::from_secs(self.acquire_timeout_secs.unwrap_or(30)),
-            idle_timeout: Duration::from_secs(self.idle_timeout_secs.unwrap_or(600)),
-            max_lifetime: Duration::from_secs(self.max_lifetime_secs.unwrap_or(1800)),
+            max_connections: self.max_connections.unwrap_or(d.max_connections),
+            min_connections: self.min_connections.unwrap_or(d.min_connections),
+            acquire_timeout: self
+                .acquire_timeout_secs
+                .map_or(d.acquire_timeout, Duration::from_secs),
+            idle_timeout: self
+                .idle_timeout_secs
+                .map_or(d.idle_timeout, Duration::from_secs),
+            max_lifetime: self
+                .max_lifetime_secs
+                .map_or(d.max_lifetime, Duration::from_secs),
             query_timeout: self.query_timeout(),
-            test_before_acquire: self.test_before_acquire.unwrap_or(false),
+            test_before_acquire: self.test_before_acquire.unwrap_or(d.test_before_acquire),
             session_init: self.effective_session_init(),
         }
     }
@@ -2277,6 +2289,8 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 - [ ] `cargo test --workspace` 全绿，**测试数不下降**且 0 failed
 - [ ] **fmt：本批改动过的文件** `cargo fmt -- --check` 干净（见下：全量 fmt 有既有失败）
 - [ ] **clippy：除已知的 `double_must_use` 误报外，workspace 不得有任何其它诊断**
+- [ ] **`cargo doc -p <改动过的 crate> --no-deps` 无 warning**（clippy 与 fmt 都不覆盖
+      文档链接合法性 —— 实施中发现「公开文档链接到私有模块条目」这类问题只有 `cargo doc` 报）
 - [ ] `cargo audit --deny warnings` 通过（本批未新增外部依赖，应无变化）
 - [ ] `grep -rn "AnyPool\|install_default_drivers" ecat-data-sqlx/` 无输出
 - [ ] `grep -c "query_timeout_secs" docs/database-config-tutorial.md` ≥ 1
