@@ -41,6 +41,17 @@ mod tests {
         assert_eq!(Dialect::from_url("sqlite::memory:"), Dialect::Sqlite);
         assert_eq!(Dialect::from_url("sqlite:app.db"), Dialect::Sqlite);
         assert_eq!(Dialect::from_url("mssql://host:1433/db"), Dialect::Mssql);
+        assert_eq!(Dialect::from_url("sqlserver://host:1433/db"), Dialect::Mssql);
+        assert_eq!(Dialect::from_url("postgres"), Dialect::Postgres);
+    }
+
+    /// RFC 3986 §3.1：scheme 大小写不敏感。sqlx 侧同样会小写化，
+    /// 不归一化就会在能连通的情况下静默给出 Standard。
+    #[test]
+    fn from_url_is_case_insensitive() {
+        assert_eq!(Dialect::from_url("POSTGRES://localhost/db"), Dialect::Postgres);
+        assert_eq!(Dialect::from_url("MySQL://localhost/db"), Dialect::MySql);
+        assert_eq!(Dialect::from_url("SQLite:app.db"), Dialect::Sqlite);
     }
 
     #[test]
@@ -89,14 +100,18 @@ impl Dialect {
     /// 同时兼容有 `://` 的形式（`postgres://host/db`）与 sqlite 的无 authority
     /// 形式（`sqlite:app.db`）。
     pub fn from_url(url: &str) -> Self {
+        // RFC 3986 §3.1：scheme 大小写不敏感。sqlx 用 url crate 解析连接串时会
+        // 小写化 scheme，因此 "POSTGRES://host/db" 能连通 —— 这里不归一化就会
+        // 静默返回 Standard，与后端实际行为不一致。
         let scheme = url
             .split("://")
             .next()
             .unwrap_or("")
             .split(':')
             .next()
-            .unwrap_or("");
-        match scheme {
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        match scheme.as_str() {
             "postgres" | "postgresql" => Self::Postgres,
             "mysql" | "mariadb" => Self::MySql,
             "sqlite" => Self::Sqlite,
@@ -106,6 +121,11 @@ impl Dialect {
     }
 }
 ```
+
+> **大小写归一化是必需的，不是润色**（代码质量审查发现）：sqlx 侧用 `url` crate
+> 解析连接串并把 scheme 小写化，所以 `"POSTGRES://host/db"` 能正常连通；
+> 不归一化则 `from_url` 静默返回 `Standard` —— 静默错答而非报错，下游会一路劣化
+> （会话初始化被跳过、错误信息误导、ORM 对 PostgreSQL 生成 ANSI SQL）。
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -1148,10 +1168,10 @@ mod tests {
         assert!(matches!(pool, Pool::Sq(_)));
     }
 
-    /// 无外部服务时校验方言推断与分派分支的对应关系。
-    /// 真实连接由 env 门控集成测试覆盖。
+    /// 无法识别的 scheme 必须被拒，且**错误信息要点名出问题的 scheme** ——
+    /// `Dialect::Standard` 是回退值，把它打进错误等于丢掉诊断线索。
     #[test]
-    fn unsupported_scheme_is_rejected() {
+    fn unsupported_scheme_is_rejected_and_names_the_scheme() {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1159,7 +1179,25 @@ mod tests {
         let err = rt
             .block_on(Pool::connect("oracle://h/db", &PoolParams::default()))
             .unwrap_err();
-        assert!(err.to_string().contains("unsupported"), "got: {err}");
+        let msg = err.to_string();
+        assert!(msg.contains("unsupported"), "got: {msg}");
+        assert!(msg.contains("oracle"), "错误信息必须点名 scheme，got: {msg}");
+    }
+
+    /// Mssql 归 ecat-data-mssql（tiberius），不应被 sqlx 后端静默接受。
+    #[test]
+    fn mssql_scheme_is_rejected_by_sqlx_backend() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let err = rt
+            .block_on(Pool::connect("mssql://h:1433/db", &PoolParams::default()))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("ecat-data-mssql"),
+            "got: {err}"
+        );
     }
 }
 ```
@@ -1205,9 +1243,29 @@ impl Pool {
                     .connect(url)
                     .await?,
             )),
-            other => Err(sqlx::Error::Configuration(
-                format!("unsupported database scheme for sqlx backend: {other:?}").into(),
-            )),
+            // 报 scheme 原文而非 Dialect：`Dialect::Standard` 是「无法识别」的
+            // 回退值，把它打进错误信息等于丢掉了唯一的诊断线索。
+            Dialect::Standard => Err(sqlx::Error::Configuration(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "unsupported database scheme for sqlx backend: {}",
+                        url.split("://")
+                            .next()
+                            .unwrap_or(url)
+                            .split(':')
+                            .next()
+                            .unwrap_or(url)
+                    ),
+                ),
+            ))),
+            // Mssql 走 tiberius 后端（ecat-data-mssql），不是 sqlx
+            Dialect::Mssql => Err(sqlx::Error::Configuration(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "mssql:// is served by ecat-data-mssql, not the sqlx backend",
+                ),
+            ))),
         }
     }
 
@@ -2110,8 +2168,33 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 
 - [ ] `cargo test --workspace` 全绿
 - [ ] `cargo fmt --check` 通过
-- [ ] `cargo clippy --workspace -- -D warnings` 通过
+- [ ] **clippy 相对基线**（见下）：诊断数不超过基线，且无一条指向本批新增/修改的文件
 - [ ] `cargo audit --deny warnings` 通过（本批未新增外部依赖，应无变化）
 - [ ] `grep -rn "AnyPool\|install_default_drivers" ecat-data-sqlx/` 无输出
 - [ ] `grep -c "query_timeout_secs" docs/database-config-tutorial.md` ≥ 1
 - [ ] 12 个 i18n 副本与根文件同结构
+
+### clippy 基线说明（2026-10-05 实测）
+
+`cargo clippy --workspace -- -D warnings` **在 base commit `76014b6` 就是红的**，
+与本批改动无关，因此不能拿「全绿」当闸门：
+
+```
+30 条 double_must_use 错误
+来源：ecat-data 的 rdbms.rs / cache.rs / tsdb.rs / storage.rs / search.rs /
+      document.rs / graph.rs
+成因：#[async_trait] 宏展开（clippy 1.99.0，rust-toolchain.toml 钉 stable）
+```
+
+验证方式：在 base commit 的 detached worktree 里单独跑 clippy，得到同样 30 条。
+
+**本批的闸门改为：**
+
+```bash
+# 记录基线（批前批后各跑一次）
+cargo clippy --workspace 2>&1 | grep -c "^error"        # 预期 ≤ 30
+cargo clippy --workspace 2>&1 | grep "^error" | grep -E "dialect|config|pool|cell|timeout|rdbms" | wc -l   # 预期 0
+```
+
+修这 30 条是独立的一笔债（给受影响 crate 加带理由的 `allow`，或钉 clippy 版本），
+**不并入本批** —— 混进来会污染本批 diff 的审查。
