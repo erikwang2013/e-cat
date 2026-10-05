@@ -1321,6 +1321,18 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 > ```
 > `u64` 必须在 `bool` **之前**（MySQL UNSIGNED 靠它接住）；`i16` 在 `i32` 之后（PG INT2）。
 >
+> ⚠️ **`u64` 分支不能无条件加**（实施时踩到）：`sqlx-postgres` **根本没有 `u64` 实现**
+> （全库只有 `PgHasArrayType for u8`），无条件加进 `cell_fn!` 直接编译不过。解法是给宏加一个
+> 可选的 `$unsigned:ty` 标记参数，**把分支体写在宏定义处**，由调用点只传类型：
+>
+> ```rust
+> cell_fn!(pg_cell_to_json, sqlx::postgres::PgRow);            // 不传
+> cell_fn!(mysql_cell_to_json, sqlx::mysql::MySqlRow, u64);    // 传
+> cell_fn!(sqlite_cell_to_json, sqlx::sqlite::SqliteRow);      // 不传
+> ```
+>
+> **不要试图从调用点传分支的 token 序列** —— 宏卫生会让 `row` / `col` 不在作用域（E0425）。
+>
 > **⑤ 链尾不再是 `Value::Null`，而是报错。**
 > 改原生池后 PG 的 `date`/`numeric`/`uuid`/`jsonb`、MySQL 的 `decimal` 从
 > 「整条查询响亮失败」变成「该列静默 null」。NULL 闸门已把**真正的 NULL** 挡在前面，
