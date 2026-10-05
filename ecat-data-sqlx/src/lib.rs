@@ -1,24 +1,13 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod config;
+
 use async_trait::async_trait;
 use base64::Engine as _;
 use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, TransactionInner};
-use ecat_tls::TlsClientConfig;
-use serde::Deserialize;
 use sqlx::any::AnyRow;
 use sqlx::{AnyPool, Column as SqlxColumn, Executor as _, Row as SqlxRow};
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct SqlxConfig {
-    pub url: String,
-    #[serde(default)]
-    pub username: Option<String>,
-    #[serde(default)]
-    pub password: Option<String>,
-    /// TLS — SQLx TLS is configured via URL params (e.g. ?sslmode=require).
-    /// This field is reserved for future programmatic TLS support.
-    #[serde(default)]
-    pub tls: Option<TlsClientConfig>,
-}
+pub use config::{PoolParams, SqlxConfig};
 
 fn percent_encode(s: &str) -> String {
     s.chars()
@@ -561,6 +550,14 @@ mod tests {
             username: None,
             password: None,
             tls: None,
+            session_init: None,
+            max_connections: None,
+            min_connections: None,
+            acquire_timeout_secs: None,
+            idle_timeout_secs: None,
+            max_lifetime_secs: None,
+            query_timeout_secs: None,
+            test_before_acquire: None,
         };
         let client = SqlxClient::from_config(cfg).await.unwrap();
         let rows = client.query("SELECT 1 AS one").await.unwrap();
@@ -621,6 +618,14 @@ mod tests {
                 username: u,
                 password: p,
                 tls: None,
+                session_init: None,
+                max_connections: None,
+                min_connections: None,
+                acquire_timeout_secs: None,
+                idle_timeout_secs: None,
+                max_lifetime_secs: None,
+                query_timeout_secs: None,
+                test_before_acquire: None,
             };
             let client = SqlxClient::from_config(cfg).await.unwrap();
             client.execute("SELECT 1").await.unwrap();
