@@ -1232,6 +1232,22 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 
 ---
 
+### Task 6: 原生池重写（`Pool` + 客户端分派 + 事务 wrapper）—— **原子任务，不可再拆**
+
+> **为什么必须原子（2026-10-06 修正）**：初版把「客户端三路分派」放 Task 6、
+> 「事务 wrapper 三路重写」放 Task 8 —— 技术上不成立。`SqlxClient.pool` 从 `AnyPool`
+> 换成 `Pool` 后：
+> - `impl SqlExecutor` 的每个方法都要 match 三个变体（否则不编译）
+> - `pool.begin()` 在三个变体上返回**三种不同的 `Transaction<'static, DB>`**，
+>   `SqlxTransactionWrapper` 必须先跟着改成三份，否则同样不编译
+>
+> 再由**第三个**强制项收口：`rows_to_result(rows: Vec<AnyRow>)` 在原生池下每个分支产出
+> **不同的 Row 类型**（`PgRow` / `MySqlRow` / `SqliteRow`），行转换器必须同步改成三份。
+>
+> **结论：Task 6 + Task 7 + Task 8 是同一个原子改动**，从 `AnyPool` 切到原生池
+> 不存在任何可编译的中间状态。三者合并为下面的单一任务；`pool.rs` 与 `cell.rs`
+> 仍作为独立**文件**拆出（保持 < 500 行与职责清晰），但属于同一次提交。
+
 ### Task 6: 原生池 —— `Pool` 枚举与连接分派
 
 **Files:**
