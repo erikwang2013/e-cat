@@ -11,7 +11,8 @@ categories.workspace = true
 
 [dependencies]
 ecat-data = { version = "3.0.3", path = "../ecat-data" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "time"] }
+time = { workspace = true }
 base64 = "0.22"
 async-trait.workspace = true
 serde.workspace = true

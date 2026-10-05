@@ -97,6 +97,7 @@ http = "1"
 thiserror = "2"
 futures-core = "0.3"
 sha2 = "0.10"
+time = { version = "0.3", features = ["formatting", "parsing"] }
 ecat-protos={ version = "3.0.3", path = "ecat-protos" }
 ecat-transport = { version = "3.0.3", path = "ecat-transport" }
 ecat-transport-http = { version = "3.0.3", path = "ecat-transport-http" }
