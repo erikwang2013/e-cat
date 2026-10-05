@@ -112,6 +112,22 @@ Voir `config/databases.example.yaml`.
 
 ### RDBMS — SqlxConfig
 
+#### Pools natifs (PostgreSQL / MySQL / SQLite)
+
+Le pilote natif est choisi automatiquement selon le schéma de l'URL, sans configuration supplémentaire :
+
+| scheme | Pilote |
+|---|---|
+| `postgres://` / `postgresql://` | PostgreSQL |
+| `mysql://` / `mariadb://` | MySQL |
+| `sqlite:` | SQLite |
+
+- **Types temporels natifs** : l'ancien chemin via `AnyPool` de sqlx ne gérait pas les types temporels, il fallait faire soi-même un `CAST` en texte ; les colonnes temporelles sont désormais lues directement.
+- **La casse et les espaces autour** du schéma **sont tous deux tolérés** (`"POSTGRES://…"` et `" postgres://…"` fonctionnent) ; un schéma non reconnu lève une erreur qui **le nomme**.
+- `mssql://` **n'est pas pris en charge par ce backend** (utiliser `ecat-data-mssql`) ; le transmettre ici est explicitement refusé.
+
+#### Exemple de configuration
+
 ```yaml
 sql:
   url: "postgres://host:5432/dbname"
@@ -119,11 +135,66 @@ sql:
   # password: "secret"      # 可选
 ```
 
-| Champ | Type | Description |
-|------|------|------|
-| `url` | `String` | Chaîne de connexion sqlx, prend en charge SQLite/PG/MySQL/TiDB |
-| `username` | `Option<String>` | Optionnel : authentification intégrée à l'URL (avec password) |
-| `password` | `Option<String>` | Optionnel : authentification intégrée à l'URL (avec username) |
+| Champ | Type | Valeur par défaut | Description |
+|------|------|--------|------|
+| `url` | `String` | — | Chaîne de connexion sqlx, prend en charge SQLite/PG/MySQL/TiDB |
+| `username` | `Option<String>` | `None` | Optionnel : authentification intégrée à l'URL (avec password) |
+| `password` | `Option<String>` | `None` | Optionnel : authentification intégrée à l'URL (avec username) |
+| `max_connections` | `u32` | `10` | Nombre maximal de connexions dans le pool |
+| `min_connections` | `u32` | `0` | Nombre minimal de connexions maintenues ; ramené à ≤ `max_connections` |
+| `acquire_timeout_secs` | `u64` | `30` | Délai d'attente d'une connexion |
+| `idle_timeout_secs` | `u64` | `600` | Recyclage des connexions inactives |
+| `max_lifetime_secs` | `u64` | `1800` | Durée de vie maximale d'une connexion |
+| `query_timeout_secs` | `u64` | `30` | Timeout par requête ; **0 = désactivé** |
+| `test_before_acquire` | `bool` | `false` | Ping avant de remettre la connexion |
+| `session_init` | `string[]` | Selon le dialecte | Instructions d'initialisation de session pour chaque nouvelle connexion |
+
+#### `session_init` (initialisation de session)
+
+Après l'établissement de chaque nouvelle connexion, ces instructions sont exécutées dans l'ordre :
+
+| Dialecte | Défaut `session_init` |
+|---|---|
+| PostgreSQL | `SET TIME ZONE 'UTC'`, `SET application_name = 'ecat'` |
+| MySQL | `SET time_zone = '+00:00'` |
+| SQLite | Pas de notion de session — vide par défaut |
+
+L'objectif est que la **base renvoie directement de l'UTC**, en accord avec la convention du framework de présenter tous les temps en RFC3339 UTC.
+
+- Un **tableau vide explicite `[]` signifie "désactivé volontairement"** et écrase le défaut du dialecte (même convention de remplacement explicite que `query_timeout_secs: 0` pour désactiver).
+- Si une instruction échoue → la création de la connexion échoue, **sans repli silencieux**.
+
+```yaml
+sql:
+  url: "mysql://host:3306/dbname"
+  session_init:
+    - "SET time_zone = '+00:00'"
+    - "SET NAMES utf8mb4"
+```
+
+#### `warm_up()` — Préchauffage
+
+Ouvre activement `min_connections` connexions au démarrage puis les rend, afin que le service soit prêt dès son démarrage :
+
+```rust
+let db = SqlxClient::from_config(cfg).await?;
+db.warm_up().await?;   // à appeler une fois au démarrage
+```
+
+Pourquoi c'est nécessaire : sqlx maintient `min_connections` **de manière asynchrone dans une tâche d'arrière-plan**, donc le retour de `connect()` ne garantit pas que le pool soit rempli — la première vague de requêtes ferait la course avec la tâche d'arrière-plan.
+
+#### Temps et dates : RFC3339 UTC uniformément
+
+**Les textes date/heure de sqlite sont réécrits en RFC3339 UTC** :
+
+- un texte de la forme `2026-10-05 12:34:56` → `"2026-10-05T12:34:56Z"`
+- un texte de la forme `2026-10-05` → `"2026-10-05T00:00:00Z"` (l'instant de minuit UTC)
+
+Raison : sqlite n'a pas de système de types, un texte en forme de date ou d'heure est ambigu par nature ; le framework le traite uniformément comme un temps.
+
+**Effet secondaire**: Les colonnes textuelles qui ressemblent à une date par simple coïncidence — numéros de version, codes métier — sont réécrites elles aussi. Si vous ne voulez pas de ce comportement, faites un CAST explicite de la colonne vers une forme non-date, ou utilisez un autre type.
+
+Les vraies colonnes `DATE` / `TIMESTAMP` de PG / MySQL sont elles aussi présentées en chaînes RFC3339 UTC, et **une date pure porte quand même `T00:00:00Z`** — car `"2026-10-05"` n'est pas du RFC3339 valide, et le framework utilise en interne un format unique pour que les couches supérieures puissent le parser.
 
 ### Redis — RedisConfig
 

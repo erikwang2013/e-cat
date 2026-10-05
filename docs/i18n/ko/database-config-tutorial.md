@@ -112,6 +112,22 @@ pub struct DatabasesConfig {
 
 ### RDBMS — SqlxConfig
 
+#### 네이티브 풀(PostgreSQL / MySQL / SQLite)
+
+URL scheme에 따라 네이티브 드라이버가 자동으로 선택됩니다. 추가 설정은 필요하지 않습니다:
+
+| scheme | 드라이버 |
+|---|---|
+| `postgres://` / `postgresql://` | PostgreSQL |
+| `mysql://` / `mariadb://` | MySQL |
+| `sqlite:` | SQLite |
+
+- **시간 타입 네이티브 지원**: 예전 sqlx `AnyPool` 경로에서는 시간 타입을 지원하지 않아 직접 `CAST`로 텍스트로 바꿔야 했습니다. 이제 시간 컬럼을 그대로 읽을 수 있습니다.
+- scheme의 **대소문자와 앞뒤 공백이 모두 허용**됩니다(`"POSTGRES://…"`, `" postgres://…"` 모두 사용 가능). 인식할 수 없는 scheme은 오류를 내고 **어떤 scheme인지 지목**합니다.
+- `mssql://`는 **이 백엔드가 제공하지 않습니다**(`ecat-data-mssql`를 사용하세요). 여기로 넘기면 명시적으로 거부됩니다.
+
+#### 설정 예시
+
 ```yaml
 sql:
   url: "postgres://host:5432/dbname"
@@ -119,11 +135,66 @@ sql:
   # password: "secret"      # 선택
 ```
 
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `url` | `String` | sqlx 연결 문자열, SQLite/PG/MySQL/TiDB 지원 |
-| `username` | `Option<String>` | 선택: URL 내장 인증(password와 함께 사용) |
-| `password` | `Option<String>` | 선택: URL 내장 인증(username과 함께 사용) |
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `url` | `String` | — | sqlx 연결 문자열, SQLite/PG/MySQL/TiDB 지원 |
+| `username` | `Option<String>` | `None` | 선택: URL 내장 인증(password와 함께 사용) |
+| `password` | `Option<String>` | `None` | 선택: URL 내장 인증(username과 함께 사용) |
+| `max_connections` | `u32` | `10` | 풀의 최대 연결 수 |
+| `min_connections` | `u32` | `0` | 유지할 최소 연결 수; ≤ `max_connections`로 잘립니다 |
+| `acquire_timeout_secs` | `u64` | `30` | 연결을 기다리는 타임아웃 |
+| `idle_timeout_secs` | `u64` | `600` | 유휴 연결 회수 |
+| `max_lifetime_secs` | `u64` | `1800` | 연결의 최대 수명 |
+| `query_timeout_secs` | `u64` | `30` | 쿼리 단위 타임아웃; **0 = 비활성** |
+| `test_before_acquire` | `bool` | `false` | 연결을 넘겨주기 전에 ping 할지 |
+| `session_init` | `string[]` | 방언별 | 새 연결마다의 세션 초기화 문장 |
+
+#### `session_init`(세션 초기화)
+
+새 연결이 맺어질 때마다 이 문장들이 순서대로 실행됩니다:
+
+| 방언 | 기본값 `session_init` |
+|---|---|
+| PostgreSQL | `SET TIME ZONE 'UTC'`, `SET application_name = 'ecat'` |
+| MySQL | `SET time_zone = '+00:00'` |
+| SQLite | 세션 개념이 없어 기본적으로 비어 있음 |
+
+목적은 **DB 쪽에서 직접 UTC를 반환하게** 하여, 모든 시간을 RFC3339 UTC로 통일해 제시한다는 프레임워크 규약에 맞추는 것입니다.
+
+- **명시적 빈 배열 `[]`은 "의도적 해제"**를 뜻하며 방언 기본값을 덮어씁니다(`query_timeout_secs: 0`이 비활성을 뜻하는 것과 같은 "명시적 재정의" 규약입니다).
+- 문장 중 하나라도 실패하면 → 연결 생성이 실패합니다. **조용한 폴백은 없습니다**.
+
+```yaml
+sql:
+  url: "mysql://host:3306/dbname"
+  session_init:
+    - "SET time_zone = '+00:00'"
+    - "SET NAMES utf8mb4"
+```
+
+#### `warm_up()` — 워밍업
+
+시작 시 `min_connections`개만큼 연결을 미리 만들어 반납하여, 서비스가 뜨자마자 준비 상태가 되게 합니다:
+
+```rust
+let db = SqlxClient::from_config(cfg).await?;
+db.warm_up().await?;   // 시작 시 한 번 호출
+```
+
+필요한 이유: sqlx의 `min_connections`는 **백그라운드 태스크가 비동기로 유지**하므로 `connect()`가 반환된 시점에 이미 채워져 있다고 보장할 수 없습니다 —— 시작 직후의 첫 요청 물결이 백그라운드 태스크와 경쟁하게 됩니다.
+
+#### 시간과 날짜: RFC3339 UTC로 통일
+
+**sqlite의 시간/날짜 텍스트는 RFC3339 UTC로 다시 쓰입니다**:
+
+- `2026-10-05 12:34:56` 형태의 텍스트 → `"2026-10-05T12:34:56Z"`
+- `2026-10-05` 형태의 텍스트 → `"2026-10-05T00:00:00Z"`(UTC 자정 시점)
+
+이유: sqlite에는 타입 시스템이 없어 날짜/시간 형태의 텍스트는 본래 모호하므로, 프레임워크가 일괄적으로 시간으로 취급합니다.
+
+**부작용**: 버전 번호나 업무 코드처럼 "우연히 날짜 모양이 된" 텍스트 컬럼도 함께 다시 쓰입니다. 이 동작이 필요 없다면 해당 컬럼을 날짜가 아닌 모양으로 명시적으로 CAST하거나 다른 타입을 사용하세요.
+
+PG / MySQL의 실제 `DATE` / `TIMESTAMP` 컬럼도 마찬가지로 RFC3339 UTC 문자열로 제시되며, **순수 날짜에도 `T00:00:00Z`가 붙습니다** —— `"2026-10-05"`는 올바른 RFC3339가 아니기 때문에, 상위 계층이 파싱하기 쉽도록 프레임워크 내부에서 하나의 형식으로 통일하기 때문입니다.
 
 ### Redis — RedisConfig
 

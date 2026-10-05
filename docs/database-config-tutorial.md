@@ -112,6 +112,22 @@ pub struct DatabasesConfig {
 
 ### RDBMS — SqlxConfig
 
+#### 原生池（PostgreSQL / MySQL / SQLite 三路）
+
+按 URL scheme 自动选择原生驱动，无需额外配置：
+
+| scheme | 驱动 |
+|---|---|
+| `postgres://` / `postgresql://` | PostgreSQL |
+| `mysql://` / `mariadb://` | MySQL |
+| `sqlite:` | SQLite |
+
+- **时间类型原生支持**：旧版走 sqlx 的 `AnyPool` 时不支持时间类型，需要自己 `CAST` 成文本；现在时间列可直接读取。
+- scheme 的**大小写与首尾空白都会被容忍**（`"POSTGRES://…"`、`" postgres://…"` 都可用）；无法识别的 scheme 会报错并**点名**是哪个。
+- `mssql://` **不由本后端提供**（走 `ecat-data-mssql`），传给它会被明确拒绝。
+
+#### 配置示例
+
 ```yaml
 sql:
   url: "postgres://host:5432/dbname"
@@ -119,11 +135,66 @@ sql:
   # password: "secret"      # 可选
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `url` | `String` | sqlx 连接串，支持 SQLite/PG/MySQL/TiDB |
-| `username` | `Option<String>` | 可选：嵌入 URL 认证（与 password 配合） |
-| `password` | `Option<String>` | 可选：嵌入 URL 认证（与 username 配合） |
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `url` | `String` | — | sqlx 连接串，支持 SQLite/PG/MySQL/TiDB |
+| `username` | `Option<String>` | `None` | 可选：嵌入 URL 认证（与 password 配合） |
+| `password` | `Option<String>` | `None` | 可选：嵌入 URL 认证（与 username 配合） |
+| `max_connections` | `u32` | `10` | 池内最大连接数 |
+| `min_connections` | `u32` | `0` | 保底连接数；会被夹到 ≤ `max_connections` |
+| `acquire_timeout_secs` | `u64` | `30` | 等连接的超时 |
+| `idle_timeout_secs` | `u64` | `600` | 空闲连接回收 |
+| `max_lifetime_secs` | `u64` | `1800` | 连接最长存活 |
+| `query_timeout_secs` | `u64` | `30` | 单次查询超时；**0 = 禁用** |
+| `test_before_acquire` | `bool` | `false` | 取连接时是否先 ping |
+| `session_init` | `string[]` | 按方言 | 每条新连接的会话初始化语句 |
+
+#### `session_init`（会话初始化）
+
+每条新连接建立后，会依次执行这组语句：
+
+| 方言 | 默认 `session_init` |
+|---|---|
+| PostgreSQL | `SET TIME ZONE 'UTC'`, `SET application_name = 'ecat'` |
+| MySQL | `SET time_zone = '+00:00'` |
+| SQLite | 无会话概念，默认为空 |
+
+目的是让**库侧直接返回 UTC**，与框架「所有时间统一以 RFC3339 UTC 呈现」的约定对齐。
+
+- **显式空数组 `[]` 表示「主动关闭」**，会覆盖方言默认（与 `query_timeout_secs: 0` 表示禁用是同一种「显式覆盖」约定）。
+- 任一条语句失败 → 连接创建失败，**不静默降级**。
+
+```yaml
+sql:
+  url: "mysql://host:3306/dbname"
+  session_init:
+    - "SET time_zone = '+00:00'"
+    - "SET NAMES utf8mb4"
+```
+
+#### `warm_up()` — 预热
+
+启动时主动建满 `min_connections` 再归还，让服务起来就是就绪态：
+
+```rust
+let db = SqlxClient::from_config(cfg).await?;
+db.warm_up().await?;   // 启动时调用一次
+```
+
+为什么需要：sqlx 的 `min_connections` 由**后台任务异步维护**，`connect()` 返回时不保证已建满 —— 启动后的第一波请求会与后台任务抢跑。
+
+#### 时间与日期：统一 RFC3339 UTC
+
+**sqlite 的时间/日期文本会被改写为 RFC3339 UTC**：
+
+- 形如 `2026-10-05 12:34:56` 的文本 → `"2026-10-05T12:34:56Z"`
+- 形如 `2026-10-05` 的文本 → `"2026-10-05T00:00:00Z"`（UTC 午夜瞬时）
+
+原因：sqlite 没有类型系统，形如日期/时间的文本本就有歧义，框架统一按时间处理。
+
+**副作用**：版本号、业务编码这类「恰好长成日期形状」的文本列也会被改写。如果不需要这种行为，把该列显式 CAST 成非日期形状，或用别的类型。
+
+PG / MySQL 的真实 `DATE` / `TIMESTAMP` 列同样以 RFC3339 UTC 字符串呈现，**纯日期也带 `T00:00:00Z`** —— 因为 `"2026-10-05"` 不是合法 RFC3339，框架内部统一用一种格式，便于上层解析。
 
 ### Redis — RedisConfig
 

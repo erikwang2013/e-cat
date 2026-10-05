@@ -112,6 +112,22 @@ Lihat `config/databases.example.yaml`.
 
 ### RDBMS — SqlxConfig
 
+#### Pool native (PostgreSQL / MySQL / SQLite)
+
+Driver native dipilih otomatis dari scheme URL, tanpa konfigurasi tambahan:
+
+| scheme | Driver |
+|---|---|
+| `postgres://` / `postgresql://` | PostgreSQL |
+| `mysql://` / `mariadb://` | MySQL |
+| `sqlite:` | SQLite |
+
+- **Dukungan native untuk tipe waktu**: jalur lama lewat `AnyPool` dari sqlx tidak mendukung tipe waktu, sehingga harus `CAST` ke teks sendiri; sekarang kolom waktu bisa dibaca langsung.
+- **Huruf besar/kecil maupun spasi di awal/akhir** scheme **keduanya ditoleransi** (`"POSTGRES://…"` dan `" postgres://…"` sama-sama bisa); scheme yang tidak dikenali akan error dan **menyebutkan** scheme mana itu.
+- `mssql://` **tidak disediakan backend ini** (gunakan `ecat-data-mssql`); memberikannya ke sini akan ditolak secara eksplisit.
+
+#### Contoh konfigurasi
+
 ```yaml
 sql:
   url: "postgres://host:5432/dbname"
@@ -119,11 +135,66 @@ sql:
   # password: "secret"      # 可选
 ```
 
-| Kolom | Tipe | Keterangan |
-|------|------|------|
-| `url` | `String` | String koneksi sqlx, mendukung SQLite/PG/MySQL/TiDB |
-| `username` | `Option<String>` | Opsional: autentikasi tertanam di URL (berpasangan dengan password) |
-| `password` | `Option<String>` | Opsional: autentikasi tertanam di URL (berpasangan dengan username) |
+| Kolom | Tipe | Nilai default | Keterangan |
+|------|------|--------|------|
+| `url` | `String` | — | String koneksi sqlx, mendukung SQLite/PG/MySQL/TiDB |
+| `username` | `Option<String>` | `None` | Opsional: autentikasi tertanam di URL (berpasangan dengan password) |
+| `password` | `Option<String>` | `None` | Opsional: autentikasi tertanam di URL (berpasangan dengan username) |
+| `max_connections` | `u32` | `10` | Jumlah maksimum koneksi dalam pool |
+| `min_connections` | `u32` | `0` | Jumlah koneksi minimum yang dijaga; dijepit ke ≤ `max_connections` |
+| `acquire_timeout_secs` | `u64` | `30` | Batas waktu menunggu koneksi |
+| `idle_timeout_secs` | `u64` | `600` | Daur ulang koneksi menganggur |
+| `max_lifetime_secs` | `u64` | `1800` | Masa hidup maksimum koneksi |
+| `query_timeout_secs` | `u64` | `30` | Timeout per kueri; **0 = nonaktif** |
+| `test_before_acquire` | `bool` | `false` | Ping dulu sebelum koneksi diberikan |
+| `session_init` | `string[]` | Sesuai dialek | Pernyataan inisialisasi sesi untuk setiap koneksi baru |
+
+#### `session_init` (inisialisasi sesi)
+
+Setiap kali koneksi baru terbentuk, pernyataan-pernyataan ini dijalankan berurutan:
+
+| Dialek | Default `session_init` |
+|---|---|
+| PostgreSQL | `SET TIME ZONE 'UTC'`, `SET application_name = 'ecat'` |
+| MySQL | `SET time_zone = '+00:00'` |
+| SQLite | Tidak ada konsep sesi — default kosong |
+
+Tujuannya agar **sisi basis data langsung mengembalikan UTC**, selaras dengan konvensi framework bahwa semua waktu disajikan seragam sebagai RFC3339 UTC.
+
+- **Array kosong eksplisit `[]` berarti "sengaja dimatikan"** dan menimpa default dialek (konvensi penimpaan eksplisit yang sama dengan `query_timeout_secs: 0` yang berarti nonaktif).
+- Jika salah satu pernyataan gagal → pembuatan koneksi gagal, **tanpa penurunan diam-diam**.
+
+```yaml
+sql:
+  url: "mysql://host:3306/dbname"
+  session_init:
+    - "SET time_zone = '+00:00'"
+    - "SET NAMES utf8mb4"
+```
+
+#### `warm_up()` — Pemanasan
+
+Membuka `min_connections` koneksi secara aktif saat start lalu mengembalikannya, agar layanan langsung siap saat menyala:
+
+```rust
+let db = SqlxClient::from_config(cfg).await?;
+db.warm_up().await?;   // panggil sekali saat start
+```
+
+Kenapa perlu: sqlx memelihara `min_connections` **secara asinkron lewat tugas latar belakang**, jadi kembalinya `connect()` tidak menjamin pool sudah penuh — gelombang permintaan pertama akan berlomba dengan tugas latar belakang itu.
+
+#### Waktu dan tanggal: seragam RFC3339 UTC
+
+**Teks waktu/tanggal di sqlite ditulis ulang menjadi RFC3339 UTC**:
+
+- teks berbentuk `2026-10-05 12:34:56` → `"2026-10-05T12:34:56Z"`
+- teks berbentuk `2026-10-05` → `"2026-10-05T00:00:00Z"` (titik tengah malam UTC)
+
+Alasan: sqlite tidak punya sistem tipe, sehingga teks berbentuk tanggal/waktu memang ambigu; framework memperlakukannya seragam sebagai waktu.
+
+**Efek samping**: Kolom teks yang kebetulan berbentuk tanggal — nomor versi, kode bisnis — juga ikut ditulis ulang. Jika perilaku ini tidak diinginkan, `CAST` kolom itu secara eksplisit ke bentuk non-tanggal, atau pakai tipe lain.
+
+Kolom `DATE` / `TIMESTAMP` asli di PG / MySQL juga disajikan sebagai string RFC3339 UTC, dan **tanggal murni pun tetap membawa `T00:00:00Z`** — karena `"2026-10-05"` bukan RFC3339 yang valid, dan framework memakai satu format seragam secara internal agar lapisan atas mudah mem-parsing-nya.
 
 ### Redis — RedisConfig
 
