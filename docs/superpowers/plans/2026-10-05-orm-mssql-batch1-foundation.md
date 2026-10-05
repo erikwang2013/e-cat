@@ -2231,53 +2231,61 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 
 ## 批次完成检查
 
-- [ ] `cargo test --workspace` 全绿
-- [ ] `cargo fmt --check` 通过
-- [ ] **clippy 相对基线**（见下）：诊断数不超过基线，且无一条指向本批新增/修改的文件
+- [ ] `cargo test --workspace` 全绿，**测试数不下降**且 0 failed
+- [ ] **fmt：本批改动过的文件** `cargo fmt -- --check` 干净（见下：全量 fmt 有既有失败）
+- [ ] **clippy：除已知的 `double_must_use` 误报外，workspace 不得有任何其它诊断**
 - [ ] `cargo audit --deny warnings` 通过（本批未新增外部依赖，应无变化）
 - [ ] `grep -rn "AnyPool\|install_default_drivers" ecat-data-sqlx/` 无输出
 - [ ] `grep -c "query_timeout_secs" docs/database-config-tutorial.md` ≥ 1
 - [ ] 12 个 i18n 副本与根文件同结构
 
-### clippy 基线说明（2026-10-05 实测）
+### 闸门为何不是「全绿」——两个既有红灯（2026-10-05 实测）
 
-`cargo clippy --workspace -- -D warnings` **在 base commit `76014b6` 就是红的**，
-与本批改动无关，因此不能拿「全绿」当闸门：
+用当前工具链（clippy / rustfmt 1.99.0，`rust-toolchain.toml` 钉 `stable`），
+**仓库在 base commit `76014b6` 就有两个闸门是红的**，与本批改动无关：
 
-```
-30 条 double_must_use 错误
-来源：ecat-data 的 rdbms.rs / cache.rs / tsdb.rs / storage.rs / search.rs /
-      document.rs / graph.rs
-成因：#[async_trait] 宏展开（clippy 1.99.0，rust-toolchain.toml 钉 stable）
-```
+| 闸门 | base 状态 | 成因 |
+|---|---|---|
+| `cargo clippy --workspace -- -D warnings` | 红：workspace 47 条 warning | 30+ 条 `clippy::double_must_use`，全部来自 `#[async_trait]` 宏展开的误报（每个 async trait 方法计 1 条） |
+| `cargo fmt --check` | 红：`ecat-security/src/lib.rs:107` | 一行超 100 列（`&&` 链换行），该文件不在本批 diff 内 |
 
-验证方式：在 base commit 的 detached worktree 里单独跑 clippy，得到同样 30 条。
+验证方式：在 base commit 的 detached worktree 里单独跑，得到同样的结果。
 
-**本批的闸门改为「基线 + 新增 async trait 方法数」：**
+### 正确的闸门命令（旧版是空转的）
 
-`clippy::double_must_use` 按**每个 async trait 方法**计 1 条（`#[async_trait]` 宏展开
-产生的误报）。因此新增 async trait 方法**必然**推高这个数字 —— Task 2 的 `query_write`
-就是 +1（实测 30 → 31）。闸门写成：
+> ⚠️ 初版计划给的是 `cargo clippy --workspace 2>&1 | grep -c "^error"` —— **恒为 0**：
+> 没加 `-- -D warnings` 时这些是 `warning:` 而非 `error:`，闸门永远不会失败。
+> 这类「空转的验证会伪装成通过」，本批次已被审查者抓到一次。
 
 ```bash
-# 记录基线（批前批后各跑一次）
-cargo clippy --workspace 2>&1 | grep -c "^error"        # 预期 = 30 + 本批新增的 async trait 方法数
-cargo clippy --workspace 2>&1 | grep "^error" | grep -E "dialect|config|pool|cell|timeout" | wc -l   # 预期 0（新增文件不得有诊断）
+# ① fmt：只看本批改动过的文件（全量会撞上 ecat-security 的既有失败）
+git diff --name-only <批次起点>..HEAD -- '*.rs' | xargs -r rustfmt --check
+
+# ② clippy：列出所有诊断措辞，应当**只有一种**（即下面那条 must_use 措辞）
+cargo clippy --workspace --all-targets 2>&1 \
+  | grep "^warning: " | grep -v "generated" \
+  | sed 's/[0-9]\+/N/g' | sort -u
+
+# ③ 诊断条数 = 基线 30 + 本批新增的 async trait 方法数
+cargo clippy --workspace --all-targets 2>&1 | grep -c "^warning: this function"
 ```
 
-**本批次已知的合法增量**（逐项可对账，不是"大概差不多"）：
+> ⚠️ **不要用 `grep -c "clippy::double_must_use"` 来计数** —— 该字符串在整份输出里
+> **只出现 1 次**（clippy 只在首个诊断上打印
+> ``= note: `#[warn(clippy::double_must_use)]` on by default``，后续不重复），
+> 所以那个命令恒返回 1，是个空转闸门。可靠口径是**诊断头行**
+> `^warning: this function`（实测 `ecat-data --all-targets` = 31 条）。
 
-| 来源 | 增量 |
+**本批次已知的合法增量**（逐项可对账）：
+
+| 来源 | 累计 |
 |---|---|
-| 基线（base commit `76014b6`） | 30 |
-| Task 2 新增 `query_write` | +1 |
-| Task 3 新增 `TransactionInner` 的 4 个执行方法 | +4（预计） |
-| **批次 1 预期终值** | **≤ 35** |
+| 基线（base `76014b6`） | 30 |
+| Task 2 新增 `query_write` | 31（实测确认） |
+| Task 3 新增 `TransactionInner` 的 4 个执行方法 | ~35（预计） |
 
-新增文件的诊断数必须为 **0** —— 这是真正的信号（新增代码不该产生任何诊断），
-而绝对数字受这个已知误报影响，不作为闸门。
+**真信号是 ②**：只要出现第二种诊断措辞，就是新增了别的 lint —— 那才是要拦的东西。
 
-**这笔债的正当修法是给 `ecat-data` 加一条带日期与理由的 crate 级
-`[lints.clippy] double_must_use = "allow"`**（全部诊断都来自 `#[async_trait]` 展开，
-该 lint 是样式误报、不涉及正确性），一次把 30+ 条清掉。但那是**独立的一笔**，
-需用户拍板，**不并入本批** —— 混进来会污染本批 diff 的审查。
+**这笔债的正当修法**（需用户拍板，独立提交，不并入本批）：
+- `ecat-data` 加 crate 级 `[lints.clippy] double_must_use = "allow"` + 理由注释
+- `ecat-security/src/lib.rs:107` 跑一次 `cargo fmt -p ecat-security`
