@@ -251,6 +251,23 @@ pub breaker: Option<BreakerConfig>,
 **前置依赖**：批次 4 的公开 `Breaker`（`ecat-circuit-breaker` 抽取）。
 若希望更早实施，把那次抽取提前即可 —— 它本身是独立小改动。
 
+## 7.5 实施分两阶段（范围决策）
+
+**不一次铺 14 个后端。** 先验证模式，再铺开：
+
+| 阶段 | 范围 | 为什么 |
+|---|---|---|
+| **5a** | `ecat-data` 泛型助手 + **Redis** + **ClickHouse** | Redis 验证「非 HTTP 客户端」路径；ClickHouse 是本设计里**最难**的 case —— 它同时实现 `RdbmsClient` 与 `TsdbClient`，两条路径都要包，且其 `_with` 参数化方法本就不支持（落到默认错误），超时/熔断要在这个前提下仍然语义正确 |
+| **5b** | 其余 10 个 HTTP 后端 + MongoDB（池配置） | 模式已验证，纯同构铺开 |
+
+**理由**：本会话在「结构相同的机械改动」上吃过教训 —— 批次 1 的原生池重写被判定为机械同构，
+实际在真 MySQL/PG 上暴露了 2 个 Critical（`UNSIGNED` 主键、`smallint`）。11 个 HTTP 后端
+结构相同，但**一个模式错误会被复制 11 份**。用 5a 两个 crate 换这个保险是划算的。
+
+**5a 的交付物必须包含**：一份「接入 checklist」——把「加配置字段、包 `run_with_timeout`、
+加 `Breaker` 字段、注册指标、加一条超时测试、加一条熔断测试」写成逐步清单，
+供 5b 逐 crate 照做，避免 10 次即兴发挥。
+
 ## 8. 验收标准
 
 1. `cargo test --workspace` 全绿，测试数不下降
