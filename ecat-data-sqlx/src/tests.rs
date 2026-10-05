@@ -369,25 +369,40 @@ async fn warm_up_does_not_hang_when_min_exceeds_max() {
     );
 }
 
-/// 真库连接串。未设置就打印一行并跳过 —— **本地 SQLite 全绿不能冒充三驱动验证**：
-/// `int2` / `UNSIGNED` 这两类静默 null 在 SQLite 上根本复现不出来。
-fn env_url(key: &str) -> Option<String> {
-    std::env::var(key).ok().filter(|s| !s.is_empty())
+/// 真库连接串。两个开关的语义：
+/// - 未设 `ECAT_TEST_PG_URL` / `ECAT_TEST_MYSQL_URL` 且未设 `ECAT_REQUIRE_LIVE_DB`
+///   → 打印一行并跳过（本地开发）。
+/// - 设了 `ECAT_REQUIRE_LIVE_DB`（非空）却没有 URL → **panic**。CI 里「静默跳过」
+///   等于没验证，而 cargo 默认捕获 stdout，`println!` 的跳过提示看不见。
+///
+/// 为什么要这道闸门：**本地 SQLite 全绿不能冒充三驱动验证** ——
+/// `int2` / `UNSIGNED` / `real` 这些静默 null 在 SQLite 上根本复现不出来。
+fn live_db_url(key: &str) -> Option<String> {
+    match std::env::var(key) {
+        Ok(url) if !url.is_empty() => Some(url),
+        _ => {
+            if std::env::var("ECAT_REQUIRE_LIVE_DB").is_ok_and(|v| !v.is_empty()) {
+                panic!("{key} 未设，但 ECAT_REQUIRE_LIVE_DB 要求真库用例必须运行（跳过即失败）");
+            }
+            println!("skip: {key} 未设置");
+            None
+        }
+    }
 }
 
 /// PG 的 `smallint`(int2) / `real`(float4) / `date` / `timestamp` 都要走原生分支；
 /// 链外类型（numeric/uuid/jsonb…）必须报错而不是静默 null。
 #[tokio::test]
 async fn pg_native_types_decode_and_unsupported_type_errors() {
-    let Some(url) = env_url("ECAT_TEST_PG_URL") else {
-        println!("skip: ECAT_TEST_PG_URL 未设置");
+    let Some(url) = live_db_url("ECAT_TEST_PG_URL") else {
         return;
     };
     let db = SqlxClient::connect(&url).await.unwrap();
     let rows = db
         .query(
             "SELECT 7::int2 AS s, 3000000000::int8 AS b, 1.5::float4 AS r, \
-             DATE '2026-10-05' AS d, TIMESTAMP '2026-10-05 12:34:56' AS ts",
+             0.1::float4 AS r2, DATE '2026-10-05' AS d, \
+             TIMESTAMP '2026-10-05 12:34:56' AS ts",
         )
         .await
         .unwrap();
@@ -398,10 +413,14 @@ async fn pg_native_types_decode_and_unsupported_type_errors() {
         Some(&serde_json::json!(1.5)),
         "float4 落空"
     );
+    // 最短往返表示：直接 `as f64` 会得到 0.10000000149011612
     assert_eq!(
-        rows[0].get("d"),
-        Some(&serde_json::json!("2026-10-05T00:00:00Z"))
+        rows[0].get("r2"),
+        Some(&serde_json::json!(0.1)),
+        "float4 不是最短表示"
     );
+    // `date` 只输出日期，不发明「UTC 午夜」这个时刻
+    assert_eq!(rows[0].get("d"), Some(&serde_json::json!("2026-10-05")));
     assert_eq!(
         rows[0].get("ts"),
         Some(&serde_json::json!("2026-10-05T12:34:56Z"))
@@ -424,8 +443,7 @@ async fn pg_native_types_decode_and_unsupported_type_errors() {
 /// 分支吃掉、也不能落成 null；`DECIMAL` 等链外类型必须报错。
 #[tokio::test]
 async fn mysql_unsigned_columns_decode_and_unsupported_type_errors() {
-    let Some(url) = env_url("ECAT_TEST_MYSQL_URL") else {
-        println!("skip: ECAT_TEST_MYSQL_URL 未设置");
+    let Some(url) = live_db_url("ECAT_TEST_MYSQL_URL") else {
         return;
     };
     // 单连接池：临时表是会话级的，多连接池下 CREATE / INSERT / SELECT 会落到
@@ -451,15 +469,21 @@ async fn mysql_unsigned_columns_decode_and_unsupported_type_errors() {
     // （SQLite 侧同样如此，见 `execute_with_binds_all_json_value_types`；Any 时代
     // `ColumnType::Tiny` 不在 Any 的类型表里，这一列会让**整条查询报错**）。
     // `BIT(1)` 由 u64 分支按整数解出（`uint_compatible` 含 Bit），不再静默 null。
-    db.execute("CREATE TEMPORARY TABLE t6_types (flag BOOLEAN, bits BIT(1))")
+    db.execute("CREATE TEMPORARY TABLE t6_types (flag BOOLEAN, bits BIT(1), d DATE)")
         .await
         .unwrap();
-    db.execute("INSERT INTO t6_types VALUES (TRUE, b'1')")
+    db.execute("INSERT INTO t6_types VALUES (TRUE, b'1', '2026-10-05')")
         .await
         .unwrap();
-    let rows = db.query("SELECT flag, bits FROM t6_types").await.unwrap();
+    let rows = db
+        .query("SELECT flag, bits, d FROM t6_types")
+        .await
+        .unwrap();
     assert_eq!(rows[0].get("flag"), Some(&serde_json::json!(1)));
     assert_eq!(rows[0].get("bits"), Some(&serde_json::json!(1)));
+    // MySQL 的 DATE 只有 Date 分支认（`OffsetDateTime`/`PrimitiveDateTime` 的
+    // compatible 只含 Datetime/Timestamp），输出纯日期。
+    assert_eq!(rows[0].get("d"), Some(&serde_json::json!("2026-10-05")));
 
     let msg = db
         .query("SELECT CAST(1.5 AS DECIMAL(10,2)) AS d")

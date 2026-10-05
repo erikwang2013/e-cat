@@ -90,6 +90,11 @@ impl SqlxClient {
     }
 
     /// 用已有原生池构造客户端。
+    ///
+    /// 拿的是**裸池**，没有 `SqlxConfig` 可读，因此查询超时与 [`SqlxClient::warm_up`]
+    /// 在这里都是关的（`query_timeout: None`、`min_connections: 0`）——
+    /// 这是 API 形状决定的，不是遗漏。需要两者请用
+    /// [`SqlxClient::connect_with_params`] 或 [`SqlxClient::from_config`]。
     pub fn from_pool(pool: Pool) -> Self {
         Self {
             pool,

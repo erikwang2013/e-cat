@@ -18,22 +18,44 @@ fn float_to_json(n: f64) -> serde_json::Value {
     }
 }
 
-/// 时间统一转 UTC 再按 RFC3339 输出。
+/// `f32` → JSON：先过一趟 f32 的**最短往返十进制**表示再解析回 f64。
+///
+/// f32 的 `Display` 用的是最短往返算法（`0.1f32.to_string()` 得 `"0.1"`）；
+/// 直接 `n as f64` 会把 `0.1` 加宽成 `0.10000000149011612` —— 数值上没错，
+/// 但那是二进制加宽的原样值，不是这个 f32 的语义。
+/// `NaN`/`inf` 的 `Display` 解析不回数字，回落到 [`float_to_json`] 的字符串表示。
+fn f32_to_json(n: f32) -> serde_json::Value {
+    match n.to_string().parse::<f64>() {
+        Ok(v) => float_to_json(v),
+        Err(_) => float_to_json(n as f64),
+    }
+}
+
+/// 带时区的时间统一转 UTC 再按 RFC3339 输出。
 ///
 /// `time` 的 `Display` **不是** RFC3339（形如 `2026-10-05 12:34:56.0 +00:00:00`，
 /// 且带偏移量、小时位不补零），必须显式 `format(&Rfc3339)`；ORM 侧按 RFC3339 解析。
-fn rfc3339(dt: time::OffsetDateTime) -> String {
-    let dt = dt.to_offset(time::UtcOffset::UTC);
-    dt.format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_else(|_| dt.to_string())
+///
+/// 格式化失败**报错**而不是回落 `to_string()`：那样只会溜出一个格式不对的
+/// 字符串喂给按 RFC3339 解析的调用方。超范围年份（RFC3339 只认 `0000-9999`）
+/// 就该在这里响亮地失败。
+fn rfc3339(dt: time::OffsetDateTime, col: &str) -> Result<String, RdbmsError> {
+    dt.to_offset(time::UtcOffset::UTC)
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| {
+            RdbmsError::Database(format!(
+                "failed to format datetime column {col} as RFC3339: {e}"
+            ))
+        })
 }
 
 /// 三种驱动的 Row 类型不同，用宏生成三份同构实现。
 ///
-/// 类型链：NULL → i64 → i32 → i16 → f64 → f32 → [u64] → bool →
-/// OffsetDateTime → PrimitiveDateTime → Date → String → Blob（base64）→ **报错**。
+/// 类型链（逐个试，先命中先返回）：NULL → i64 → i32 → i16 → f64 → f32 →
+/// [u64] → bool → OffsetDateTime → PrimitiveDateTime → Date → String →
+/// Blob（base64）→ **报错**。
 ///
-/// 三处与 Any 驱动时代不同，都是原生驱动逼出来的（Any 的 `compatible` 是一张
+/// 四处与 Any 驱动时代不同，都是原生驱动逼出来的（Any 的 `compatible` 是一张
 /// 宽松的兼容表，原生驱动是**精确匹配 + 标志位**）：
 /// 1. **NULL 先拦**：sqlite 的 `bool::decode` 直通 C API `sqlite3_value_int64`，
 ///    对 NULL 返回 0 而不报错，少了这道闸门 NULL 会静默变成 `false`
@@ -51,6 +73,11 @@ fn rfc3339(dt: time::OffsetDateTime) -> String {
 ///      只有 `u64`（`uint_compatible`，`src/types/uint.rs:17`）认。
 ///      `BIGINT UNSIGNED` 是最常见的自增主键类型，漏掉它 0/1 会变 `false`、
 ///      ≥128 会变 `null`。
+/// 4. **日期只输出日期**：`time::Date` 没有时间分量，输出纯 `YYYY-MM-DD`
+///    （`Display` 的实际形态见 `num_fmt::four_to_six_digits`：年份不足 4 位补零），
+///    不能凭 `midnight()` 发明一个「UTC 午夜」时刻。附带好处：sqlite 的
+///    `Date::compatible` 含 `Text`，形状像 `YYYY-MM-DD` 的文本列会被这一支接走，
+///    输出纯日期后规范形文本**原样返回**，版本号/业务编码这类不透明文本不被改写。
 ///
 /// 链尾**报错而非 null**：真 NULL 已被上面的闸门拦下，能走到链尾的只有
 /// 「类型不在链上」（PG 的 numeric/uuid/jsonb、MySQL 的 decimal…）。Any 驱动
@@ -69,60 +96,59 @@ macro_rules! cell_fn {
             if row.try_get_raw(col).is_ok_and(|v| v.is_null()) {
                 return Ok(serde_json::Value::Null);
             }
-            row.try_get::<i64, _>(col)
-                .map(|n| serde_json::Value::Number(n.into()))
-                .or_else(|_| {
-                    row.try_get::<i32, _>(col)
-                        .map(|n| serde_json::Value::Number((n as i64).into()))
-                })
-                // PG 的 int2
-                .or_else(|_| {
-                    row.try_get::<i16, _>(col)
-                        .map(|n| serde_json::Value::Number((n as i64).into()))
-                })
-                .or_else(|_| row.try_get::<f64, _>(col).map(float_to_json))
-                // PG 的 real/float4
-                .or_else(|_| row.try_get::<f32, _>(col).map(|n| float_to_json(n as f64)))
-                $(
-                    // MySQL 的 UNSIGNED 整数列（含 BIGINT UNSIGNED 主键）：
-                    // 有符号分支全被 `!UNSIGNED` 拒绝，只有这里认。
-                    .or_else(|_| {
-                        row.try_get::<$unsigned, _>(col)
-                            .map(|n| serde_json::Value::Number(n.into()))
-                    })
-                )?
-                .or_else(|_| row.try_get::<bool, _>(col).map(serde_json::Value::Bool))
-                // PG 的 timestamptz、MySQL 的 datetime/timestamp
-                .or_else(|_| {
-                    row.try_get::<time::OffsetDateTime, _>(col)
-                        .map(|dt| serde_json::Value::String(rfc3339(dt)))
-                })
-                // PG 的 timestamp（无时区）；sqlite 的 datetime 文本
-                .or_else(|_| {
-                    row.try_get::<time::PrimitiveDateTime, _>(col)
-                        .map(|dt| serde_json::Value::String(rfc3339(dt.assume_utc())))
-                })
-                // PG 的 date；sqlite 的纯日期文本（上面的 datetime 解析要求带时间，先失败）
-                .or_else(|_| {
-                    row.try_get::<time::Date, _>(col)
-                        .map(|d| serde_json::Value::String(rfc3339(d.midnight().assume_utc())))
-                })
-                .or_else(|_| row.try_get::<String, _>(col).map(serde_json::Value::String))
-                .or_else(|_| {
-                    row.try_get::<Vec<u8>, _>(col).map(|b| {
-                        serde_json::Value::String(
-                            base64::engine::general_purpose::STANDARD.encode(b),
-                        )
-                    })
-                })
-                .map_err(|_| {
-                    RdbmsError::Database(format!(
-                        "unsupported column type in result set: {col} ({})",
-                        row.try_get_raw(col)
-                            .map(|v| v.type_info().name().to_string())
-                            .unwrap_or_else(|_| "unknown".into())
-                    ))
-                })
+            if let Ok(n) = row.try_get::<i64, _>(col) {
+                return Ok(serde_json::Value::Number(n.into()));
+            }
+            if let Ok(n) = row.try_get::<i32, _>(col) {
+                return Ok(serde_json::Value::Number((n as i64).into()));
+            }
+            // PG 的 int2
+            if let Ok(n) = row.try_get::<i16, _>(col) {
+                return Ok(serde_json::Value::Number((n as i64).into()));
+            }
+            if let Ok(n) = row.try_get::<f64, _>(col) {
+                return Ok(float_to_json(n));
+            }
+            // PG 的 real/float4
+            if let Ok(n) = row.try_get::<f32, _>(col) {
+                return Ok(f32_to_json(n));
+            }
+            $(
+                // MySQL 的 UNSIGNED 整数列（含 BIGINT UNSIGNED 主键）：
+                // 有符号分支全被 `!UNSIGNED` 拒绝，只有这里认。
+                if let Ok(n) = row.try_get::<$unsigned, _>(col) {
+                    return Ok(serde_json::Value::Number(n.into()));
+                }
+            )?
+            if let Ok(b) = row.try_get::<bool, _>(col) {
+                return Ok(serde_json::Value::Bool(b));
+            }
+            // PG 的 timestamptz、MySQL 的 datetime/timestamp
+            if let Ok(dt) = row.try_get::<time::OffsetDateTime, _>(col) {
+                return Ok(serde_json::Value::String(rfc3339(dt, col)?));
+            }
+            // PG 的 timestamp（无时区）；sqlite 的 datetime 文本
+            if let Ok(dt) = row.try_get::<time::PrimitiveDateTime, _>(col) {
+                return Ok(serde_json::Value::String(rfc3339(dt.assume_utc(), col)?));
+            }
+            // PG/MySQL 的 date；sqlite 的纯日期文本（上面的 datetime 解析要求带时间，先失败）
+            if let Ok(d) = row.try_get::<time::Date, _>(col) {
+                return Ok(serde_json::Value::String(d.to_string()));
+            }
+            if let Ok(s) = row.try_get::<String, _>(col) {
+                return Ok(serde_json::Value::String(s));
+            }
+            if let Ok(b) = row.try_get::<Vec<u8>, _>(col) {
+                return Ok(serde_json::Value::String(
+                    base64::engine::general_purpose::STANDARD.encode(b),
+                ));
+            }
+            Err(RdbmsError::Database(format!(
+                "unsupported column type in result set: {col} ({})",
+                row.try_get_raw(col)
+                    .map(|v| v.type_info().name().to_string())
+                    .unwrap_or_else(|_| "unknown".into())
+            )))
         }
     };
 }
@@ -172,6 +198,7 @@ rows_fn!(
 
 #[cfg(test)]
 mod tests {
+    use super::{f32_to_json, rfc3339};
     use crate::tests::mem_sqlite;
     use ecat_data::SqlExecutor;
 
@@ -199,16 +226,41 @@ mod tests {
     }
 
     /// 纯日期文本走 `Date` 分支（`PrimitiveDateTime` 的解析要求「日期+时间」，
-    /// 对 `2026-10-05` 会先失败），产出 UTC 午夜。
+    /// 对 `2026-10-05` 会先失败），产出**纯日期**。
+    ///
+    /// sqlite 的 `Date::compatible` 含 `Text`，所以这一支会接走形状像日期的文本列；
+    /// 输出纯日期后规范形文本原样返回 —— 这正是要保的性质（版本号、业务编码
+    /// 这类不透明文本不能被补上时刻和时区）。
     #[tokio::test]
-    async fn date_only_text_decodes_as_midnight_utc() {
+    async fn date_shaped_text_round_trips_as_plain_date() {
         let db = mem_sqlite("cell_date").await;
         let rows = db.query("SELECT '2026-10-05' AS d").await.unwrap();
         assert_eq!(
             rows[0].get("d"),
-            Some(&serde_json::json!("2026-10-05T00:00:00Z")),
-            "Date 分支未生效"
+            Some(&serde_json::json!("2026-10-05")),
+            "Date 分支未生效或不是纯日期"
         );
+    }
+
+    /// `f32` 走最短往返表示：直接 `as f64` 会得到 `0.10000000149011612`。
+    #[test]
+    fn f32_uses_shortest_round_trip_representation() {
+        assert_eq!(f32_to_json(0.1f32), serde_json::json!(0.1));
+        assert_eq!(f32_to_json(1.5f32), serde_json::json!(1.5));
+        // NaN/±Inf 的 Display 解析不回数字，仍按字符串表示
+        assert_eq!(f32_to_json(f32::NAN), serde_json::json!("NaN"));
+        assert_eq!(f32_to_json(f32::INFINITY), serde_json::json!("Infinity"));
+    }
+
+    /// 年份超出 RFC3339 的 `0000-9999` 必须报错，而不是溜出一个格式不对的字符串。
+    #[test]
+    fn rfc3339_errors_on_out_of_range_year() {
+        // 公元前 1 年 = time 的 year 0；再往前是负数年份，RFC3339 表达不了。
+        let d = time::Date::from_calendar_date(-1, time::Month::January, 1).unwrap();
+        let msg = rfc3339(d.midnight().assume_utc(), "born_at")
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("born_at") && msg.contains("RFC3339"), "{msg}");
     }
 
     #[tokio::test]
