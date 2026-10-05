@@ -56,6 +56,8 @@ pub struct PoolParams {
 }
 
 impl Default for PoolParams {
+    /// 结构体默认值：池大小/超时按文档默认，`session_init` 为**空**
+    /// （不带任何会话设置）。要「按方言的默认」请用 [`PoolParams::for_url`]。
     fn default() -> Self {
         Self {
             max_connections: 10,
@@ -67,6 +69,33 @@ impl Default for PoolParams {
             test_before_acquire: false,
             session_init: Vec::new(),
         }
+    }
+}
+
+impl PoolParams {
+    /// 按 URL 的方言给出「未配置时」的默认参数 —— **含方言默认的 `session_init`**。
+    ///
+    /// 与 [`PoolParams::default`] 的区别：`Default` 是结构体默认值（无会话初始化），
+    /// 本方法才是「用户没配任何东西时应当得到什么」。
+    /// `connect()` 与 `from_config()` 都必须走这一条，否则两个构造器行为会静默不一致。
+    pub fn for_url(url: &str) -> Self {
+        Self {
+            session_init: dialect_session_init(url),
+            ..Self::default()
+        }
+    }
+}
+
+/// 未显式配置时按方言给默认会话初始化语句（库侧时区设为 UTC，
+/// 与 ORM 的「时间统一 UTC」约定对齐）。SQLite 无会话概念，返回空。
+pub fn dialect_session_init(url: &str) -> Vec<String> {
+    match Dialect::from_url(url) {
+        Dialect::Postgres => vec![
+            "SET TIME ZONE 'UTC'".to_string(),
+            "SET application_name = 'ecat'".to_string(),
+        ],
+        Dialect::MySql => vec!["SET time_zone = '+00:00'".to_string()],
+        _ => Vec::new(),
     }
 }
 
@@ -93,20 +122,15 @@ impl SqlxConfig {
         }
     }
 
-    /// 未显式配置时按方言给默认会话初始化语句。
-    /// SQLite 无会话概念，返回空。
+    /// 会话初始化语句：显式配置优先，未配置时按方言取默认
+    /// （见 `dialect_session_init`）。
+    ///
+    /// 显式空数组会覆盖方言默认，即主动关闭会话初始化
+    /// （与 `query_timeout_secs: 0` 表示禁用同族）。
     pub fn effective_session_init(&self) -> Vec<String> {
-        if let Some(custom) = &self.session_init {
-            return custom.clone();
-        }
-        match Dialect::from_url(&self.url) {
-            Dialect::Postgres => vec![
-                "SET TIME ZONE 'UTC'".to_string(),
-                "SET application_name = 'ecat'".to_string(),
-            ],
-            Dialect::MySql => vec!["SET time_zone = '+00:00'".to_string()],
-            _ => Vec::new(),
-        }
+        self.session_init
+            .clone()
+            .unwrap_or_else(|| dialect_session_init(&self.url))
     }
 }
 
@@ -161,6 +185,29 @@ mod tests {
 
         let sqlite: SqlxConfig = serde_json::from_str(r#"{"url": "sqlite::memory:"}"#).unwrap();
         assert!(sqlite.effective_session_init().is_empty());
+    }
+
+    /// `connect()` 走 `PoolParams::for_url`，`from_config()` 走 `cfg.pool()`，
+    /// 两者在未配置时必须给出相同的默认（尤其是 session_init），
+    /// 否则两个构造器行为静默不一致。
+    #[test]
+    fn for_url_matches_pool_defaults_for_pg() {
+        let cfg: SqlxConfig = serde_json::from_str(r#"{"url": "postgres://h/db"}"#).unwrap();
+        assert_eq!(
+            PoolParams::for_url("postgres://h/db").session_init,
+            cfg.pool().session_init
+        );
+
+        let empty: SqlxConfig = serde_json::from_str(r#"{"url": "sqlite::memory:"}"#).unwrap();
+        assert!(
+            PoolParams::for_url("sqlite::memory:")
+                .session_init
+                .is_empty()
+        );
+        assert_eq!(
+            PoolParams::for_url("sqlite::memory:").session_init,
+            empty.pool().session_init
+        );
     }
 
     /// `query_timeout_secs: 0` 是「禁用」而非「0 秒立刻超时」。
