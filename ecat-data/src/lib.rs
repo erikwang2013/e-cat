@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod cache;
+mod dialect;
 mod document;
 mod graph;
 mod rdbms;
@@ -8,6 +9,7 @@ mod storage;
 mod tsdb;
 
 pub use cache::Cache;
+pub use dialect::Dialect;
 pub use document::DocumentClient;
 pub use ecat_errors::Error;
 pub use graph::GraphClient;
