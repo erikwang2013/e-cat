@@ -1747,7 +1747,20 @@ git commit -m "feat(ecat-data-sqlx): 行转换支持 time 类型，时间统一�
 
 ---
 
-### Task 8: `SqlExecutor` 三路分派实现
+### Task 8: 事务 wrapper 三路重写 + 分派测试
+
+> **职责边界（2026-10-06 修正）**：初版把本任务题为「`SqlExecutor` 三路分派实现」，
+> 与 Task 6 重叠 —— Task 6 的验收项「`lib.rs` 里所有 `AnyPool` 引用应已清除」本身
+> 就要求客户端层的三路分派落地（否则 `SqlxClient.pool` 从 `AnyPool` 换成 `Pool` 后
+> `impl SqlExecutor` 无法编译）。**修正后的边界**：
+>
+> - **Task 6 负责**：`Pool` 枚举、`connect` 分派、**客户端层** `impl SqlExecutor` 的三路 match、
+>   测试助手 `mem_sqlite` 改造（它是 Task 6/7/8 测试的共同前置）。
+> - **Task 8 负责**：`SqlxTransactionWrapper` 从「持 `sqlx::Transaction<'static, sqlx::Any>`」
+>   改为**三种原生事务的 wrapper**（`Pg` / `MySql` / `Sqlite` 类型不同，宏生成三份），
+>   `transaction()` 的三路分派，以及本任务列出的分派/事务测试。
+>
+> 两者**不重复**：Task 6 动的是 `&self.pool` 上的执行分派，Task 8 动的是事务句柄的类型。
 
 **Files:**
 - Modify: `ecat-data-sqlx/src/lib.rs`
