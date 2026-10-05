@@ -360,12 +360,17 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
    ```rust
        /// 用已有连接池构造客户端。
        ///
-       /// `dialect` 无法从 `AnyPool` 反推，必须显式传入 —— 批次 1 Task 6
-       /// 换成原生池后，本参数会由池的类型本身承载。
+       /// `dialect` 无法从 `AnyPool` 反推，必须显式传入。
        pub fn from_pool(pool: AnyPool, dialect: Dialect) -> Self {
            Self { pool, dialect }
        }
    ```
+
+   > 初版计划此处多一句「批次 1 Task 6 换成原生池后，本参数会由池的类型本身承载」。
+   > 代码审查判定**删掉更好**（Task 6 落地后那句即成陈词），实际代码按删掉版落地，
+   > 计划已对齐。另记一条**已知接受风险**：`AnyPool` 反推不出真实驱动，
+   > 池与声明的 `dialect` 不一致时会静默生成错误 SQL —— Task 6 换原生池后
+   > 由类型本身承载，此风险自动消失。
 5. `impl RdbmsClient for SqlxClient` 拆成两个 impl ——
    把 `execute` / `query` / `execute_with` / `query_with` 四个方法搬进
    `impl SqlExecutor for SqlxClient`，并加 `dialect()`；`transaction` 留在
@@ -2261,20 +2266,33 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 # ① fmt：只看本批改动过的文件（全量会撞上 ecat-security 的既有失败）
 git diff --name-only <批次起点>..HEAD -- '*.rs' | xargs -r rustfmt --check
 
-# ② clippy：列出所有诊断措辞，应当**只有一种**（即下面那条 must_use 措辞）
+# ② clippy：列出所有诊断措辞，应当**只有一种**（即 must_use 那条）—— 这是真信号
 cargo clippy --workspace --all-targets 2>&1 \
   | grep "^warning: " | grep -v "generated" \
   | sed 's/[0-9]\+/N/g' | sort -u
 
-# ③ 诊断条数 = 基线 30 + 本批新增的 async trait 方法数
+# ③a 口径 A：ecat-data 单 crate（与「30 → 31」的说法对齐）
+cargo clippy -p ecat-data --all-targets 2>&1 | grep -c "^warning: this function"
+
+# ③b 口径 B：全 workspace（CI 真正跑的范围）
 cargo clippy --workspace --all-targets 2>&1 | grep -c "^warning: this function"
 ```
 
-> ⚠️ **不要用 `grep -c "clippy::double_must_use"` 来计数** —— 该字符串在整份输出里
-> **只出现 1 次**（clippy 只在首个诊断上打印
-> ``= note: `#[warn(clippy::double_must_use)]` on by default``，后续不重复），
-> 所以那个命令恒返回 1，是个空转闸门。可靠口径是**诊断头行**
-> `^warning: this function`（实测 `ecat-data --all-targets` = 31 条）。
+**两个口径不能混用** —— 「30」是 ecat-data 口径，「47」是 workspace 口径：
+
+| 口径 | base `76014b6` | Task 2 后 | 本批终值 = base + 新增 async trait 方法数 |
+|---|---|---|---|
+| `ecat-data` | 30 | 31 | ≤ 35 |
+| `--workspace` | 47 | 48 | ≤ 52 |
+
+> ⚠️ **两个已踩过的坑，别重犯**：
+>
+> 1. 裸 `grep -c "^error"` 即使加 `-- -D warnings` 也会**多算 1** —— 收尾行
+>    `` error: could not compile `ecat-data` (lib) due to 31 previous errors `` 同样匹配 `^error`。
+> 2. `grep -c "clippy::double_must_use"` **恒返回 1** —— 该字符串在整份输出里只出现一次
+>    （clippy 仅对首个诊断打印 ``= note: `#[warn(clippy::double_must_use)]` ``）。
+>
+> 可靠口径是**诊断头行** `^warning: this function`。
 
 **本批次已知的合法增量**（逐项可对账）：
 
