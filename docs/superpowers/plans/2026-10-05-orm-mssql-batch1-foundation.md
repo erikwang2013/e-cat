@@ -1275,14 +1275,22 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 >
 > **② 链首必须加 NULL 闸门。**
 > sqlite 的 `bool::decode` 直通 C API `sqlite3_value_int64`，**对 NULL 返回 0 而不报错** ——
-> 没有闸门则 NULL 静默变 `false`。正确做法：`row.try_get_raw(col)?.is_null()` → 直接返回
-> `Value::Null`。
+> 没有闸门则 NULL 静默变 `false`。做法（注意 `cell_to_json` 返回 `serde_json::Value`
+> 而非 `Result`，**不能用 `?`**）：
+> ```rust
+> if row.try_get_raw(col).is_ok_and(|v| v.is_null()) {
+>     return serde_json::Value::Null;
+> }
+> ```
 >
 > **③ 时间分支必须用 `format(&Rfc3339)`，不能用 `.to_string()`。**
 > `time::OffsetDateTime` 的 `Display` **不是 RFC3339**，是
-> `2026-10-05 12:34:56.0 +00:00:00`。且计划给的测试输入 `Z` 会走 String 分支拿到
-> 相同字符串 —— **等于时间分支零覆盖**。正确做法：`dt.format(&Rfc3339)`，
-> 测试输入用带非零偏移的（如 `+08:00`）才能证明分支被走到。
+> `2026-10-05 12:34:56.0 +00:00:00`（已对着 `time-0.3.55` 源码逐项复核：
+> `offset_date_time.rs` 的 `fmt_into_buffer` 用 `<日期 空格 时间> <空格> <offset>`，
+> `utc_offset.rs` 的 offset 恒为 9 字节 `±HH:MM:SS`，`time.rs` 无条件写 `.` + 小数位，
+> 且小时位**不补零**——`one_to_two_digits_no_padding`，比 RFC3339 偏得更远）。
+> 正确做法：`dt.format(&Rfc3339)`，测试输入用带非零偏移的（如 `+08:00`）才能证明
+> 分支被走到 —— 计划原给的 `Z` 输入会走 String 分支拿到相同字符串，**等于零覆盖**。
 >
 > **另外两处适配**（非缺陷，是实现约束）：
 > - 全部测试外移到 `src/tests.rs`（`#[cfg(test)] mod tests;`）—— 内联会让 `lib.rs`
