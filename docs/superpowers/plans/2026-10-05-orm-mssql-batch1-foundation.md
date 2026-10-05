@@ -1315,11 +1315,21 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 > 跨驱动转换的类型）；原生驱动的 `compatible` 是**精确/带标志位**的。宽松处消失后，
 > 原先被掩盖的类型映射缺口全部暴露。
 >
-> **正确链序**：
+> **正确链序**（注意**各驱动的分支集合不同**，不是同一条链跑三遍）：
 > ```
 > NULL闸门 → i64 → i32 → i16 → f64 → f32 → u64 → bool → time → String → blob → Err
 > ```
+>
+> | 分支 | PG | MySQL | SQLite |
+> |---|---|---|---|
+> | `i16` | **命中 INT2** | 死（i64 先接住） | 死（i64 先接住） |
+> | `f32` | **命中 FLOAT4** | 死（f64 先接住） | 死（f64 先接住） |
+> | `u64` | **不存在**（sqlx-postgres 未实现 `u64`，加了编译不过） | **命中 UNSIGNED** | 未传（传了也是死分支） |
+> | `PrimitiveDateTime` | **命中无时区 timestamp** | 死 | 死 |
+> | `Date` | **命中 DATE** | **命中 DATE** | **会抢**形如 `YYYY-MM-DD` 的文本 |
+>
 > `u64` 必须在 `bool` **之前**（MySQL UNSIGNED 靠它接住）；`i16` 在 `i32` 之后（PG INT2）。
+> **`u64` 只在 MySQL 上编译** —— 详见下面的宏卫生陷阱。
 >
 > ⚠️ **`u64` 分支不能无条件加**（实施时踩到）：`sqlx-postgres` **根本没有 `u64` 实现**
 > （全库只有 `PgHasArrayType for u8`），无条件加进 `cell_fn!` 直接编译不过。解法是给宏加一个
