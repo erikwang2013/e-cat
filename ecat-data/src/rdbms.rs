@@ -48,6 +48,11 @@ pub trait TransactionInner: Send {
     async fn rollback(&mut self) -> Result<(), RdbmsError>;
 }
 
+/// 无 backing 连接的事务（[`Transaction::new`]）执行 SQL 时的错误文案。
+/// 这类事务只能作为空占位，执行任何语句都是编程错误 —— 必须报错而非
+/// 静默返回 0 行影响，否则写操作会无声丢失。
+const NO_BACKING: &str = "transaction has no backing connection (created via Transaction::new)";
+
 pub struct Transaction {
     committed: bool,
     rolled_back: bool,
@@ -58,6 +63,10 @@ pub struct Transaction {
 }
 
 impl Transaction {
+    /// 创建一个无 backing 连接的空事务。
+    ///
+    /// 只能作为占位符用于「不执行任何语句」的场景；在其中执行 SQL 会返回错误。
+    /// 需要真正执行语句时用 [`Transaction::with_inner`] 或后端的 `transaction()`。
     pub fn new() -> Self {
         Self {
             committed: false,
@@ -107,7 +116,7 @@ impl SqlExecutor for Transaction {
         let mut guard = self.inner.lock().await;
         match guard.as_mut() {
             Some(inner) => inner.execute(sql).await,
-            None => Ok(0),
+            None => Err(RdbmsError::Database(NO_BACKING.into())),
         }
     }
 
@@ -115,7 +124,7 @@ impl SqlExecutor for Transaction {
         let mut guard = self.inner.lock().await;
         match guard.as_mut() {
             Some(inner) => inner.query(sql).await,
-            None => Ok(Vec::new()),
+            None => Err(RdbmsError::Database(NO_BACKING.into())),
         }
     }
 
@@ -127,7 +136,7 @@ impl SqlExecutor for Transaction {
         let mut guard = self.inner.lock().await;
         match guard.as_mut() {
             Some(inner) => inner.execute_with(sql, params).await,
-            None => Ok(0),
+            None => Err(RdbmsError::Database(NO_BACKING.into())),
         }
     }
 
@@ -139,7 +148,7 @@ impl SqlExecutor for Transaction {
         let mut guard = self.inner.lock().await;
         match guard.as_mut() {
             Some(inner) => inner.query_with(sql, params).await,
-            None => Ok(Vec::new()),
+            None => Err(RdbmsError::Database(NO_BACKING.into())),
         }
     }
 
@@ -334,11 +343,14 @@ mod tests {
         assert_eq!(tx.dialect(), Dialect::Sqlite);
     }
 
+    /// 空事务执行 SQL 必须报错，而不是静默返回 0 行影响 ——
+    /// 后者会让写操作无声丢失（审查发现）。
     #[tokio::test]
-    async fn empty_transaction_is_a_noop() {
+    async fn empty_transaction_rejects_execution() {
         let tx = Transaction::new();
-        assert_eq!(tx.execute("SELECT 1").await.unwrap(), 0);
-        assert!(tx.query("SELECT 1").await.unwrap().is_empty());
+        assert!(tx.execute("SELECT 1").await.is_err());
+        assert!(tx.query("SELECT 1").await.is_err());
+        // 没有东西要提交，不应视为错误
         tx.commit().await.unwrap();
     }
 
