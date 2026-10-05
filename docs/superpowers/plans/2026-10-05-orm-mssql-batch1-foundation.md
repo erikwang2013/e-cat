@@ -182,7 +182,10 @@ git commit -m "feat(ecat-data): 新增 Dialect 枚举与 URL 方言推断"
 - Modify: `ecat-data/src/rdbms.rs`（trait 拆分 + 新增 `RdbmsError::Timeout`）
 - Modify: `ecat-data/src/lib.rs`（导出 `SqlExecutor`）
 - Modify: `ecat-data-sqlx/src/lib.rs`（最小适配，恢复编译）
-- Test: `ecat-data/src/rdbms.rs` 内联测试
+- Modify: `ecat-data-clickhouse/src/lib.rs`（实现者适配）
+- Modify: `ecat-data-clickhouse/src/tests.rs`（3 处 UFCS 调用改 `SqlExecutor::query`）
+- Modify: `ecat-data-questdb/src/lib.rs`（实现者适配）
+- Test: `ecat-data/src/rdbms.rs` 内联测试；其余 crate 既有测试须全绿
 
 - [ ] **Step 1: 写失败测试**
 
@@ -330,9 +333,10 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
 
 `ecat-data-sqlx/src/lib.rs`：
 
-1. 顶部导入加 `SqlExecutor`：
+1. 顶部导入加 `SqlExecutor`（**注意 `RdbmsClient` 也要保留** —— `impl RdbmsClient for
+   SqlxClient` 还需要它；初版计划这行漏了它，按原样编译不过）：
    ```rust
-   use ecat_data::{Dialect, RdbmsError, Row, SqlExecutor, TransactionInner};
+   use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, TransactionInner};
    ```
 2. `SqlxClient` 结构体加字段：
    ```rust
@@ -397,6 +401,36 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
            SqlxClient::from_pool(pool, Dialect::Sqlite)
    ```
 
+- [ ] **Step 4b: 适配另外两个 `RdbmsClient` 实现者**
+
+> ⚠️ 初版计划声称「仓库内实现者只有 `SqlxClient` 与测试桩」，**这是错的**（照 2026-08-01
+> 审计报告抄的，未 grep `impl`）。实际共 4 个实现者 + 3 处 UFCS 调用，由实现者在本批次发现：
+>
+> ```
+> ecat-data/src/rdbms.rs:268          impl RdbmsClient for RawOnlyClient   (测试桩)
+> ecat-data-clickhouse/src/lib.rs:228 impl RdbmsClient for ClickhouseClient
+> ecat-data-sqlx/src/lib.rs:142       impl RdbmsClient for SqlxClient
+> ecat-data-questdb/src/lib.rs:71     impl RdbmsClient for QuestdbClient
+> ecat-data-clickhouse/src/tests.rs:246/267/278  RdbmsClient::query UFCS
+> ```
+
+对 `ClickhouseClient` 与 `QuestdbClient` 做与 `SqlxClient` **完全相同的机械适配**：
+四个执行方法搬进 `impl SqlExecutor`，`transaction` 留在 `impl RdbmsClient`，
+`dialect()` 返回 `Dialect::Standard`，不覆写 `query_write`（用默认委托）。
+
+**为什么是 `Standard` 而不是 `Postgres`**（QuestDB 的 SQL 是 Postgres 味，容易顺手写错）：
+两者都走 HTTP 接口、**不支持参数绑定**（`_with` 方法落到默认的「not supported」错误）。
+声明 `Postgres` 会让 ORM 生成 `$1` 占位符发给一个无法绑定参数的传输层 —— 承诺不存在的
+能力。`Standard` 生成 `?`，错误仍来自客户端真实的能力缺失，语义准确。
+
+`ecat-data-clickhouse/src/tests.rs` 的三处 UFCS 同步改：
+
+```rust
+    let rows = ecat_data::SqlExecutor::query(&client, "SELECT * FROM t")
+```
+
+两个 crate 必须**一起进本次提交**，否则该提交自身编译不过。
+
 - [ ] **Step 5: 跑全 workspace 测试**
 
 Run: `cargo test --workspace`
@@ -405,7 +439,10 @@ Expected: 全绿（既有 675 个测试一个不少）
 - [ ] **Step 6: 提交**
 
 ```bash
-git add ecat-data/src/rdbms.rs ecat-data/src/lib.rs ecat-data-sqlx/src/lib.rs
+git add ecat-data/src/rdbms.rs ecat-data/src/lib.rs \
+        ecat-data-sqlx/src/lib.rs \
+        ecat-data-clickhouse/src/lib.rs ecat-data-clickhouse/src/tests.rs \
+        ecat-data-questdb/src/lib.rs
 git commit -m "refactor(ecat-data)!: 拆出 SqlExecutor supertrait，新增 query_write 与 dialect"
 ```
 
@@ -2212,13 +2249,31 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 
 验证方式：在 base commit 的 detached worktree 里单独跑 clippy，得到同样 30 条。
 
-**本批的闸门改为：**
+**本批的闸门改为「基线 + 新增 async trait 方法数」：**
+
+`clippy::double_must_use` 按**每个 async trait 方法**计 1 条（`#[async_trait]` 宏展开
+产生的误报）。因此新增 async trait 方法**必然**推高这个数字 —— Task 2 的 `query_write`
+就是 +1（实测 30 → 31）。闸门写成：
 
 ```bash
 # 记录基线（批前批后各跑一次）
-cargo clippy --workspace 2>&1 | grep -c "^error"        # 预期 ≤ 30
-cargo clippy --workspace 2>&1 | grep "^error" | grep -E "dialect|config|pool|cell|timeout|rdbms" | wc -l   # 预期 0
+cargo clippy --workspace 2>&1 | grep -c "^error"        # 预期 = 30 + 本批新增的 async trait 方法数
+cargo clippy --workspace 2>&1 | grep "^error" | grep -E "dialect|config|pool|cell|timeout" | wc -l   # 预期 0（新增文件不得有诊断）
 ```
 
-修这 30 条是独立的一笔债（给受影响 crate 加带理由的 `allow`，或钉 clippy 版本），
-**不并入本批** —— 混进来会污染本批 diff 的审查。
+**本批次已知的合法增量**（逐项可对账，不是"大概差不多"）：
+
+| 来源 | 增量 |
+|---|---|
+| 基线（base commit `76014b6`） | 30 |
+| Task 2 新增 `query_write` | +1 |
+| Task 3 新增 `TransactionInner` 的 4 个执行方法 | +4（预计） |
+| **批次 1 预期终值** | **≤ 35** |
+
+新增文件的诊断数必须为 **0** —— 这是真正的信号（新增代码不该产生任何诊断），
+而绝对数字受这个已知误报影响，不作为闸门。
+
+**这笔债的正当修法是给 `ecat-data` 加一条带日期与理由的 crate 级
+`[lints.clippy] double_must_use = "allow"`**（全部诊断都来自 `#[async_trait]` 展开，
+该 lint 是样式误报、不涉及正确性），一次把 30+ 条清掉。但那是**独立的一笔**，
+需用户拍板，**不并入本批** —— 混进来会污染本批 diff 的审查。

@@ -160,8 +160,29 @@ pub trait TransactionInner: Send {
 
 ### 2.4 破坏性影响
 
-外部若直接实现过 `RdbmsClient` 会编译失败（方法移到 supertrait）。仓库内实现者只有
-`SqlxClient` 与测试桩 `RawOnlyClient`。按 4.0.0 发布。
+外部若直接实现过 `RdbmsClient` 会编译失败（方法移到 supertrait）。仓库内实现者共 **4 个**：
+
+| 实现者 | 位置 | `dialect()` 取值 |
+|---|---|---|
+| `SqlxClient` | `ecat-data-sqlx/src/lib.rs:142` | 由池的类型决定 |
+| `ClickhouseClient` | `ecat-data-clickhouse/src/lib.rs:228` | `Standard` |
+| `QuestdbClient` | `ecat-data-questdb/src/lib.rs:71` | `Standard` |
+| `RawOnlyClient`（测试桩） | `ecat-data/src/rdbms.rs:268` | `Standard` |
+
+> 初版 spec 写的「仓库内实现者只有 `SqlxClient` 与测试桩」是**错的**（照 2026-08-01 的审计
+> 报告抄的，未 grep `impl`）。ClickHouse 的实现在 2026-08-06「四项缺口」那次工作里加的。
+> 由实现者在本批次发现并订正。
+
+另有 `ecat-data-clickhouse/src/tests.rs:246/267/278` 三处 UFCS 调用
+（`ecat_data::RdbmsClient::query(&client, ..)`）需改为 `SqlExecutor::query`。
+
+**ClickHouse / QuestDB 取 `Standard` 的理由**：两者都走 HTTP 接口、**不支持参数绑定**
+（其 `_with` 方法落到默认的「not supported」错误）。若声明为 `Postgres`（QuestDB 的 SQL 是
+Postgres 味），ORM 会生成 `$1` 占位符发给一个无法绑定参数的传输层 —— 承诺不存在的能力。
+取 `Standard` 则错误来自真实的能力缺失，语义准确。将其纳入 ORM 方言层是另开一次的决策
+（见 §10 非目标）。
+
+按 4.0.0 发布。
 
 ### 2.5 组合式包装器（新增两个模块）
 
@@ -730,7 +751,7 @@ i18n 共 12 个语言目录（`ar` `bn` `de` `en` `es` `fr` `hi` `id` `ja` `ko` 
 | 风险 | 缓解 |
 |---|---|
 | `tiberius-ng` 是社区续作，API 可能变动 | 锁 0.13.x；驱动细节全部封装在 `ecat-data-mssql` 内，不外泄 |
-| 破坏性变更（trait 拆分 + `from_pool` 签名 + `AnyPool` 移除） | 仓库内实现者只有 `SqlxClient` 与测试桩；发 4.0.0 并写 CHANGELOG |
+| 破坏性变更（trait 拆分 + `from_pool` 签名 + `AnyPool` 移除） | 仓库内实现者 4 个（`SqlxClient` / `ClickhouseClient` / `QuestdbClient` / 测试桩）+ 3 处 UFCS 调用，全部随批次 1 一并机械适配；发 4.0.0 并写 CHANGELOG |
 | 五方言 SQL 生成正确性 | 方言层纯函数 + 字符串断言单测（无需数据库即可全量覆盖） |
 | **原生池重写后回归** | 现有 `ecat-data-sqlx` 测试全部保留并通过；SQLite 集成测试覆盖所有执行路径 |
 | ORM 体量大（约 4000–5000 行，含池增强） | 按 <500 行/文件拆模块；先落 SQLite 全链路集成测试再扩方言 |
