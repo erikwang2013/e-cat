@@ -18,16 +18,17 @@ pub enum Dialect {
 impl Dialect {
     /// 从连接串推断方言，无法识别时返回 [`Dialect::Standard`]。
     ///
-    /// scheme 的大小写与前导/尾随空白均被忽略（与 sqlx 底层 `url` crate 的行为一致）。
+    /// scheme 的大小写，以及前导/尾随的 C0 控制字符与空格（U+0000–U+0020），
+    /// 均被忽略（与 sqlx 底层 `url` crate 的判定一致）。
     /// 同时兼容有 `://` 的形式（`postgres://host/db`）与 sqlite 的无 authority
     /// 形式（`sqlite:app.db`）。
     pub fn from_url(url: &str) -> Self {
-        // scheme 的归一化：RFC 3986 §3.1 规定大小写不敏感，url crate 解析连接串时
-        // 会小写化 scheme 并 trim 首尾 U+0000–U+0020，因此 "POSTGRES://host/db" 与
-        // " postgres://host/db" 都能连通 —— 这里不归一化就会静默返回 Standard，
-        // 与后端实际行为不一致。
+        // 谓词必须与 sqlx 底层 url crate 一致：url-2.5.8/src/parser.rs:1745-1747 的
+        // `c0_control_or_space` 是 `ch <= ' '`（U+0000–U+0020，含 C0 控制字符）。
+        // 不能用 str::trim()：它走 Unicode White_Space 属性，不含 NUL 等 C0 控制字符，
+        // 会让 "\0postgres://host/db" 落回 Standard —— sqlx 侧却能连通，又是静默错答。
         let scheme = url
-            .trim()
+            .trim_matches(|c: char| c <= ' ')
             .split("://")
             .next()
             .unwrap_or("")
@@ -97,6 +98,9 @@ mod tests {
         assert_eq!(Dialect::from_url(" postgres://host/db"), Dialect::Postgres);
         assert_eq!(Dialect::from_url("\tmysql://host/db"), Dialect::MySql);
         assert_eq!(Dialect::from_url("sqlite:app.db\n"), Dialect::Sqlite);
+        // 谓词与 url crate 一致（U+0000–U+0020）：NUL/控制字符同样被 trim。
+        assert_eq!(Dialect::from_url("\0postgres://host/db"), Dialect::Postgres);
+        assert_eq!(Dialect::from_url("\u{1}mysql://host/db"), Dialect::MySql);
     }
 
     /// sqlite 的 URL 没有 `://`，是最容易写错的一类，单独钉住。
