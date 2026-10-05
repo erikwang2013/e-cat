@@ -28,35 +28,57 @@ impl Row {
     }
 }
 
-/// Inner transaction trait for cross-backend transaction support.
+/// 事务内部实现。后端（sqlx / tiberius）实现它，`Transaction` 转发调用。
 #[async_trait]
 pub trait TransactionInner: Send {
+    async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError>;
+    async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError>;
+    async fn execute_with(
+        &mut self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<u64, RdbmsError>;
+    async fn query_with(
+        &mut self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError>;
+    fn dialect(&self) -> Dialect;
     async fn commit(&mut self) -> Result<(), RdbmsError>;
     async fn rollback(&mut self) -> Result<(), RdbmsError>;
 }
 
-#[derive(Default)]
 pub struct Transaction {
     committed: bool,
     rolled_back: bool,
-    inner: Option<Box<dyn TransactionInner>>,
+    /// 在 `with_inner` 时从 inner 拷贝，避免 `dialect(&self)` 这个同步方法
+    /// 需要等待异步锁。
+    dialect: Dialect,
+    inner: tokio::sync::Mutex<Option<Box<dyn TransactionInner>>>,
 }
 
 impl Transaction {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            committed: false,
+            rolled_back: false,
+            dialect: Dialect::Standard,
+            inner: tokio::sync::Mutex::new(None),
+        }
     }
 
     pub fn with_inner(inner: Box<dyn TransactionInner>) -> Self {
+        let dialect = inner.dialect();
         Self {
-            inner: Some(inner),
             committed: false,
             rolled_back: false,
+            dialect,
+            inner: tokio::sync::Mutex::new(Some(inner)),
         }
     }
 
     pub async fn commit(mut self) -> Result<(), RdbmsError> {
-        if let Some(ref mut inner) = self.inner {
+        if let Some(inner) = self.inner.get_mut().as_mut() {
             inner.commit().await?;
         }
         self.committed = true;
@@ -64,7 +86,7 @@ impl Transaction {
     }
 
     pub async fn rollback(mut self) -> Result<(), RdbmsError> {
-        if let Some(ref mut inner) = self.inner {
+        if let Some(inner) = self.inner.get_mut().as_mut() {
             inner.rollback().await?;
         }
         self.committed = false;
@@ -73,12 +95,63 @@ impl Transaction {
     }
 }
 
+impl Default for Transaction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl SqlExecutor for Transaction {
+    async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
+        let mut guard = self.inner.lock().await;
+        match guard.as_mut() {
+            Some(inner) => inner.execute(sql).await,
+            None => Ok(0),
+        }
+    }
+
+    async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
+        let mut guard = self.inner.lock().await;
+        match guard.as_mut() {
+            Some(inner) => inner.query(sql).await,
+            None => Ok(Vec::new()),
+        }
+    }
+
+    async fn execute_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<u64, RdbmsError> {
+        let mut guard = self.inner.lock().await;
+        match guard.as_mut() {
+            Some(inner) => inner.execute_with(sql, params).await,
+            None => Ok(0),
+        }
+    }
+
+    async fn query_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        let mut guard = self.inner.lock().await;
+        match guard.as_mut() {
+            Some(inner) => inner.query_with(sql, params).await,
+            None => Ok(Vec::new()),
+        }
+    }
+
+    fn dialect(&self) -> Dialect {
+        self.dialect
+    }
+}
+
 impl Drop for Transaction {
     fn drop(&mut self) {
-        // This Drop impl only logs. No SQL is sent here (async work is not
-        // possible in Drop); actual rollback relies on the backing sqlx
-        // Transaction dropping without commit, which rolls back the
-        // underlying DB connection.
+        // 这里只记日志：Drop 里无法执行异步回滚，实际回滚依赖
+        // 底层 sqlx / tiberius 事务在未提交时 Drop 自动回滚。
         if !self.committed && !self.rolled_back {
             tracing::warn!("transaction dropped without commit — rolling back");
         }
@@ -172,6 +245,7 @@ mod tests {
     struct Tracked {
         commits: Arc<AtomicUsize>,
         rollbacks: Arc<AtomicUsize>,
+        executes: Arc<AtomicUsize>,
     }
 
     struct TrackingInner {
@@ -180,6 +254,30 @@ mod tests {
 
     #[async_trait]
     impl TransactionInner for TrackingInner {
+        async fn execute(&mut self, _sql: &str) -> Result<u64, RdbmsError> {
+            self.track.executes.fetch_add(1, Ordering::SeqCst);
+            Ok(7)
+        }
+        async fn query(&mut self, _sql: &str) -> Result<Vec<Row>, RdbmsError> {
+            Ok(vec![Row::new(vec!["n".into()], vec![serde_json::json!(1)])])
+        }
+        async fn execute_with(
+            &mut self,
+            _sql: &str,
+            _p: &[serde_json::Value],
+        ) -> Result<u64, RdbmsError> {
+            Ok(0)
+        }
+        async fn query_with(
+            &mut self,
+            _sql: &str,
+            _p: &[serde_json::Value],
+        ) -> Result<Vec<Row>, RdbmsError> {
+            Ok(vec![])
+        }
+        fn dialect(&self) -> Dialect {
+            Dialect::Sqlite
+        }
         async fn commit(&mut self) -> Result<(), RdbmsError> {
             self.track.commits.fetch_add(1, Ordering::SeqCst);
             Ok(())
@@ -215,6 +313,32 @@ mod tests {
     #[tokio::test]
     async fn commit_without_inner_succeeds() {
         let tx = Transaction::new();
+        tx.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn transaction_executes_within_scope() {
+        let track = Tracked::default();
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: track.clone(),
+        }));
+        assert_eq!(tx.execute("UPDATE t SET x = 1").await.unwrap(), 7);
+        assert_eq!(track.executes.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn transaction_reports_inner_dialect() {
+        let tx = Transaction::with_inner(Box::new(TrackingInner {
+            track: Tracked::default(),
+        }));
+        assert_eq!(tx.dialect(), Dialect::Sqlite);
+    }
+
+    #[tokio::test]
+    async fn empty_transaction_is_a_noop() {
+        let tx = Transaction::new();
+        assert_eq!(tx.execute("SELECT 1").await.unwrap(), 0);
+        assert!(tx.query("SELECT 1").await.unwrap().is_empty());
         tx.commit().await.unwrap();
     }
 
@@ -268,17 +392,13 @@ mod tests {
     }
 
     #[test]
-    fn drop_without_commit_warns_once() {
+    fn dropped_uncommitted_transaction_still_warns() {
         let warns = Arc::new(AtomicUsize::new(0));
         let tx = Transaction::with_inner(Box::new(TrackingInner {
             track: Tracked::default(),
         }));
         with_warn_counter(Arc::clone(&warns), || drop(tx));
-        assert_eq!(
-            warns.load(Ordering::SeqCst),
-            1,
-            "未提交即 Drop 必须告警一次"
-        );
+        assert_eq!(warns.load(Ordering::SeqCst), 1);
     }
 
     struct RawOnlyClient;

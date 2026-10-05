@@ -5,7 +5,7 @@ use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, TransactionI
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use sqlx::any::AnyRow;
-use sqlx::{AnyPool, Column as SqlxColumn, Row as SqlxRow};
+use sqlx::{AnyPool, Column as SqlxColumn, Executor as _, Row as SqlxRow};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SqlxConfig {
@@ -236,17 +236,115 @@ impl RdbmsClient for SqlxClient {
             .await
             .map_err(|e| RdbmsError::Database(e.to_string()))?;
         Ok(ecat_data::Transaction::with_inner(Box::new(
-            SqlxTransactionWrapper { inner: Some(tx) },
+            SqlxTransactionWrapper {
+                inner: Some(tx),
+                dialect: self.dialect,
+            },
         )))
     }
 }
 
 struct SqlxTransactionWrapper {
     inner: Option<sqlx::Transaction<'static, sqlx::Any>>,
+    dialect: Dialect,
 }
 
 #[async_trait]
 impl TransactionInner for SqlxTransactionWrapper {
+    async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError> {
+        let tx = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| RdbmsError::Database("transaction already finished".into()))?;
+        tx.execute(sql)
+            .await
+            .map(|r| r.rows_affected())
+            .map_err(|e| RdbmsError::Database(e.to_string()))
+    }
+
+    async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
+        let tx = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| RdbmsError::Database("transaction already finished".into()))?;
+        let rows: Vec<AnyRow> = tx
+            .fetch_all(sql)
+            .await
+            .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        Ok(rows_to_result(rows))
+    }
+
+    async fn execute_with(
+        &mut self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<u64, RdbmsError> {
+        let tx = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| RdbmsError::Database("transaction already finished".into()))?;
+        let mut q = sqlx::query(sql);
+        for p in params {
+            q = match p {
+                serde_json::Value::String(s) => q.bind(s.as_str()),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        q.bind(i)
+                    } else if let Some(f) = n.as_f64() {
+                        q.bind(f)
+                    } else {
+                        q.bind(n.to_string())
+                    }
+                }
+                serde_json::Value::Bool(b) => q.bind(*b),
+                serde_json::Value::Null => q.bind(None::<String>),
+                _ => q.bind(p.to_string()),
+            };
+        }
+        q.execute(&mut **tx)
+            .await
+            .map(|r| r.rows_affected())
+            .map_err(|e| RdbmsError::Database(e.to_string()))
+    }
+
+    async fn query_with(
+        &mut self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        let tx = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| RdbmsError::Database("transaction already finished".into()))?;
+        let mut q = sqlx::query(sql);
+        for p in params {
+            q = match p {
+                serde_json::Value::String(s) => q.bind(s.as_str()),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        q.bind(i)
+                    } else if let Some(f) = n.as_f64() {
+                        q.bind(f)
+                    } else {
+                        q.bind(n.to_string())
+                    }
+                }
+                serde_json::Value::Bool(b) => q.bind(*b),
+                serde_json::Value::Null => q.bind(None::<String>),
+                _ => q.bind(p.to_string()),
+            };
+        }
+        let rows: Vec<AnyRow> = q
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(|e| RdbmsError::Database(e.to_string()))?;
+        Ok(rows_to_result(rows))
+    }
+
+    fn dialect(&self) -> Dialect {
+        self.dialect
+    }
+
     async fn commit(&mut self) -> Result<(), RdbmsError> {
         if let Some(tx) = self.inner.take() {
             tx.commit()
@@ -468,6 +566,46 @@ mod tests {
         let rows = client.query("SELECT 1 AS one").await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].get("one"), Some(&serde_json::json!(1)));
+    }
+
+    /// 事务内可执行 SQL：参数化写入、回滚可见性、提交后可见性。
+    #[tokio::test]
+    async fn transaction_executes_and_scopes_changes() {
+        let client = single_conn_client("tx").await;
+        client
+            .execute("CREATE TABLE t (id INTEGER, name TEXT)")
+            .await
+            .unwrap();
+
+        let tx = client.transaction().await.unwrap();
+        assert_eq!(tx.dialect(), Dialect::Sqlite);
+        assert_eq!(
+            tx.execute_with(
+                "INSERT INTO t VALUES (?, ?)",
+                &[serde_json::json!(1), serde_json::json!("a")]
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let rows = tx
+            .query_with("SELECT name FROM t WHERE id = ?", &[serde_json::json!(1)])
+            .await
+            .unwrap();
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("a")));
+        tx.rollback().await.unwrap();
+        assert!(client.query("SELECT id FROM t").await.unwrap().is_empty());
+
+        let tx = client.transaction().await.unwrap();
+        assert_eq!(
+            tx.execute("INSERT INTO t VALUES (2, 'b')").await.unwrap(),
+            1
+        );
+        assert_eq!(tx.query("SELECT id FROM t").await.unwrap().len(), 1);
+        tx.commit().await.unwrap();
+        let rows = client.query("SELECT name FROM t").await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("name"), Some(&serde_json::json!("b")));
     }
 
     #[tokio::test]
