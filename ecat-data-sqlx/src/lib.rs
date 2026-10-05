@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use base64::Engine as _;
-use ecat_data::{RdbmsClient, RdbmsError, Row, TransactionInner};
+use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, TransactionInner};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use sqlx::any::AnyRow;
@@ -42,13 +42,17 @@ fn ensure_drivers() {
 
 pub struct SqlxClient {
     pool: AnyPool,
+    dialect: Dialect,
 }
 
 impl SqlxClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         ensure_drivers();
         let pool = AnyPool::connect(url).await?;
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            dialect: Dialect::from_url(url),
+        })
     }
 
     pub async fn connect_with_auth(
@@ -75,8 +79,11 @@ impl SqlxClient {
         }
     }
 
-    pub fn from_pool(pool: AnyPool) -> Self {
-        Self { pool }
+    /// 用已有连接池构造客户端。
+    ///
+    /// `dialect` 无法从 `AnyPool` 反推，必须显式传入。
+    pub fn from_pool(pool: AnyPool, dialect: Dialect) -> Self {
+        Self { pool, dialect }
     }
 }
 
@@ -139,7 +146,7 @@ fn rows_to_result(rows: Vec<AnyRow>) -> Vec<Row> {
 }
 
 #[async_trait]
-impl RdbmsClient for SqlxClient {
+impl SqlExecutor for SqlxClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
         sqlx::query(sql)
             .execute(&self.pool)
@@ -215,6 +222,13 @@ impl RdbmsClient for SqlxClient {
         Ok(rows_to_result(rows))
     }
 
+    fn dialect(&self) -> Dialect {
+        self.dialect
+    }
+}
+
+#[async_trait]
+impl RdbmsClient for SqlxClient {
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
         let tx = self
             .pool
@@ -315,7 +329,7 @@ mod tests {
     fn from_pool_is_constructible() {
         // Compile-time check: SqlxClient::from_pool exists with correct signature.
         fn _check_sig(pool: sqlx::AnyPool) -> SqlxClient {
-            SqlxClient::from_pool(pool)
+            SqlxClient::from_pool(pool, Dialect::Sqlite)
         }
     }
 
@@ -341,7 +355,7 @@ mod tests {
             .connect(&mem_sqlite(name))
             .await
             .unwrap();
-        SqlxClient::from_pool(pool)
+        SqlxClient::from_pool(pool, Dialect::Sqlite)
     }
 
     #[tokio::test]

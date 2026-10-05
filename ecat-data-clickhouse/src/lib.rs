@@ -1,6 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, RdbmsClient, RdbmsError, Row, TsdbClient};
+use ecat_data::{
+    DataPoint, Dialect, FieldValue, RdbmsClient, RdbmsError, Row, SqlExecutor, TsdbClient,
+};
 use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
@@ -225,7 +227,7 @@ fn build_insert_body(points: &[&DataPoint], tag_keys: &[String], field_keys: &[S
 }
 
 #[async_trait]
-impl RdbmsClient for ClickhouseClient {
+impl SqlExecutor for ClickhouseClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
         let resp = self
             .post(sql, &[("send_progress_in_http_headers", "1".to_string())])
@@ -283,6 +285,14 @@ impl RdbmsClient for ClickhouseClient {
         Ok(rows)
     }
 
+    /// ClickHouse SQL 无 `Dialect` 对应变体，按文档契约回退到 [`Dialect::Standard`]。
+    fn dialect(&self) -> Dialect {
+        Dialect::Standard
+    }
+}
+
+#[async_trait]
+impl RdbmsClient for ClickhouseClient {
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
         Err(RdbmsError::Database(
             "ClickHouse does not support transactions".into(),

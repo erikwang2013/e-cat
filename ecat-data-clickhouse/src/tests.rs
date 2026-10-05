@@ -243,7 +243,7 @@ async fn query_parses_jsoneachrow_lines_into_rows() {
     let body = "{\"id\":1,\"name\":\"alice\"}\n{\"id\":2,\"name\":\"bob\"}\n";
     let base_url = spawn_mock(captured.clone(), 200, body, None).await;
     let client = ClickhouseClient::new(base_url, "default");
-    let rows = ecat_data::RdbmsClient::query(&client, "SELECT * FROM t")
+    let rows = ecat_data::SqlExecutor::query(&client, "SELECT * FROM t")
         .await
         .unwrap();
     assert_eq!(rows.len(), 2);
@@ -264,7 +264,7 @@ async fn query_empty_body_returns_no_rows() {
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let base_url = spawn_mock(captured.clone(), 200, "", None).await;
     let client = ClickhouseClient::new(base_url, "default");
-    let rows = ecat_data::RdbmsClient::query(&client, "SELECT * FROM t")
+    let rows = ecat_data::SqlExecutor::query(&client, "SELECT * FROM t")
         .await
         .unwrap();
     assert!(rows.is_empty());
@@ -275,7 +275,7 @@ async fn query_unparseable_line_returns_error_with_snippet() {
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let base_url = spawn_mock(captured.clone(), 200, "{\"id\":1}\nnot json\n", None).await;
     let client = ClickhouseClient::new(base_url, "default");
-    let err = ecat_data::RdbmsClient::query(&client, "SELECT * FROM t")
+    let err = ecat_data::SqlExecutor::query(&client, "SELECT * FROM t")
         .await
         .unwrap_err();
     assert!(err.to_string().contains("unparseable row"), "got: {err}");

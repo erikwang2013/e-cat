@@ -1,6 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 
+use crate::dialect::Dialect;
+
 #[derive(Debug, Clone)]
 pub struct Row {
     columns: Vec<String>,
@@ -84,13 +86,13 @@ impl Drop for Transaction {
 }
 
 #[async_trait]
-pub trait RdbmsClient: Send + Sync {
-    /// Execute a raw SQL statement. Prefer `execute_with` for user-supplied values.
+pub trait SqlExecutor: Send + Sync {
+    /// 执行一条 SQL 语句，返回受影响行数。
+    /// 用户提供的值请走 [`SqlExecutor::execute_with`]。
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError>;
-    /// Query rows with raw SQL. Prefer `query_with` for user-supplied values.
+    /// 查询多行。用户提供的值请走 [`SqlExecutor::query_with`]。
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError>;
-    /// Execute a parameterized SQL statement to prevent injection.
-    /// Backends that cannot bind parameters return an error.
+    /// 参数化执行，防注入。无法绑定参数的后端返回错误。
     async fn execute_with(
         &self,
         _sql: &str,
@@ -100,8 +102,7 @@ pub trait RdbmsClient: Send + Sync {
             "parameterized execute not supported by this backend".into(),
         ))
     }
-    /// Query with parameterized SQL to prevent injection.
-    /// Backends that cannot bind parameters return an error.
+    /// 参数化查询，防注入。无法绑定参数的后端返回错误。
     async fn query_with(
         &self,
         _sql: &str,
@@ -111,6 +112,22 @@ pub trait RdbmsClient: Send + Sync {
             "parameterized query not supported by this backend".into(),
         ))
     }
+    /// 写路径且需要返回结果（`INSERT ... RETURNING` / `OUTPUT INSERTED`）。
+    /// 默认委托给 [`SqlExecutor::query_with`]；只有读写分离路由需要覆写，
+    /// 否则写语句会被路由到从库。
+    async fn query_write(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        self.query_with(sql, params).await
+    }
+    /// 本执行器背后的数据库方言。
+    fn dialect(&self) -> Dialect;
+}
+
+#[async_trait]
+pub trait RdbmsClient: SqlExecutor {
     async fn transaction(&self) -> Result<Transaction, RdbmsError>;
 }
 
@@ -122,6 +139,8 @@ pub enum RdbmsError {
     Connection(String),
     #[error("configuration error: {0}")]
     Config(String),
+    #[error("timeout: {0}")]
+    Timeout(String),
 }
 
 #[cfg(test)]
@@ -265,15 +284,15 @@ mod tests {
     struct RawOnlyClient;
 
     #[async_trait]
-    impl RdbmsClient for RawOnlyClient {
+    impl SqlExecutor for RawOnlyClient {
         async fn execute(&self, _sql: &str) -> Result<u64, RdbmsError> {
             Ok(0)
         }
         async fn query(&self, _sql: &str) -> Result<Vec<Row>, RdbmsError> {
             Ok(vec![])
         }
-        async fn transaction(&self) -> Result<Transaction, RdbmsError> {
-            Ok(Transaction::new())
+        fn dialect(&self) -> Dialect {
+            Dialect::Standard
         }
     }
 
@@ -292,5 +311,48 @@ mod tests {
                 .contains("parameterized query not supported"),
             "got: {err}"
         );
+    }
+
+    /// 默认的 `query_write` 必须委托给 `query_with`：这样只有读写分离路由
+    /// 需要覆写它，其余后端（含第三方实现）零改动即可支持写路径。
+    struct CountingClient {
+        query_with_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SqlExecutor for CountingClient {
+        async fn execute(&self, _sql: &str) -> Result<u64, RdbmsError> {
+            Ok(0)
+        }
+        async fn query(&self, _sql: &str) -> Result<Vec<Row>, RdbmsError> {
+            Ok(vec![])
+        }
+        async fn query_with(
+            &self,
+            _sql: &str,
+            _params: &[serde_json::Value],
+        ) -> Result<Vec<Row>, RdbmsError> {
+            self.query_with_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![])
+        }
+        fn dialect(&self) -> Dialect {
+            Dialect::Standard
+        }
+    }
+
+    #[tokio::test]
+    async fn query_write_defaults_to_query_with() {
+        let client = CountingClient {
+            query_with_calls: Arc::new(AtomicUsize::new(0)),
+        };
+        client.query_write("SELECT 1", &[]).await.unwrap();
+        assert_eq!(client.query_with_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn timeout_error_renders_message() {
+        let err = RdbmsError::Timeout("query exceeded 30s".into());
+        assert!(err.to_string().contains("timeout"));
+        assert!(err.to_string().contains("30s"));
     }
 }

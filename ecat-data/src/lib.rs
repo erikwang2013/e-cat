@@ -13,7 +13,7 @@ pub use dialect::Dialect;
 pub use document::DocumentClient;
 pub use ecat_errors::Error;
 pub use graph::GraphClient;
-pub use rdbms::{RdbmsClient, RdbmsError, Row, Transaction, TransactionInner};
+pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner};
 pub use search::SearchClient;
 pub use storage::StorageClient;
 pub use tsdb::{DataPoint, FieldValue, TsdbClient};

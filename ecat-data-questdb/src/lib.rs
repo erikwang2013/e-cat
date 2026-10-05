@@ -6,7 +6,7 @@
 //! cannot leak secrets; outer layers handle the generic error text.
 
 use async_trait::async_trait;
-use ecat_data::{RdbmsClient, RdbmsError, Row};
+use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 
@@ -68,7 +68,7 @@ impl QuestdbClient {
 }
 
 #[async_trait]
-impl RdbmsClient for QuestdbClient {
+impl SqlExecutor for QuestdbClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
         let req = self
             .client
@@ -142,6 +142,15 @@ impl RdbmsClient for QuestdbClient {
         Ok(rows)
     }
 
+    /// QuestDB 走 HTTP `/exec`，SQL 为 Postgres 味但 `Dialect` 无对应变体，
+    /// 且本 client 不支持参数绑定，按文档契约回退到 [`Dialect::Standard`]。
+    fn dialect(&self) -> Dialect {
+        Dialect::Standard
+    }
+}
+
+#[async_trait]
+impl RdbmsClient for QuestdbClient {
     async fn transaction(&self) -> Result<ecat_data::Transaction, RdbmsError> {
         Err(RdbmsError::Database(
             "QuestDB does not support transactions".into(),
