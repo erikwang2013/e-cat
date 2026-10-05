@@ -1297,6 +1297,45 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 >   达 ~740 行。**一个测试都没删、名字未变**，这是与仓库内联约定的偏离，为 500 行规则让步。
 > - `warm_up_without_min_connections_is_a_noop` 的断言改为 before/after 比较：
 >   `pool_size() == 0` **不可能成立** —— sqlx 建池时立刻建一条连接，connect 后 size 恒 ≥ 1。
+>
+> ### ④ 类型链还必须补 `i16` / `u64` / `f32` / 两种日期（opus 审查在真库上实测发现）
+>
+> 上面三条只覆盖了「bool 会**抢走**整数」这一个方向。**反方向同样成立：整数分支会
+> 漏掉某些整数。** 两个 Critical：
+>
+> | 缺陷 | 驱动侧机制 | 实测（真库 A/B） |
+> |---|---|---|
+> | MySQL `UNSIGNED` 整数在 `Bool`/`Null` 间跳 | `int_compatible` 要求 `!flags.contains(UNSIGNED)` → i64/i32 拒绝；f64 只收 Float/Double；落到 `bool::compatible`（不看 UNSIGNED），`bool::decode` 是 `i8`，越界即 `Null` | `BIGINT UNSIGNED`：0→`Bool(false)`、127→`Bool(true)`、**128+→`Null`**；base 全是 `Number(n)` |
+> | PG `SMALLINT`(int2) 变 `Null` | sqlx-postgres 整数类型**无 `compatible` 覆写**，走精确匹配：i64 只认 INT8、i32 只认 INT4 → INT2 穿过全链落空 | `smallint = 7` → `Null`；base 是 `Number(7)` |
+>
+> **`BIGINT UNSIGNED` 是 MySQL 最常见的自增主键类型**，而值会随大小在
+> `false`/`true`/`Null` 之间跳 —— 最难排查的一类错。
+>
+> **根因**：链序是按 `Any` 驱动的**宽松兼容表**写的（Any 必须抽象三驱动，只接受能安全
+> 跨驱动转换的类型）；原生驱动的 `compatible` 是**精确/带标志位**的。宽松处消失后，
+> 原先被掩盖的类型映射缺口全部暴露。
+>
+> **正确链序**：
+> ```
+> NULL闸门 → i64 → i32 → i16 → f64 → f32 → u64 → bool → time → String → blob → Err
+> ```
+> `u64` 必须在 `bool` **之前**（MySQL UNSIGNED 靠它接住）；`i16` 在 `i32` 之后（PG INT2）。
+>
+> **⑤ 链尾不再是 `Value::Null`，而是报错。**
+> 改原生池后 PG 的 `date`/`numeric`/`uuid`/`jsonb`、MySQL 的 `decimal` 从
+> 「整条查询响亮失败」变成「该列静默 null」。base 的注释明确把「不在链上就报错」
+> 当特性（调用方可自行 CAST）。NULL 闸门已把**真正的 NULL** 挡在前面，所以链尾
+> 现在**只在「类型不在链上」时触发** —— 改回报错正是恢复 base 语义，错误信息要点名类型。
+>
+> ### 这一节最重要的教训：单驱动的测试通过，对另外两个驱动不构成证据
+>
+> 上述两个 Critical **都不是**既有测试能发现的 —— 那 20 个测试全跑在**内存 SQLite** 上，
+> 而 SQLite 的 `compatible` 恰好是三者中最宽松的。审查者必须**自建真 MySQL 8.0 与
+> PostgreSQL 16** 才能拿到那两张 A/B 表。
+>
+> **推论（对批次 2/3 有效）**：`ECAT_TEST_PG_URL` / `ECAT_TEST_MYSQL_URL` /
+> `ECAT_TEST_MSSQL_URL` 那套 env 门控集成测试**不是可选增值**，而是覆盖非 SQLite 路径的
+> **唯一手段**。缺了它们时只能声明「未验证」，**不能算通过**。
 
 - [ ] **Step 1: 改依赖**
 
