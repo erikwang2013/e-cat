@@ -100,15 +100,24 @@ pub fn dialect_session_init(url: &str) -> Vec<String> {
 }
 
 impl SqlxConfig {
+    /// 未配置的字段一律取 [`PoolParams::default`] —— 默认值只此一处定义，
+    /// 避免与 [`PoolParams::for_url`] 静默分叉。
     pub fn pool(&self) -> PoolParams {
+        let d = PoolParams::default();
         PoolParams {
-            max_connections: self.max_connections.unwrap_or(10),
-            min_connections: self.min_connections.unwrap_or(0),
-            acquire_timeout: Duration::from_secs(self.acquire_timeout_secs.unwrap_or(30)),
-            idle_timeout: Duration::from_secs(self.idle_timeout_secs.unwrap_or(600)),
-            max_lifetime: Duration::from_secs(self.max_lifetime_secs.unwrap_or(1800)),
+            max_connections: self.max_connections.unwrap_or(d.max_connections),
+            min_connections: self.min_connections.unwrap_or(d.min_connections),
+            acquire_timeout: self
+                .acquire_timeout_secs
+                .map_or(d.acquire_timeout, Duration::from_secs),
+            idle_timeout: self
+                .idle_timeout_secs
+                .map_or(d.idle_timeout, Duration::from_secs),
+            max_lifetime: self
+                .max_lifetime_secs
+                .map_or(d.max_lifetime, Duration::from_secs),
             query_timeout: self.query_timeout(),
-            test_before_acquire: self.test_before_acquire.unwrap_or(false),
+            test_before_acquire: self.test_before_acquire.unwrap_or(d.test_before_acquire),
             session_init: self.effective_session_init(),
         }
     }
@@ -187,27 +196,23 @@ mod tests {
         assert!(sqlite.effective_session_init().is_empty());
     }
 
-    /// `connect()` 走 `PoolParams::for_url`，`from_config()` 走 `cfg.pool()`，
-    /// 两者在未配置时必须给出相同的默认（尤其是 session_init），
-    /// 否则两个构造器行为静默不一致。
+    /// 未配置时 `for_url`（connect 走它）与 `pool()`（from_config 走它）
+    /// 必须逐字段一致 —— 否则两个构造器静默分叉，且不会有任何测试变红。
     #[test]
-    fn for_url_matches_pool_defaults_for_pg() {
-        let cfg: SqlxConfig = serde_json::from_str(r#"{"url": "postgres://h/db"}"#).unwrap();
-        assert_eq!(
-            PoolParams::for_url("postgres://h/db").session_init,
-            cfg.pool().session_init
-        );
-
-        let empty: SqlxConfig = serde_json::from_str(r#"{"url": "sqlite::memory:"}"#).unwrap();
-        assert!(
-            PoolParams::for_url("sqlite::memory:")
-                .session_init
-                .is_empty()
-        );
-        assert_eq!(
-            PoolParams::for_url("sqlite::memory:").session_init,
-            empty.pool().session_init
-        );
+    fn for_url_matches_pool_defaults_field_by_field() {
+        for url in ["postgres://h/db", "mysql://h/db", "sqlite::memory:"] {
+            let cfg: SqlxConfig = serde_json::from_str(&format!(r#"{{"url": "{url}"}}"#)).unwrap();
+            let a = PoolParams::for_url(url);
+            let b = cfg.pool();
+            assert_eq!(a.max_connections, b.max_connections, "{url}");
+            assert_eq!(a.min_connections, b.min_connections, "{url}");
+            assert_eq!(a.acquire_timeout, b.acquire_timeout, "{url}");
+            assert_eq!(a.idle_timeout, b.idle_timeout, "{url}");
+            assert_eq!(a.max_lifetime, b.max_lifetime, "{url}");
+            assert_eq!(a.query_timeout, b.query_timeout, "{url}");
+            assert_eq!(a.test_before_acquire, b.test_before_acquire, "{url}");
+            assert_eq!(a.session_init, b.session_init, "{url}");
+        }
     }
 
     /// `query_timeout_secs: 0` 是「禁用」而非「0 秒立刻超时」。
