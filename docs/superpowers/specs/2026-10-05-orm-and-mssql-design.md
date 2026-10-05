@@ -737,6 +737,22 @@ i18n 共 12 个语言目录（`ar` `bn` `de` `en` `es` `fr` `hi` `id` `ja` `ko` 
 | MSSQL 无法在 CI 实跑 | env 门控 + docker-compose 本地验证；方言生成逻辑由单测兜底 |
 | `Breaker` 抽取改动既有 crate | tower 层的既有 12 个测试（`ecat-circuit-breaker/src/lib.rs:275-546`）必须保持全绿 |
 
+## 11.5 交付批次（用户确认，2026-10-05）
+
+分 4 批。**每批结束时 `cargo test --workspace` 必须全绿**（CI 闸门），
+每批可独立提交与回滚；文档与代码**同批落地**（§9.1）。版本号在批次 4 统一
+bump 到 4.0.0，分支内不发布中间版本。
+
+| 批次 | 代码 | 文档 |
+|---|---|---|
+| **1 地基** | `ecat-data`：`Dialect`、`SqlExecutor` 拆分、`query_write`、`Transaction` 可执行、`timeout.rs` 助手<br>`ecat-data-sqlx`：**原生池重写**、`time` 类型映射、池参数、`warm_up()`、`test_before_acquire`、`session_init` | `database-config-tutorial.md` ×13（含 12 语言） |
+| **2 驱动** | `ecat-data-mssql`：tiberius-ng + deadpool、参数绑定、行转换、`warm_up()`、智能 recycle | `README.md` / `README.en.md` + `docs/i18n/{12}/README.md`（后端表补第 16 行、目录树、依赖行） |
+| **3 ORM** | `ecat-orm` + `ecat-orm-derive`：实体宏、CRUD、查询构建器、关联预加载、join、批量（含分块）、分页、标识符白名单、软删除/时间戳/乐观锁、迁移系统 | `api.md` ×13、README ORM 用法段 ×14、`config/databases.example.yaml` |
+| **4 收尾** | 包装器（`CircuitBreakerExecutor` / `RdbmsRouting`）+ `ecat-circuit-breaker` 抽 `Breaker` + 可观测性三 feature（metrics/health/tracing）+ `ecat` 聚合 feature + `docker-compose.dev.yml` | `CHANGELOG.md`（4.0.0 段）、`ecosystem-plan-v3.md` 去掉「尚未实现」标记 ×13、`tls-certificate-tutorial.md` ×13 |
+
+批次 1 是唯一含破坏性 API 改动的一批（trait 拆分 + 原生池），
+但它本身不自成发布 —— 4.0.0 只在批次 4 后整体发布。
+
 ## 12. 验收标准
 
 1. `cargo test --workspace` 全绿（含新增方言单测与 SQLite ORM 集成测试）
