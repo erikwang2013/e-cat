@@ -1465,7 +1465,9 @@ pub struct SqlxClient {
 
 impl SqlxClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        Self::connect_with_params(url, &PoolParams::default()).await
+        // 必须走 for_url 而非 default()：否则 connect() 拿不到方言默认的
+        // session_init，与 from_config() 行为静默不一致（Task 5 审查发现）。
+        Self::connect_with_params(url, &PoolParams::for_url(url)).await
     }
 
     pub async fn connect_with_params(url: &str, params: &PoolParams) -> Result<Self, sqlx::Error> {
