@@ -1323,9 +1323,19 @@ git commit -m "feat(ecat-data-sqlx): SqlxConfig 独立成模块并补全池参�
 >
 > **⑤ 链尾不再是 `Value::Null`，而是报错。**
 > 改原生池后 PG 的 `date`/`numeric`/`uuid`/`jsonb`、MySQL 的 `decimal` 从
-> 「整条查询响亮失败」变成「该列静默 null」。base 的注释明确把「不在链上就报错」
-> 当特性（调用方可自行 CAST）。NULL 闸门已把**真正的 NULL** 挡在前面，所以链尾
-> 现在**只在「类型不在链上」时触发** —— 改回报错正是恢复 base 语义，错误信息要点名类型。
+> 「整条查询响亮失败」变成「该列静默 null」。NULL 闸门已把**真正的 NULL** 挡在前面，
+> 所以链尾现在**只在「类型不在链上」时触发**，改回报错是对的。
+>
+> **但不要写成「恢复 base 语义」**（本计划初稿这么写过，是错的，由审查者纠正）：
+> **base 的链尾同样是 `unwrap_or(Value::Null)`**（`f94df52:ecat-data-sqlx/src/lib.rs:83-112`）。
+> base 那些「响亮失败」来自 **Any 驱动在 fetch 阶段的白名单**
+> （`sqlx-postgres-0.8.6/src/any.rs` 只映射 Bool/Void/Int2/Int4/Int8/Float4/Float8/
+> Bytea/Text/Varchar/citext，其余当场 `AnyDriverError`；`sqlx-mysql-0.8.6/src/any.rs:162-186` 同理）。
+>
+> **准确表述**：新链尾在这些类型上**比 base 更严格** —— 把 base 的「fetch 期
+> `AnyDriverError`」与本 crate 的「链尾报错」合并成同一条可诊断路径（错误信息带列名 + 类型名）。
+> 「Any 能表示但原链解不出」的那一类实际只剩 PG `float4`（base = Null，现在靠 `f32`
+> 分支 = 数字，是改进）。**方向一致（更响更好），但机制不同，别再写成「恢复 base 语义」。**
 >
 > ### 这一节最重要的教训：单驱动的测试通过，对另外两个驱动不构成证据
 >
