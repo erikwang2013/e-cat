@@ -798,6 +798,17 @@ impl Drop for Transaction {
 > `SqlxTransactionWrapper` 新增字段 `dialect: Dialect`，
 > 在 `transaction()` 里用 `self.dialect` 填。
 
+> **实施记录（2026-10-05）——两处计划缺陷 + 一处补强，实际落地已按此**：
+>
+> 1. 上面片段需要 **`use sqlx::Executor as _;`** 才能编译（`tx.execute` / `tx.fetch_all`
+>    依赖该 trait 在作用域内）。初版计划漏了这行。
+> 2. 实施时**额外补了一个 e2e 测试** `transaction_executes_and_scopes_changes`
+>    （`ecat-data-sqlx/src/lib.rs`），验证「回滚不可见 / 提交可见 / 事务内参数化绑定正确」。
+>    初版计划只测了 `ecat-data` 侧的桩，**真实 sqlx wrapper 零运行时覆盖** ——
+>    而「事务里能执行 SQL」正是本任务的全部意义。该补强已采纳。
+> 3. `drop_without_commit_warns_once` 按 spec 的「改写」意图重命名为
+>    `dropped_uncommitted_transaction_still_warns`，断言等价（均为 `warns == 1`）。
+
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `cargo test -p ecat-data && cargo test -p ecat-data-sqlx`
@@ -2243,6 +2254,21 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 - [ ] `grep -rn "AnyPool\|install_default_drivers" ecat-data-sqlx/` 无输出
 - [ ] `grep -c "query_timeout_secs" docs/database-config-tutorial.md` ≥ 1
 - [ ] 12 个 i18n 副本与根文件同结构
+- [ ] **`ecat-data-sqlx/src/lib.rs` 回到 500 行以内**（见下）
+
+### 已知的 500 行超限（Task 3 后 629 行，计划内自然收敛）
+
+Task 3 后 `ecat-data-sqlx/src/lib.rs` = **629 行**（改动前 491），超出仓库 500 行约定。
+**暂不单独拆分** —— 后续任务本就要把它拆开，现在拆是重复劳动：
+
+| 任务 | 抽走的模块 | 约计 |
+|---|---|---|
+| Task 5 | `src/config.rs`（`SqlxConfig` / `PoolParams`） | ~80 行 |
+| Task 6 | `src/pool.rs`（`Pool` 枚举 + 三路分派 + `PoolGuard`） | ~120 行 |
+| Task 7 | `src/cell.rs`（三个 `cell_fn!` / `rows_fn!` 宏） | ~90 行 |
+
+**验收项**：Task 7 结束时该文件必须 ≤ 500 行；若仍超，把
+`SqlxTransactionWrapper` + 其测试移到 `src/transaction.rs`（最自然的下一刀）。
 
 ### 闸门为何不是「全绿」——两个既有红灯（2026-10-05 实测）
 
