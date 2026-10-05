@@ -2426,6 +2426,31 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 - [ ] 12 个 i18n 副本与根文件同结构
 - [ ] **`ecat-data-sqlx/src/lib.rs` 回到 500 行以内**（见下）
 
+### 已知限制：f32 最短表示只覆盖了 PG，MySQL `FLOAT` 仍是加宽值（2026-10-06 审查者 A/B 实测）
+
+| | PG | MySQL |
+|---|---|---|
+| `0.1::float4` / `FLOAT` 列 | **`0.1`** ✅ | **`0.10000000149011612`** ⚠️ |
+
+成因（两部分都有出处）：链序先 `f64` 后 `f32`；而 **sqlx-mysql 给 f32 与 f64 同一张
+`compatible` 表**（`real_compatible = Float | Double`，`sqlx-mysql-0.8.6/src/types/float.rs:10-12`），
+所以 MySQL 的 `FLOAT` 列被 `f64` 分支先接走。PG 无 `compatible` 覆写、走 OID 精确匹配，
+`f64` 不吃 `float4`，因此只有 PG 走通。
+
+**不是回归**（A/B 两侧 MySQL 都返回旧值），是这次修复只覆盖了 PG。
+
+**⚠️ 不要用「把 `f32` 挪到 `f64` 前面」来修** —— `sqlx-mysql-0.8.6/src/types/float.rs:60-63`
+里 `f32` 的 decode 对 8 字节 `DOUBLE` 直接 `as f32` 截断，前置会让 `1e300` 变成 `inf`，
+**真丢数据**。当前顺序是安全的那一侧。
+
+**处置：记为已知限制，不修。** 要真在 MySQL 上取最短表示，需在 MySQL 那一支用
+`type_info()` 把 `Float` 与 `Double` 分开 —— 独立改动。（MySQL `FLOAT` 列本身少见，
+多数人用 `DOUBLE` 或 `DECIMAL`。）
+
+> **这条的发现方式值得记**：审查者对**同一句 SQL 在 PG 与 MySQL 上各做 A/B**，
+> 才发现「同一逻辑类型在两个驱动给出不同的数」。若只测一个驱动，它会被判为「已修复」。
+> 又一个「单驱动证据不成立」的实例。
+
 ### 待用户裁决：`SqlxConfig.tls` 静默无效（2026-10-06 由 Task 7 实施者发现）
 
 ```rust
