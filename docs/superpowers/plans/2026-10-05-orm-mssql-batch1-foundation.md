@@ -2268,9 +2268,9 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 - [ ] 12 个 i18n 副本与根文件同结构
 - [ ] **`ecat-data-sqlx/src/lib.rs` 回到 500 行以内**（见下）
 
-### 已知的 500 行超限（Task 3 后 629 行，计划内自然收敛）
+### 已知的 500 行超限（两处，均须在批次 4 收尾前清掉）
 
-Task 3 后 `ecat-data-sqlx/src/lib.rs` = **629 行**（改动前 491），超出仓库 500 行约定。
+**① `ecat-data-sqlx/src/lib.rs`：Task 3 后 629 行**（改动前 491），超出仓库 500 行约定。
 **暂不单独拆分** —— 后续任务本就要把它拆开，现在拆是重复劳动：
 
 | 任务 | 抽走的模块 | 约计 |
@@ -2281,6 +2281,22 @@ Task 3 后 `ecat-data-sqlx/src/lib.rs` = **629 行**（改动前 491），超出
 
 **验收项**：Task 7 结束时该文件必须 ≤ 500 行；若仍超，把
 `SqlxTransactionWrapper` + 其测试移到 `src/transaction.rs`（最自然的下一刀）。
+
+**② `ecat-data/src/rdbms.rs`：Task 4 后 499 行** —— 距 500 行上限**只剩 1 行余量**。
+批次 1 剩余任务（5–10）都不碰该文件，所以不会立刻爆，但下一次任何改动都会撞线。
+
+Task 4 的实施者已经为此被迫让步一次（计划原样落地实测 503 行，rustfmt 回弹 3 种压缩形态，
+最后改用 `Transaction::new()` 构造测试才压到 499）。**不要再让后续任务在这个文件上做让步。**
+
+**处置**：批次 4 收尾时把 `Transaction` + `TransactionInner` + 相关测试抽到
+`ecat-data/src/transaction.rs`（`rdbms.rs` 保留 `Row` / `SqlExecutor` / `RdbmsClient` /
+`RdbmsError`）。
+
+**注意不要顺手"修复"那个放宽的断言**：`dropped_uncommitted_transaction_counts_as_leak`
+现在用 `after > before` 而非 `after == before + 1`，原因是同一测试二进制里相邻的
+测试会并发递增同一个进程级计数器（实测 400 次失败 5 次）。**拆文件不解决这个问题**
+（仍在同一二进制内），只有给两个测试加互斥才行 —— 那是用测试间耦合换一个
+并不更真实的断言（`>` 已能抓到「Drop 不再计数」这个真回归）。**保持放宽版。**
 
 ### 闸门为何不是「全绿」——两个既有红灯（2026-10-05 实测）
 
