@@ -2416,6 +2416,34 @@ git commit -m "docs: 数据库配置教程同步原生池与会话初始化（×
 - [ ] 12 个 i18n 副本与根文件同结构
 - [ ] **`ecat-data-sqlx/src/lib.rs` 回到 500 行以内**（见下）
 
+### 待用户裁决：`SqlxConfig.tls` 静默无效（2026-10-06 由 Task 7 实施者发现）
+
+```rust
+/// TLS — SQLx TLS 配置走 URL 参数（如 ?sslmode=require）。本字段预留给未来。
+#[serde(default)]
+pub tls: Option<TlsClientConfig>,
+```
+
+该字段有 `#[serde(default)]` 但**代码从不读它**。用户在 YAML 里写：
+
+```yaml
+sql:
+  url: "postgres://..."
+  tls: { skip_verify: true }   # ← serde 接受，代码忽略，静默无效
+```
+
+会以为开了 TLS 行为，实际什么都没发生 —— **静默失效**，与本批次反复处理的问题同族。
+
+三个选项（推荐 b）：
+
+| | 做法 | 评价 |
+|---|---|---|
+| a | 实现它（`TlsClientConfig` → sqlx URL 参数） | 字段与 URL 参数非一一对应，只能部分映射 |
+| b | **设了就报错**，信息指向「TLS 请用 URL 参数」（约 5 行） | 最小、最响 |
+| c | 仅文档注明「预留、当前无效」 | 最弱，拦不住误配 |
+
+**未实施**（属独立代码决策，不并入本批次 diff）。
+
 ### 已知的 500 行超限（两处，均须在批次 4 收尾前清掉）
 
 **① `ecat-data-sqlx/src/lib.rs`：Task 3 后 629 行**（改动前 491），超出仓库 500 行约定。
