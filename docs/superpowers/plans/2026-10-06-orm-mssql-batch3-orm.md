@@ -6454,6 +6454,14 @@ git commit -m "feat(ecat-orm): 关联预加载（IN 分块，杜绝 N+1）"
 > assert!(!lookup(Dialect::Postgres).needs_exists_check_before_create());
 > ```
 >
+> **改名时要同步调整的既有断言**（Task 10 实施者点名）：
+> - `ecat-orm/src/dialect/mssql.rs` 的 `create_table_has_no_if_not_exists` 里有
+>   `assert_eq!(s().table_exists_sql("users"), "")` —— 改名后应改为断言
+>   `create_table_prefix("users") == "CREATE TABLE [users]"`（**不要删掉它**：
+>   它当初正是用来防「`!contains("IF NOT EXISTS")` 对空串恒真」那条空验收的）。
+> - `standard.rs` / `sqlite.rs` / `postgres.rs` / `mysql.rs` 里若有调用 `table_exists_sql`
+>   的测试，一并改名。
+>
 > **空验收自证**：临时把 MSSQL 的 `create_table_prefix` 改回 `String::new()`，
 > 确认上面第一条 **FAILED**，再还原。
 
