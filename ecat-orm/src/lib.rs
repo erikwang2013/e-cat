@@ -22,6 +22,7 @@ extern crate self as ecat_orm;
 pub mod dialect;
 mod entity;
 mod error;
+pub mod query;
 pub mod relation;
 mod time;
 pub mod value;

@@ -130,6 +130,14 @@ pub trait Entity: Sized + Send + Sync {
     /// 主键值。
     fn pk_value(&self) -> serde_json::Value;
 
+    /// 开始一个查询。`User::query()` 比 `Query::<User, Unfiltered>::new()` 好读。
+    fn query() -> crate::query::Query<Self, crate::query::Unfiltered>
+    where
+        Self: Sized,
+    {
+        crate::query::Query::new()
+    }
+
     /// 关联预加载的写回口。由派生宏按关联名分派到具体字段 ——
     /// `Entity` 泛型地访问不到 `posts` 字段，只有宏知道每个关联对应哪个字段、
     /// 目标类型是什么。
