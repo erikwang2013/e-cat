@@ -123,9 +123,21 @@ where
 }
 ```
 
-**破坏性**：`run_with_timeout` 的签名变了（多两个参数）。仓库内调用点是 batch 1 新加的
-（`ecat-data-sqlx` 的 4 处 + 事务 wrapper），改动是机械的。外部实现者若调用过它也会
+**破坏性**：`run_with_timeout` 的签名变了（多两个参数）。外部实现者若调用过它也会
 编译失败 —— 与批次 1 的 4.0.0 一同发布即可（`ecat-data` 尚未进入 4.0.0 发布窗口）。
+
+**本仓库内共 16 个调用点要一起改**（由批次 2 Task 5b 实施时实测统计）：
+
+| 位置 | 数量 |
+|---|---|
+| `ecat-data-sqlx` 客户端方法 | 4 |
+| `ecat-data-sqlx` 事务 wrapper（`src/transaction.rs`） | 4 |
+| `ecat-data-mssql` 客户端方法 | 4 |
+| `ecat-data-mssql` 事务 wrapper | 4 |
+
+每处加第一个参数 `BackendKind::Rdbms`（两个 crate 都是 RDBMS 类）。
+**这 16 处在批次 2 结束时已经全部套了 `run_with_timeout`**（批次 2 Task 5b 补的事务超时），
+所以本次改签名时它们会一起编译失败、一起改，不会漏。
 
 ## 2. 每个后端接入超时
 
