@@ -46,7 +46,13 @@
 | `ecat-data` 测试 | 28 passed / 0 failed | 实测 |
 | `ecat-data-sqlx` 测试（无真库） | 39 passed / 0 failed | 实测 |
 | `ecat-data-sqlx` 测试（真 PG16 + MySQL8） | **41 passed / 0 failed** | 审查者实测 |
-| 工作区测试总数 | 见「待补」 | 后台运行中 |
+| **工作区全量测试** | **718 passed / 0 failed**，`cargo_rc=0`，113 个 test binary，0 error 行 | 机器恢复后实测（**正确捕获退出码**） |
+
+> **关于中途出现过的 `611`**：那是我自己的管道命令
+> （`cargo test --workspace 2>&1 | grep … | awk …`）造成的假象 —— 管道的退出码是
+> **`awk` 的**，cargo 的失败被吞掉；而在 I/O 挂起的机器上部分 test binary 根本没跑出来，
+> 总数被静默削减，命令却报 exit 0。**机器恢复后重测为 718/0，binary 数与完整跑一致。**
+> 这条记在这里是因为它是个典型案例：**一个看起来在验证、实际上在掩盖失败的命令**。
 | 改动文件 fmt | clean | 实测 |
 | `ecat-data-sqlx` clippy | **0 条自身诊断** | 审查者实测 |
 | `ecat-data` clippy | 35 条，**全为 `async_trait` 的已知误报** | 实测，见债务 ① |
@@ -129,7 +135,7 @@
 
 ## 七、未完成
 
-- `cargo test --workspace` 最终跑：**后台运行中**（I/O 挂起下很慢）。
-  此前审查者已核实**工作区内没有任何 crate 依赖 `ecat-data-sqlx`**、其 `cell`/`config`/`pool`
-  皆私有模块，故改动不可能影响其它 crate —— 这条结构性论据比跑一遍更强。
-- `rev-t6` 的复审尾段确认（peer 容器使用是否非破坏性）—— 不影响本批结论。
+**无。** 批次 1 全部验证项已闭环。
+
+（过程记录：工作区全量测试一度因本机 I/O 挂起 + 内存不足而无法完成，
+机器恢复后补测为 **718 passed / 0 failed / cargo_rc=0**，113 个 test binary 与完整跑一致。）
