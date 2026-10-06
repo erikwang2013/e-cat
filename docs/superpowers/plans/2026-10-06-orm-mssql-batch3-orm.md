@@ -226,6 +226,23 @@ test result: ok. 0 passed; 0 failed; 0 ignored; ... finished in 0.00s
 
 **三个实例的共同点**：验收步骤测的是「别的东西还正常」，不是「本任务新增的东西生效了」。
 
+### 验证装置的**放置位置**也会让它失效（2026-10-06 实测，两条）
+
+「写了验证」不等于「验证会跑」。以下两条都是**空验收**，而且都实测复现过：
+
+| 写法 | 后果 | 实测证据 |
+|---|---|---|
+| `/// ```compile_fail` doctest 放在 **`tests/*.rs`** | **完全不执行** —— rustdoc 只收 lib/bin 目标，不收集成测试 | 在 `tests/derive_columns.rs` 里放一个 `panic!` 的 doctest，`cargo test --test derive_columns` 报 17 passed、**0 个 doctest 条目**、rc=0 |
+| `/// ```compile_fail` doctest 放在 **`#[cfg(test)] mod tests`** 里 | **完全不执行** —— `cargo test --doc` 编译 lib 时**不开 `cfg(test)`**，那些条目根本不存在 | 在 `src/relation.rs` 加 `#[cfg(test)] mod probe { /// ```rust panic!(..) ``` #[test] fn probe(){} }`，`cargo test --doc` rc=0、**无 panic** |
+
+**所以编译期断言（`compile_fail` / `should_panic` 之类）必须放在**：
+- `src/` 里的**非 `cfg(test)`** 位置 —— 例如某个 `#[doc(hidden)] pub mod` 下、或某个公开项的
+  rustdoc 上（Task 8 实施者的做法：放在 `src/relation.rs`，并**配一条正向对照 doctest**
+  ——「裸类型编译不过」+「`Option<Other>` 编译过」成对出现，才排得出「因为正确的原因通过」）。
+
+**Task 8 实施者的原话值得记住**：只写 `compile_fail` 时，任何编译错误都算通过 ——
+包括拼错方法名。**配一条正向对照**才能证明「它失败是因为我们想拦的那件事」。
+
 ### 每个任务必须做
 
 1. **问那个判据**。若答案不妙，**补一个能区分「有」与「无」的证据**：
@@ -235,6 +252,10 @@ test result: ok. 0 passed; 0 failed; 0 ignored; ... finished in 0.00s
    绝对路径，`cargo check` rc=0，然后立即删除、不进提交、`git status` 为空可复核。
    （它的附带实测值得记：探针首跑报 `E0782 expected a type, found a trait` —— 那**不是**解析失败，
    恰恰是解析**成功**的证据，编译器找到了 trait、只是不接受把 trait 当类型。）
+3. **Task 8 实施者给出的正例**（自证做得最细的一次，照这个做）：删掉生成物、
+   确认**恰好相关的那些测试**变红并记录实际输出。它的六次探针覆盖了
+   「关联元数据归零」「删 `set_relation` 分派」「删 `from_row` 关联初值」「compile_fail 双向」
+   「拼错键报错」—— 每次都记了「删什么 / 哪几条红 / 实际输出」。
 
 ---
 
@@ -2446,19 +2467,51 @@ fn from_row_leaves_relations_empty_until_loaded() {
     assert!(u.comments.is_empty());
 }
 
-/// 裸实体类型（非 Vec / 非 Option）的关联字段必须在**编译期**被拒。
+> **⚠️ 这条编译期断言不能放在 `tests/derive_relations.rs` 里。**
+> 本批实测：rustdoc **只收 lib/bin 目标**，`tests/*.rs` 里的 doctest **完全不执行**
+> （在 `tests/derive_columns.rs` 放一个 `panic!` 的 doctest，`cargo test` 报 17 passed、
+> **0 个 doctest 条目**、rc=0）。写在 `#[cfg(test)] mod tests` 里同样不跑
+> （`cargo test --doc` 编译 lib 时不开 `cfg(test)`）。**两条都已复现。**
+>
+> **正确落法**（`3ba8b11` 实施时采用）：放在 `ecat-orm/src/relation.rs` 的**非 `cfg(test)`** 位置，
+> 并**配一条正向对照** —— 「裸 `Other` 编译不过」+「`Option<Other>` 编译过」成对。
+> 没有对照的话，`compile_fail` 可能「因为错误的原因通过」（任何编译错误都算通过）。
+
+`ecat-orm/src/relation.rs`（非测试区）：
+
+```rust
+/// 裸实体类型（非 `Vec` 非 `Option`）的关联字段必须在**编译期**被拒。
 ///
 /// ```compile_fail
 /// #[derive(ecat_orm::Entity)]
+/// #[entity(table = "bad")]
 /// struct Bad {
 ///     #[entity(pk)] id: i64,
 ///     #[entity(has_one = "Other", foreign_key = "bad_id")] other: Other,
 /// }
 /// ```
-#[test]
-fn bare_relation_field_is_rejected() {
-    // 真正的断言是上面的 compile_fail doctest —— 裸关联字段无法表达「没查到」。
-}
+///
+/// 正向对照 —— `Option<Other>` 必须能编译：
+///
+/// ```no_run
+/// #[derive(ecat_orm::Entity)]
+/// #[entity(table = "good")]
+/// struct Good {
+///     #[entity(pk)] id: i64,
+///     #[entity(has_one = "Other", foreign_key = "bad_id")] other: Option<Other>,
+/// }
+/// # struct Other;
+/// # impl ecat_orm::Entity for Other {
+/// #     const TABLE: &'static str = "others";
+/// #     const PK: &'static str = "id";
+/// #     const META: &'static ecat_orm::EntityMeta = unimplemented!();
+/// #     fn from_row(_: &ecat_orm::Row) -> Result<Self, ecat_orm::OrmError> { Ok(Other) }
+/// #     fn to_values(&self) -> Vec<(&'static str, serde_json::Value)> { vec![] }
+/// #     fn pk_value(&self) -> serde_json::Value { serde_json::Value::Null }
+/// # }
+/// ```
+pub fn relation_field_container_rules() {}
+```
 ```
 
 > **为什么裸类型要报错而不是给它 `Default::default()`**：`Option` 能表达「没有」，
@@ -2680,6 +2733,26 @@ SQL 生成方写成 `SELECT {prefix}{cols} FROM {table} …{suffix}`。
 **为什么现在改是免费的**：`DialectSpec` 是批次 3 首次实现，**此前没有任何实现者**，改签名不破坏任何人。
 
 **顺带**：`Limit::none()` 而不是 `Default` —— 这里的「空」是语义上的「不分页」，不是「默认值」，用关联函数让调用点读起来是 `Limit::none()` 而非 `Limit::default()`。
+
+---
+
+### 实施记录（2026-10-06，`3ba8b11` 订正 5 处计划错误）
+
+Task 8 的实施者报回 9 条，其中 5 条是计划片段本身有错。都是实测复现的：
+
+| # | 计划写法 | 后果 |
+|---|---|---|
+| 1 | `match name { _ => return Err(..) } Ok(())` | 对**无关联实体**是 `unreachable_code`（全臂发散），只留通配臂又踩 `match_single_binding` → **clippy 闸门红**。改成按「有无关联」生成两种形状 |
+| 2 | `set_relation_dispatches_by_name_and_arity` 用**同一个** `mk()` 造行 | 把 Post 形状（id/user_id/title）喂给 `profile`，而 `Profile` 需要 `bio` → 照抄会 **panic**（UnknownColumn）。已拆 `post_row` / `profile_row` |
+| 3 | `explicit_local_key_is_honoured` 断言 `local_key == "id"` | **空验收** —— `User` 的主键正是 `id`，属性被完全忽略也照样绿。改成 `local_key = "name"` 并断言 `"name"` |
+| 4 | `compile_fail` doctest 放 `tests/`（Task 8/11 各一处） | **不执行**（rustdoc 不收 tests 目标）。已移到 `src/` 非 `cfg(test)` 位置并配正向对照 |
+| 5 | `TargetStr`（`quote!(#target).to_string()`） | 从不被消费，保留即死代码 |
+
+另补：`belongs_to` 原本**零测试**（`(None, BelongsTo) => 目标表主键` 分支无覆盖），已补 Tag/TagLink 用例
+（目标主键 `code` ≠ 本表 `id`，能区分「用了目标主键」与「误用了本表主键」）。
+
+> **教训**：第 3 条尤其值得记 —— 它是一条**空验收**，出现在我用来写「防空验收」的那一节里。
+> 判据（「把新增物删掉，测试还绿吗」）必须**逐条**对新写的测试用一遍，不能只对整体用一次。
 
 ---
 
@@ -3606,21 +3679,8 @@ mod tests {
 
     // ---- 类型状态 ----
 
-    /// 未过滤的 Query **不能**调 `delete_where` / `update`。
-    /// 这是编译期保证，因此用 `compile_fail` 钉住：
-    ///
-    /// ```compile_fail
-    /// # use ecat_orm::query::Query;
-    /// # fn f<E: ecat_orm::Entity>() {
-    /// // 这行必须无法编译 —— 没有 filter 就 delete_where 等于删全表
-    /// let _ = Query::<E, ecat_orm::query::Unfiltered>::new().delete_where();
-    /// # }
-    /// ```
     #[test]
-    fn unfiltered_query_cannot_delete() {
-        // 上面那个 doctest 是真正的断言；这里只是让它有个名字好定位失败。
-    }
-
+    fn filter_transitions_to_filtered() {
     #[test]
     fn filter_transitions_to_filtered() {
         let q: Query<U, Filtered> = U::query().filter("name", Op::Eq, "x").unwrap();
@@ -4031,21 +4091,64 @@ git add ecat-orm/src/query ecat-orm/src/entity.rs ecat-orm/src/lib.rs
 git commit -m "feat(ecat-orm): 查询构建器（类型状态 + 标识符白名单）"
 ```
 
-### ⚠️ Task 11 必读：`compile_fail` doctest 是唯一能钉住类型状态的测试
+### ⚠️ Task 11 必读：类型状态的编译期断言**必须放在 `src/` 的非 `cfg(test)` 位置**
 
-`Unfiltered` 上没有 `delete_where` 这件事，**无法用普通 `#[test]` 断言** —— 一段不该编译的代码，在测试里根本写不出来。
+`Unfiltered` 上没有 `delete_where` 这件事，**无法用普通 `#[test]` 断言** —— 一段不该编译的代码，在测试里根本写不出来。只能用 rustdoc 的 `compile_fail`。
 
-用 `rustdoc` 的 `compile_fail`：
+**但位置有严格要求。** 本批已实测两条「写了却不跑」的坑（见文首「空验收」硬规则）：
+
+| 放置位置 | 会跑吗 |
+|---|---|
+| `tests/*.rs` 里 | ❌ **不跑** —— rustdoc 只收 lib/bin 目标 |
+| `#[cfg(test)] mod tests` 里 | ❌ **不跑** —— `cargo test --doc` 编译 lib 时不开 `cfg(test)` |
+| **`src/` 里的非 `#[cfg(test)]` 位置** | ✅ 跑 |
+
+**本任务的落法**：在 `ecat-orm/src/query/mod.rs` 的**非测试区**加一个专门的隐藏模块承载它：
 
 ````rust
-/// ```compile_fail
-/// // 没有 filter 就 delete_where —— 必须编译失败
-/// ```
+/// 类型状态的编译期断言。放在非 `#[cfg(test)]` 位置是**必需的** ——
+/// `cargo test --doc` 编译 lib 时不开 `cfg(test)`，写在测试模块里的 doctest
+/// 根本不存在；写在 `tests/*.rs` 里 rustdoc 也不收。两条都已实测复现。
+///
+/// 这里只放 doctest，没有可调用项，故整体 `#[doc(hidden)]`。
+#[doc(hidden)]
+pub mod _compile_fail_guards {
+    //! 无过滤条件时不得删改。
+
+    /// 未过滤的 `Query` 不能调 `delete_where`。
+    ///
+    /// ```compile_fail
+    /// # use ecat_orm::query::{Query, Unfiltered};
+    /// # fn f<E: ecat_orm::Entity>() {
+    /// // 这行必须无法编译 —— 没有 filter 就 delete_where 等于删全表
+    /// let _ = Query::<E, Unfiltered>::new().delete_where();
+    /// # }
+    /// ```
+    ///
+    /// 正向对照：**加了 filter 就能编译**。没有这一条，上面的
+    /// `compile_fail` 可能「因为错误的原因通过」（任何编译错误都算通过，
+    /// 包括方法名拼错）。
+    ///
+    /// ```no_run
+    /// # use ecat_orm::query::Query;
+    /// # fn f<E: ecat_orm::Entity>() -> Result<(), ecat_orm::OrmError> {
+    /// # let _q = Query::<E, ecat_orm::query::Unfiltered>::new()
+    /// #     .filter("id", ecat_orm::query::Op::Eq, 1)?;
+    /// // 有 filter 了 —— 这一句必须能编译
+    /// # Ok(()) }
+    /// ```
+    pub fn _guards() {}
+}
 ````
 
-**注意**：`compile_fail` 对**任何**编译错误都算通过 —— 包括拼错方法名这种无关错误。所以 doctest 里的代码要尽量贴近真实用法，否则它会「因为错误的原因通过」。写完后**手动验证一次**：临时把 `delete_where` 挪到 `impl<E, S>`（两个状态都能调），确认这个 doctest 变成失败。这一步不做，你无法知道它到底在测什么。
+**两条铁律**：
 
-`cargo test -p ecat-orm --doc` 才会跑 doctest（`--test` 不跑）。批次完成检查里要包含它。
+1. **必须配正向对照**。「裸的 `compile_fail`」对**任何**编译错误都算通过 —— 包括拼错方法名。成对出现（「无 filter 编译不过」+「有 filter 编译过」）才排得出「它失败是因为我们想拦的那件事」。
+2. **必须做双向探针**：临时把 `delete_where` 挪到 `impl<E, S>`（两个状态都能调），确认 `compile_fail` 那条**变失败**；再挪回去确认恢复。这一步不做，你无法知道它到底在测什么。
+
+**验证会跑**：`cargo test -p ecat-orm --doc` 应当报出这两个 doctest（1 passed + 1 passed，或含 ignored）。**若显示 `0 passed`，说明位置还是不对** —— 回去查上面那张表。
+
+`cargo test -p ecat-orm --doc` 才会跑 doctest（`--test` 不跑）。批次完成检查里必须包含它，且要**核对 doctest 的条数不是 0**。
 
 ---
 
