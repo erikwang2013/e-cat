@@ -4819,7 +4819,41 @@ git commit -m "feat(ecat-orm): SELECT/COUNT 生成（SQL 与参数同步产出�
 
 ---
 
-## Task 13: CRUD（`crud.rs`）
+### 实施记录（2026-10-06，`8a1a269` 订正 6 处）
+
+| # | 计划写法 | 实测 |
+|---|---|---|
+| 1 | `render_where<S>(... ph: &mut Placeholders ...)` | **编不过**：`S` 在参数表里零出现 → `E0207`（未约束类型参数）；`&mut Placeholders` 缺生命周期实参。实改为 `<'_>` 并去掉 `S`。**注意这条签名是我上一轮为修 R2 才写进计划的 —— 我在修一个「引用不存在的东西」时，写出了另一个不存在的东西。** |
+| 2 | 只说「结构体字面量要一起改」 | **实测不用改**：`from_meta` 的 `joins: Vec::new()` 靠类型推断、`push_filter` 的 `joins: self.joins` 同型，编译器把关，不会静默丢类型 |
+| 3 | 测试数写 18、正文列 20 | 实为 **29**（正文 20 + 两节必做的 7 + 定型断言/字节比对 2） |
+| 4 | 计划测试片段缺 import | `Op` / `Order` / `JoinType` / `OrmError` 靠 `super::*` 覆盖不到；`impl Entity for U` 漏 `set_relation`（与 Task 11 同一处） |
+| 5 | `pub struct Built` / `pub Placeholders` | 实为 `pub(crate)`：测试移到兄弟模块后够不着私有方法（`E0624`），且 `pub(crate) fn render_where` 签名里出现更私有的类型会触发 `private_interfaces` |
+| 6 | 未预期 dead_code | `build_select`/`render_where` 只被 `#[cfg(test)]` 用 → `--lib` 下报 unused，`clippy -D warnings` 判死。加了 `#[allow(dead_code)]`，**Task 13 必做之零要求删掉** |
+
+**测试拆文件**：29 条测试放 `query/sql_tests.rs`（437 行）而非 `sql.rs` 内 —— 合在一起是 644 行，
+超 500 行硬规则。测试名变成 `query::sql_tests::*`，计划里 `cargo test -p ecat-orm query::sql` 仍能全部选中。
+
+> **本任务最有价值的一条自证**：实施者把 **ORDER BY 提到 WHERE 之前**（一条真库会拒的 SQL），
+> 结果 **29 条测试里 28 条照绿** —— 只有那条定型断言（`full_sql_shape_is_pinned`）拦住了。
+> 这实测证明了「**只断言 `contains` 在 SQL 生成层是空验收**」：片段存在 ≠ 片段在正确的位置。
+> 后续凡涉及 SQL 生成的断言，**必须有一条钉住整体形状的**，不能只有零散的 `contains`。
+
+> ### ⚠️ 本任务必做之零：删掉 `sql.rs` 上那行 `#[allow(dead_code)]`
+>
+> Task 12 落地时，`build_select` / `render_where` 只被 `#[cfg(test)]` 使用 ——
+> 在 `--lib` 下报 `warning: function ... is never used`，`clippy -D warnings` 判死。
+> 实施者加了 `#[allow(dead_code)]` 并注明归属。
+>
+> **本任务正是它们的第一个生产消费者**（`find_by_id` / `find_all` 走 `query().fetch`，
+> 而 `fetch` 在 Task 15 —— 但本任务的 `find_by_id` 会先落 `render_where` 的调用路径；
+> 若本任务结束时 `build_select` 仍无生产调用者，**在 Task 15 落地时必须删**，
+> 计划里 Task 15 也写明了）。
+>
+> **验证**：删后 `cargo clippy -p ecat-orm --all-targets -- -D warnings` 仍须 rc=0。
+> **若又红，那是真发现**（有函数没被用上）—— 要么补使用要么删除，**不要加回 allow**。
+>
+> 这是本批**第三次**跨任务的临时 allow（前两次：`time.rs`、`attr.rs`）。
+> 处置标准一致：**临时桥必须在下一个消费者落地时拆掉。**
 
 > ### 本任务补一项：`find_all`（覆盖审计报回）
 >
@@ -5802,6 +5836,42 @@ git commit -m "feat(ecat-orm): 自动时间戳、软删除与乐观锁"
 ---
 
 ## Task 15: 批量分块与分页（`batch.rs` + `page.rs`）
+
+> ### ⚠️ 本任务必做之负一：`offset()` 不带 `limit()` 会生成**真库拒收**的 SQL
+>
+> Task 12 实施者实测报回：`User::query().offset(20).fetch(&db)` 在当前实现下产出
+>
+> | 方言 | 产出 | 问题 |
+> |---|---|---|
+> | PG / SQLite / MySQL | `... LIMIT 18446744073709551615 OFFSET 20` | 超出 BIGINT 上限 |
+> | MSSQL | `... OFFSET 20 ROWS FETCH NEXT 18446744073709551615 ROWS ONLY` | 同上 |
+>
+> 根因：`build_select` 用 `q.limit.unwrap_or(u64::MAX)` 填「未设置」。而计划那道
+> 「未设置就不生成分页片段」的闸**只覆盖了「limit 与 offset 都没设」**，漏了「**只设 offset**」。
+>
+> **为什么现在必须修**：`offset()` 是 Task 11 已交付的公开方法，`.offset(n).fetch()` 是
+> 完全合法的调用 —— 而它在四个方言上**都会失败**。
+>
+> **修法（不要用 `i64::MAX` 顶替）**：改 `DialectSpec::limit_clause` 的 `limit` 参数为 `Option<u64>`，
+> `None` 表示「不限制」：
+>
+> | 方言 | `Some(n)` + offset | **`None` + offset** |
+> |---|---|---|
+> | PG / SQLite / MySQL | `LIMIT n OFFSET m` | **`OFFSET m`**（**整个 LIMIT 子句省略**）|
+> | MSSQL | `OFFSET m ROWS FETCH NEXT n ROWS ONLY` | **`OFFSET m ROWS`**（**省略 FETCH**）|
+>
+> **为什么不用 `i64::MAX as u64` 那个一行改法**：它能跑，但会在**每一条** `.offset()` 查询的 SQL 里
+> 留下一个 9223372036854775807 —— 读日志的人会以为出了什么事。本项目一路的取舍是
+> 「让错的形态不可能出现」，不是「留下一个能跑但费解的形态」。
+>
+> **波及文件**：`dialect/{mod,standard,sqlite,postgres,mysql,mssql}.rs`（签名 + 五个实现 + 各自的
+> `limit_is_a_suffix` / `limit_without_offset_uses_top_prefix` 等测试）+ `query/sql.rs` 的调用点。
+>
+> **必须补的测试**（每方言至少一条）：`limit_clause(None, 20, has_order)` 的产出
+> **不含 `LIMIT`、不含 `FETCH`**（PG 得 `OFFSET 20`、MSSQL 得 `OFFSET 20 ROWS`），
+> 且**不含任何 18446744073709551615 或 9223372036854775807 这样的哨兵数字**。
+>
+> **空验收自证**：把 `None` 分支改回 `u64::MAX` 的行为，确认新测试 **FAILED**，再还原。
 
 > ### ⚠️ 本任务必做之零：补 `update_many`（第三处 spec 覆盖漏落）
 >
