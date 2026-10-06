@@ -7,6 +7,9 @@ use ecat_data::Dialect;
 
 use crate::entity::ColType;
 
+mod mssql;
+mod mysql;
+mod postgres;
 mod sqlite;
 mod standard;
 
@@ -73,15 +76,13 @@ pub trait DialectSpec: Send + Sync {
 
 /// 按方言取实现。**穷举匹配，不用 `_ =>` 兜底** —— 新增方言变体时
 /// 编译器会直接报错，而不是静默退回 Standard 生成错误 SQL。
-///
-/// ⚠️ 目前 Postgres / MySql / Mssql 三个分支**暂时**接到 `StandardSpec`
-/// （Task 10 换成真实现）。之所以仍然逐个列出而非合并成 `_ =>`：
-/// 合并后「新增方言」就会静默退回，而穷举写法在 Task 10 替换时逐个暴露。
 pub fn lookup(d: Dialect) -> &'static dyn DialectSpec {
     match d {
         Dialect::Standard => &standard::StandardSpec,
         Dialect::Sqlite => &sqlite::SqliteSpec,
-        Dialect::Postgres | Dialect::MySql | Dialect::Mssql => &standard::StandardSpec,
+        Dialect::Postgres => &postgres::PostgresSpec,
+        Dialect::MySql => &mysql::MySqlSpec,
+        Dialect::Mssql => &mssql::MssqlSpec,
     }
 }
 
@@ -108,14 +109,11 @@ mod tests {
     /// 最容易犯的错：忘了给某个方言接线，它静默退回 Standard，于是生成
     /// `"col"` 而方言要 `[col]`、`FALSE` 而方言要 `1` —— 语法错误或静默错值。
     ///
-    /// **本任务真接线的非 Standard 方言只有 Sqlite**（计划要求 Postgres / MySql /
-    /// Mssql 暂时接到 `StandardSpec`），所以把守点落在 Sqlite 上：它的取值必须与
-    /// Standard **不同**，否则就是退回。`quote` 两方言都是双引号，区分不了，
-    /// 因此取 `bool_literal` 与 `max_params_per_stmt` 两条真有差异的轴。
+    /// 本把守的取值必须与 Standard **不同**，否则就是退回。`quote` 两方言都是
+    /// 双引号，区分不了，因此取 `bool_literal` 与 `max_params_per_stmt` 两条真有差异的轴。
     ///
-    /// ⚠️ Task 10 接线 Postgres / MySql / Mssql 后，必须补回
-    /// `lookup(Dialect::Mssql).quote("id") == "[id]"` —— 本文件的
-    /// `lookup_covers_every_dialect_variant` 只查非空串，**拦不住退回**。
+    /// ⚠️ 本文件的 `lookup_covers_every_dialect_variant` 只查非空串，**拦不住退回** ——
+    /// 真正拦退回的是下面按方言逐条挑轴的测试。
     #[test]
     fn sqlite_is_looked_up_not_falling_back_to_standard() {
         assert_eq!(lookup(Dialect::Standard).bool_literal(false), "FALSE");
@@ -124,13 +122,33 @@ mod tests {
         assert_eq!(lookup(Dialect::Sqlite).max_params_per_stmt(), 999);
     }
 
-    /// SQL Server 的 2100 是最紧的，写错成 65535 会让批量插入在真库上炸 ——
-    /// 但 Mssql 在 Task 10 才接线，现在断言 2100 等于断言 Standard 自己（空验收）。
-    /// 故本任务只断言两个真值：Standard 65535、Sqlite 999。Task 10 补 2100。
+    /// `lookup` 的接线把守：Task 10 新接的三个方言必须真的被接上，
+    /// 而不是静默退回 `Standard`。
+    ///
+    /// 挑轴原则：**必须与 Standard 的取值不同**，否则退回也测不出来。
+    /// `quote` 在 Postgres 与 Standard 上都是双引号 —— 区分不了，故不用它。
+    ///
+    /// ⚠️ 这条把守**不可**用 `#[ignore]` 保留计划原文：本仓库零处 `#[ignore]`。
+    #[test]
+    fn non_standard_dialects_are_actually_wired_in_lookup() {
+        // Postgres：占位符是 $n，Standard 是 ?
+        assert_eq!(lookup(Dialect::Postgres).placeholder(1), "$1");
+        // MySQL：引号是反引号，Standard 是双引号
+        assert_eq!(lookup(Dialect::MySql).quote("id"), "`id`");
+        // MSSQL：引号是方括号 + 参数上限 2100（Standard 是双引号 + 65535）
+        assert_eq!(lookup(Dialect::Mssql).quote("id"), "[id]");
+        assert_eq!(lookup(Dialect::Mssql).max_params_per_stmt(), 2100);
+        // 反向对照：Standard 自己的值，证明上面几条不是恒真
+        assert_eq!(lookup(Dialect::Standard).quote("id"), "\"id\"");
+        assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
+    }
+
+    /// SQL Server 的 2100 是最紧的，写错成 65535 会让批量插入在真库上炸。
     #[test]
     fn max_params_reflects_the_tightest_backend() {
         assert_eq!(lookup(Dialect::Sqlite).max_params_per_stmt(), 999);
         assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
+        assert_eq!(lookup(Dialect::Mssql).max_params_per_stmt(), 2100);
     }
 
     #[test]
