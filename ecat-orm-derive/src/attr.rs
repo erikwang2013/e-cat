@@ -23,12 +23,7 @@ pub struct FieldAttrs {
     pub relation: Option<Relation>,
 }
 
-/// 关联字段（Task 8 使用）。
-///
-/// 三个字段在 Task 7 里只被解析、不被读取 —— 本任务遇到关联字段是直接报错，
-/// 不消费它们。没有这个 `allow`，`-D warnings` 会因为「parse 了却没人用」
-/// 把闸门判红。
-#[allow(dead_code)]
+/// 关联字段。
 pub struct Relation {
     pub kind: RelationKind,
     /// 目标实体类型，如 `Post`。生成代码里会写成 `Post::TABLE`，
@@ -172,8 +167,7 @@ pub fn to_snake_case(s: &str) -> String {
 }
 
 /// 字段名 → PascalCase（`posts` → `Posts`，`user_profile` → `UserProfile`）。
-/// 供 Task 8 生成 `XxxRelation` 的变体名。
-#[allow(dead_code)] // Task 8 才调用；本任务只有 `to_snake_case` 在用。
+/// 用于生成 `XxxRelation` 的变体名。
 pub fn to_pascal_case(s: &str) -> String {
     s.split('_')
         .filter(|p| !p.is_empty())

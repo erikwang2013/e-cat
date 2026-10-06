@@ -129,6 +129,16 @@ pub trait Entity: Sized + Send + Sync {
 
     /// 主键值。
     fn pk_value(&self) -> serde_json::Value;
+
+    /// 关联预加载的写回口。由派生宏按关联名分派到具体字段 ——
+    /// `Entity` 泛型地访问不到 `posts` 字段，只有宏知道每个关联对应哪个字段、
+    /// 目标类型是什么。
+    ///
+    /// **即使 `rows` 为空也必须被调用**（`set_relation(name, vec![])`）——
+    /// 否则前一次加载残留在字段里的旧数据不会被清掉（静默给过时数据）。
+    ///
+    /// 单值关联（HasOne / BelongsTo）只取第一行，其余忽略。
+    fn set_relation(&mut self, name: &str, rows: Vec<Row>) -> Result<(), OrmError>;
 }
 
 #[cfg(test)]
