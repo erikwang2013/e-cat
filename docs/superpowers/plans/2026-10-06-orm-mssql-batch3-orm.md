@@ -3571,6 +3571,44 @@ pub fn lookup(d: Dialect) -> &'static dyn DialectSpec {
 }
 ```
 
+- [ ] **Step 4b: 补 `lookup` 层的把守断言（**必做** —— Task 9 实施者报回的真缺口）**
+
+> **为什么必需**：本任务前面那些测试全部经 `fn s() -> MssqlSpec { MssqlSpec }` **直接打在具体
+> Spec 结构体上**，**没有一条经过 `lookup()`**。所以「本任务改了实现但忘了改 `lookup` 接线」
+> 这个 bug，**本任务自己的测试一条都抓不到** —— 它会一路静默到真库。
+>
+> Task 9 已经在 `dialect/mod.rs` 留了 `sqlite_is_looked_up_not_falling_back_to_standard`
+> 把守 SQLite。本任务必须把 **Postgres / MySQL / MSSQL** 三条也补上。
+
+断言要挑**与 `Standard` 取值不同**的轴（否则「退回 Standard」照样绿）：
+
+```rust
+/// `lookup` 的接线把守：本任务新接的三个方言必须真的被接上，
+/// 而不是静默退回 `Standard`。
+///
+/// 挑轴原则：**必须与 Standard 的取值不同**，否则退回也测不出来。
+/// `quote` 在 Postgres 与 Standard 上都是双引号 —— 区分不了，故不用它。
+#[test]
+fn non_standard_dialects_are_actually_wired_in_lookup() {
+    // Postgres：占位符是 $n，Standard 是 ?
+    assert_eq!(lookup(Dialect::Postgres).placeholder(1), "$1");
+    // MySQL：引号是反引号，Standard 是双引号
+    assert_eq!(lookup(Dialect::MySql).quote("id"), "`id`");
+    // MSSQL：引号是方括号 + 参数上限 2100（Standard 是双引号 + 65535）
+    assert_eq!(lookup(Dialect::Mssql).quote("id"), "[id]");
+    assert_eq!(lookup(Dialect::Mssql).max_params_per_stmt(), 2100);
+    // 反向对照：Standard 自己的值，证明上面几条不是恒真
+    assert_eq!(lookup(Dialect::Standard).quote("id"), "\"id\"");
+    assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
+}
+```
+
+**这条必须做空验收自证**：临时把 `lookup` 里 `Dialect::Mssql` 改回 `&standard::StandardSpec`，
+确认**恰好这条测试 FAILED**，再还原。（Task 9 做过同款探针，它证明「漏接线的 bug 若无此把守，
+现有测试零报警」。）
+
+**不要**用 `#[ignore]` 保留计划原文 —— 本仓库目前零处 `#[ignore]`，不要引入这个新惯例。
+
 - [ ] **Step 5: 跑测试确认通过**
 
 ```bash
