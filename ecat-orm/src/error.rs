@@ -28,6 +28,16 @@ pub enum OrmError {
     #[error("migration is not reversible: {0}")]
     MigrationIrreversible(String),
 
+    /// 迁移名解析不出数字版本前缀（形如 `"001_users"`）。
+    ///
+    /// **不静默用 0**：版本号是迁移顺序的唯一依据，猜错会让迁移乱序执行。
+    #[error("invalid migration name `{0}`: expected a numeric version prefix like `001_users`")]
+    InvalidMigrationName(String),
+
+    /// `down` 的版本既不在版本表里（没应用过），也不在本次迁移列表里（没注册）。
+    #[error("migration version {0} is not applied or not declared")]
+    MigrationNotApplied(i64),
+
     /// 元数据与数据不匹配（如 `from_row` 拿到 NULL 但字段非 `Option`）。
     #[error("column `{column}` is NULL but the field is not optional")]
     UnexpectedNull { column: &'static str },
@@ -64,6 +74,18 @@ mod tests {
         let e: OrmError = ecat_data::RdbmsError::Database("boom".into()).into();
         assert!(matches!(e, OrmError::Rdbms(_)));
         assert!(e.to_string().contains("boom"), "got: {e}");
+    }
+
+    /// 迁移名解析失败与「回滚一个没应用的版本」必须是**可分辨**的错误：
+    /// 前者是写错了迁移名（改代码），后者是数据库状态与代码不一致
+    /// （查版本表），混成一个错误就分不清该动哪边。
+    #[test]
+    fn migration_errors_carry_the_offending_identity() {
+        let e = OrmError::InvalidMigrationName("users".into());
+        assert!(e.to_string().contains("users"), "got: {e}");
+        let e = OrmError::MigrationNotApplied(7);
+        assert!(e.to_string().contains('7'), "got: {e}");
+        assert!(matches!(e, OrmError::MigrationNotApplied(7)));
     }
 
     #[test]

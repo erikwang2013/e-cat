@@ -33,6 +33,7 @@ mod crud;
 pub mod dialect;
 mod entity;
 mod error;
+pub mod migrate;
 pub mod page;
 pub mod query;
 pub mod relation;
@@ -43,6 +44,7 @@ pub use ecat_data::{Row, SqlExecutor};
 pub use ecat_orm_derive::Entity;
 pub use entity::{ColType, ColumnMeta, EntityFlags, EntityMeta, RelationKind, RelationMeta};
 pub use error::OrmError;
+pub use migrate::{Migrator, create_table, drop_table};
 pub use page::Page;
 
 /// 重导出 `serde_json`：派生宏生成的代码要写 `::ecat_orm::serde_json::Value`。

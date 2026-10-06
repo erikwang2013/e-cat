@@ -165,7 +165,7 @@ impl DialectSpec for MySqlSpec {
         }
     }
 
-    fn table_exists_sql(&self, table: &str) -> String {
+    fn create_table_prefix(&self, table: &str) -> String {
         format!("CREATE TABLE IF NOT EXISTS {}", self.quote(table))
     }
 
@@ -313,9 +313,9 @@ mod tests {
     }
 
     #[test]
-    fn table_exists_uses_if_not_exists() {
+    fn create_table_prefix_uses_if_not_exists() {
         assert_eq!(
-            s().table_exists_sql("users"),
+            s().create_table_prefix("users"),
             "CREATE TABLE IF NOT EXISTS `users`"
         );
     }

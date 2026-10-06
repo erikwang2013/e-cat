@@ -144,10 +144,19 @@ impl DialectSpec for MssqlSpec {
         }
     }
 
-    /// SQL Server **没有** `CREATE TABLE IF NOT EXISTS` —— 返回空串，
-    /// 由 `migrate::ddl` 改为先查 `INFORMATION_SCHEMA.TABLES`。
-    fn table_exists_sql(&self, _table: &str) -> String {
-        String::new()
+    /// SQL Server **没有** `CREATE TABLE IF NOT EXISTS` —— 但前缀仍是完整的
+    /// `CREATE TABLE [x]`，只是调用方得先自查存在性
+    /// （见 [`DialectSpec::needs_exists_check_before_create`]）。
+    ///
+    /// **早期实现这里返回空串**，调用方 `format!("{} ({cols})", …)` 拼出来的
+    /// SQL 没有 `CREATE TABLE` 关键字、是真库拒收的非法语句 —— 而「不含
+    /// `IF NOT EXISTS`」断言对空串恒真，抓不到（Task 17 必做之一）。
+    fn create_table_prefix(&self, table: &str) -> String {
+        format!("CREATE TABLE {}", self.quote(table))
+    }
+
+    fn needs_exists_check_before_create(&self) -> bool {
+        true
     }
 
     fn autoincrement_ddl(&self, ty: ColType) -> String {
@@ -303,15 +312,21 @@ mod tests {
         assert_eq!(s().col_type(ColType::Bytes), "VARBINARY(MAX)");
     }
 
-    /// SQL Server 没有 CREATE TABLE IF NOT EXISTS —— 返回空串，
-    /// 由 migrate::ddl 改为先查 INFORMATION_SCHEMA.TABLES。
+    /// SQL Server 没有 `CREATE TABLE IF NOT EXISTS` —— 但前缀必须是**完整语句
+    /// 的开头**，不能是空串（旧实现返回空串，拼出来的 SQL 没有 CREATE TABLE
+    /// 关键字；而「不含 IF NOT EXISTS」对空串恒真、拦不住）。
     ///
-    /// 断言精确到空串而非仅「不含 IF NOT EXISTS」：后者对空串是**恒真**的，
+    /// 断言精确到整串而非仅「不含 IF NOT EXISTS」：后者对空串是**恒真**的，
     /// 任何返回「没有 IF NOT EXISTS 的任意串」的实现都能骗过它。
     #[test]
-    fn create_table_has_no_if_not_exists() {
-        assert_eq!(s().table_exists_sql("users"), "");
-        assert!(!s().table_exists_sql("users").contains("IF NOT EXISTS"));
+    fn create_table_prefix_is_complete_without_if_not_exists() {
+        let prefix = s().create_table_prefix("users");
+        assert_eq!(prefix, "CREATE TABLE [users]", "MSSQL 也必须给出完整前缀");
+        assert!(!prefix.contains("IF NOT EXISTS"), "got: {prefix}");
+        assert!(
+            s().needs_exists_check_before_create(),
+            "MSSQL 必须自查存在性"
+        );
     }
 
     #[test]

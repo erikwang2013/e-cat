@@ -114,7 +114,7 @@ impl DialectSpec for PostgresSpec {
         }
     }
 
-    fn table_exists_sql(&self, table: &str) -> String {
+    fn create_table_prefix(&self, table: &str) -> String {
         format!("CREATE TABLE IF NOT EXISTS {}", self.quote(table))
     }
 

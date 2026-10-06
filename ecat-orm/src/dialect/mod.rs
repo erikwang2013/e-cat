@@ -150,10 +150,20 @@ pub trait DialectSpec: Send + Sync {
 
     fn col_type(&self, ty: ColType) -> String;
 
-    /// 建表语句的**开头部分**。SQLite/PG/MySQL 带 `IF NOT EXISTS`；
-    /// SQL Server 没有该语法，改为返回空串并让调用方先查
-    /// `INFORMATION_SCHEMA.TABLES`（见 `migrate::ddl`）。
-    fn table_exists_sql(&self, table: &str) -> String;
+    /// 建表的**完整前缀**，始终是一条可用语句的开头：
+    /// - Standard / SQLite / PG / MySQL：`CREATE TABLE IF NOT EXISTS "x"`
+    /// - MSSQL：`CREATE TABLE [x]`（无 `IF NOT EXISTS`，但**仍是完整前缀**）
+    ///
+    /// **不得返回空串**。旧名 `table_exists_sql` 在 MSSQL 上返回空串，调用方
+    /// `format!("{} ({cols})", …)` 会拼出没有 `CREATE TABLE` 关键字的非法 SQL，
+    /// 而「不含 `IF NOT EXISTS`」这类断言对空串**恒真**、抓不到（Task 17）。
+    fn create_table_prefix(&self, table: &str) -> String;
+
+    /// 建表前是否必须自行检查存在性（只有 MSSQL 为 `true`）。
+    /// 调用方据此决定要不要先查 `INFORMATION_SCHEMA.TABLES`。
+    fn needs_exists_check_before_create(&self) -> bool {
+        false
+    }
 
     /// 自增主键列的完整 DDL 片段（含类型）。
     fn autoincrement_ddl(&self, ty: ColType) -> String;
@@ -230,6 +240,36 @@ mod tests {
         // 反向对照：Standard 自己的值，证明上面几条不是恒真
         assert_eq!(lookup(Dialect::Standard).quote("id"), "\"id\"");
         assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
+    }
+
+    /// 建表前缀的能力查询必须按方言接线：**只有 MSSQL** 需要调用方先查
+    /// `INFORMATION_SCHEMA.TABLES`。接错边的后果是重复建表报错（真需要检查
+    /// 却拿到 `false`），或白白多发一次查询（不需要却拿到 `true`）。
+    #[test]
+    fn only_mssql_needs_an_exists_check_before_create() {
+        assert!(lookup(Dialect::Mssql).needs_exists_check_before_create());
+        assert!(!lookup(Dialect::Postgres).needs_exists_check_before_create());
+        // 反向对照：这条把守不能是「恒 true」
+        assert!(!lookup(Dialect::Sqlite).needs_exists_check_before_create());
+    }
+
+    /// 每个方言的建表前缀都必须是**完整语句的开头**（`CREATE TABLE` 起头）。
+    /// 旧 API 在 MSSQL 上返回空串，调用方拼出来的 SQL 直接是非法语句。
+    #[test]
+    fn every_dialect_has_a_complete_create_table_prefix() {
+        for d in [
+            Dialect::Standard,
+            Dialect::Sqlite,
+            Dialect::Postgres,
+            Dialect::MySql,
+            Dialect::Mssql,
+        ] {
+            let prefix = lookup(d).create_table_prefix("users");
+            assert!(
+                prefix.starts_with("CREATE TABLE "),
+                "{d:?} 的前缀不是完整语句: {prefix}"
+            );
+        }
     }
 
     /// SQL Server 的 2100 是最紧的，写错成 65535 会让批量插入在真库上炸。
