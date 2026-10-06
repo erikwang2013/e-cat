@@ -250,6 +250,21 @@ mod tests {
         );
     }
 
+    /// 回归：SQLite 只有 i64（PG `integer` 也上行到 i64），越界不能截断 ——
+    /// `2_147_483_648 as i32` 是 `-2147483648`，静默错值。
+    #[test]
+    fn i32_overflow_errors_instead_of_truncating() {
+        let r = row(vec![("n", json!(2_147_483_648_i64))]);
+        let e = from_row_col::<i32>(&r, "n").unwrap_err();
+        assert!(
+            matches!(e, OrmError::TypeMismatch { column: "n", .. }),
+            "got: {e:?}"
+        );
+
+        let ok = row(vec![("n", json!(42))]);
+        assert_eq!(from_row_col::<i32>(&ok, "n").unwrap(), 42);
+    }
+
     #[test]
     fn null_into_optional_is_none() {
         let r = row(vec![("n", json!(null))]);
