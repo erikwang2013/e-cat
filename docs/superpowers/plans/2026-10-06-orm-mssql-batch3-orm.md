@@ -7274,6 +7274,57 @@ git commit -m "test(ecat-orm): SQLite 全链路集成测试；docs: ORM API 与 
 
 ---
 
+## 批次 3 收官记录：实施中发现的问题（按类别）
+
+**18 个任务，18 组发现，没有一组是计划作者预见到的。** 按「有多难发现」排序：
+
+### 一、验证设计不周（最危险 —— 它给出的是**绿的**信号）
+
+| 形态 | 实例 |
+|---|---|
+| **假绿灯** | 新建 `.rs` 未加 `mod` 声明 → `cargo test` 报 `ok. 0 passed; 0 failed`、退出码 0。**TDD 两端同时被污染** |
+| **空验收** | 验收步骤察觉不到被验物不存在。六种变体：无测试覆盖（Task 3 的 `insertable_columns`）、无调用点（Task 6 的 `extern crate self`）、**注册表 fallback**（Task 9 的 `lookup` 把未实现方言接到 `Standard`，断言它们的「真值」= 断言 Standard 自己）、**被引用但不存在**（Task 11 的 `compile_fail` 引用了零定义的 `delete_where`）、**测试文件里 doctest 不执行**（Task 8/11）、**只断言 `contains`**（Task 12 实测：把 ORDER BY 提到 WHERE 之前，29 条里 28 条照绿） |
+| **契约层空验收** | API 的**名字**与返回值语义不符 → 调用方与测试**被一致地误导**。Task 17 的 `table_exists_sql` 承诺「一条语句」、MSSQL 返回空串 |
+
+### 二、覆盖漏落（spec 要求，计划从未派给任何任务）
+
+`delete_where` · `update_many` · `join`/`JoinType` · `create_table::<E>()` · `Migrator::down()` · `find_all`
+
+**它们藏住的方式**：在计划里**处处被引用**（约束段落、`compile_fail` 正文、文件结构注释），所以 grep 会命中。**被引用 ≠ 被实现。** 其中 `update_many` 与 `delete_where` 出自 spec **同一行** —— 我的补丁把那一行整行抄进理由表，却只补了一半。
+
+### 三、测试抓到的真 bug（不是文档问题）
+
+| 位置 | bug |
+|---|---|
+| Task 16 | `buckets.remove(&key)` —— 主体键重复时**只有第一个主体拿得到行**，其余静默变空。讽刺：`distinct_keys` 存在的理由**恰恰是键会重复** |
+| Task 16 | `if keys.is_empty() { return Ok(()) }` —— **整段跳过写回**，全是 NULL 键的主体**留着上次加载的旧数据**。与计划**同一节的下一步**「即使没有关联行也必须调用 `set_relation`」**自相矛盾** |
+| Task 17 | 「主键列附 `PRIMARY KEY`」+「自增主键用 `autoincrement_ddl`」→ **SQLite 产出两个主键**，真库拒收（`autoincrement_ddl` 已含 `PRIMARY KEY`） |
+| Task 13 | `save` 返回 `i64` → 字符串主键实体在 **UPDATE 成功之后**才报「主键不是整数」（**数据写进去了、调用方拿到错误**） |
+| Task 12 | `offset()` 不带 `limit()` → PG `LIMIT 18446744073709551615 OFFSET 20`、MSSQL 同款，**都超 BIGINT**。计划那道闸只覆盖「都没设」，漏了「只设 offset」 |
+
+### 四、与自己的计划自相矛盾（我写的时候没读全）
+
+- Task 9：Step 1 的断言取 Mssql 真值，Step 3 却令 Mssql 暂时接 `StandardSpec` —— **照抄必然红**
+- Task 11：§5.4 的 `filter()` 示例不可失败，§5.5(a) 却要求它返回 `UnknownColumn`
+- Task 16：见上「`keys.is_empty()` 提前返回」
+- Task 6：验收步骤无法证明它要验证的那一行（`extern crate self`）
+
+### 五、真实环境限制（只有真库/真工具能发现）
+
+| 限制 | 实测证据 |
+|---|---|
+| SQLite 不支持 `UPDATE … FROM (VALUES …) AS v(cols)` | sqlite3 3.46.1：`near "(": syntax error` → 改用位置列名 `columnN` |
+| `COUNT(*)` 不能按列名取 | PG 把列名小写化、MSSQL 聚合列**无名字** → 用 `AS "ecat_count"` 别名 |
+| `sqlite::memory:` 不支持多连接事务场景 | 池只有一条被事务占住的连接，第二条语句被**本仓自己的 30s 超时**掐掉；`?mode=memory&cache=shared` 同样失败。改用临时文件 —— 顺带**真的验到了跨连接隔离性**（未提交的行从另一条连接读到 0） |
+| 时间列读回路断言是空的 | SQLite 读路径会**重新格式化偏移量文本**，所以「写入归一化」只能靠**绑定参数**断言 |
+| `join` 的列清单不带表前缀 | 同名列 → `ambiguous column name` |
+
+### 六、规则满足（闸门抓不到的）
+
+**Task 13 的 `crud/tests.rs` 534 行**，违反「每个源文件 < 500 行」—— `fmt`/`clippy`/`test` 三条闸门**全绿**。行数复核必须单独做。
+
+---
+
 ## 批次完成判据（spec §12 逐条对照）
 
 | # | 判据 | 验证方式 |
