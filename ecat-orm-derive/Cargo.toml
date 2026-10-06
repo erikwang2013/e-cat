@@ -1,0 +1,18 @@
+[package]
+name = "ecat-orm-derive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Derive macros for ecat-orm (#[derive(Entity)])"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }

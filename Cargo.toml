@@ -54,6 +54,8 @@ members = [
     "ecat-data-s3",
     "ecat-tls",
     "ecat-scheduler",
+    "ecat-orm",
+    "ecat-orm-derive",
     "examples/helloworld",
     "examples/databases",
     "examples/middleware",
@@ -121,3 +123,11 @@ ecat-circuit-breaker = { version = "4.0.0", path = "ecat-circuit-breaker" }
 ecat-registry-consul = { version = "4.0.0", path = "ecat-registry-consul" }
 ecat-config-remote = { version = "4.0.0", path = "ecat-config-remote" }
 ecat-data-redis = { version = "4.0.0", path = "ecat-data-redis" }
+# ecat-orm 走 workspace 引用：ecat-data-sqlx 只供它的 dev-dependencies 用。
+ecat-data = { version = "4.0.0", path = "ecat-data" }
+ecat-data-sqlx = { version = "4.0.0", path = "ecat-data-sqlx" }
+ecat-orm = { version = "4.0.0", path = "ecat-orm" }
+ecat-orm-derive = { version = "4.0.0", path = "ecat-orm-derive" }
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

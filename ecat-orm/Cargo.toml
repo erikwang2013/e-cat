@@ -1,0 +1,21 @@
+[package]
+name = "ecat-orm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ORM for e-cat: entity derive, query builder, migrations"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ecat-data = { workspace = true }
+ecat-orm-derive = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+ecat-data-sqlx = { workspace = true }

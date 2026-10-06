@@ -1831,6 +1831,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-orm"
+version = "4.0.0"
+dependencies = [
+ "ecat-data",
+ "ecat-data-sqlx",
+ "ecat-orm-derive",
+ "serde_json",
+ "thiserror 2.0.19",
+ "time",
+ "tokio",
+]
+
+[[package]]
+name = "ecat-orm-derive"
+version = "4.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "ecat-protos"
 version = "4.0.0"
 dependencies = [
