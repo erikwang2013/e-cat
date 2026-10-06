@@ -208,6 +208,23 @@ test result: ok. 0 passed; 0 failed; 0 ignored; ... finished in 0.00s
 
 ---
 
+## ⚠️ 全局硬规则之二：计划里的代码片段**不保证**过 rustfmt
+
+本仓库**没有 `rustfmt.toml`**，用 rustfmt 默认值。两条默认值已经连续绊倒两个任务：
+
+| 默认值 | 含义 | 已踩 |
+|---|---|---|
+| `struct_lit_width = 18` | 结构体字面量超过 18 字符就拆行 | Task 3（`ColumnMeta { name: "id", ... }`） |
+| `fn_call_width = 60` | 函数实参总宽超 60 就拆链 | Task 4（`d.format(DATE_FMT).expect("...")`） |
+
+**所以：计划里给的代码块是「逻辑上正确」的，不一定是「格式化后」的。**
+实施者往仓库里落代码后 **必须跑一次 `cargo fmt -p ecat-orm`**，
+`fmt --check` 红了就按 rustfmt 的建议改，**不要**为了跟计划逐字一致而保留不合规的写法。
+
+这条不是「计划错了」，是计划与 rustfmt 的职责边界：计划管语义，rustfmt 管排版。
+
+---
+
 ## 批次完成检查（每个任务提交前跑，最后的全量检查单列在文末）
 
 ```bash
@@ -918,6 +935,28 @@ git commit -m "feat(ecat-orm): 时间双向转换（时间戳归一化 UTC，纯
 - Create: `ecat-orm/src/value.rs`
 - Modify: `ecat-orm/src/lib.rs`
 - Modify: `ecat-orm/Cargo.toml`（加 `base64 = "0.22"`）
+- **Modify: `ecat-orm/src/time.rs`（删掉 `#![allow(dead_code)]`）** ← 见下方必做项
+
+> ### ⚠️ 本任务必做：删掉 `time.rs` 的 `#![allow(dead_code)]`
+>
+> Task 4 落地时，`time.rs` 的 4 个 `pub fn` 在本 crate 内**没有任何调用点**
+> （它是私有模块 `mod time;`，且 Task 6 的 lib.rs 不 re-export 它）——
+> `clippy -D warnings` 因此报 5 个 `dead_code`，闸门 rc=101。
+> Task 4 实施者加了一行带注释的 `#![allow(dead_code)]` 作为**单任务缝隙的临时桥**。
+>
+> **本任务正是那个消费者** —— `value.rs` 的 `impl ColumnValue for OffsetDateTime`
+> 与 `for time::Date` 会把 `to_rfc3339_utc` / `from_rfc3339` / `to_date_string` /
+> `from_date_string` 四个全部用上（见本任务的 `use` 行）。
+>
+> **所以：本任务落地后必须删掉那行 allow。** 留着它会在 `time.rs` 里
+> **静默掩盖将来的死代码** —— 一个本该报出来的「这函数没人用了」会变成沉默。
+>
+> 验证：删掉后 `cargo clippy -p ecat-orm --all-targets -- -D warnings` 仍必须是 rc=0。
+> 若那时它又红了，说明有 helper 没被 `value.rs` 用上 —— **那是真发现**，
+> 要么补上使用、要么删掉那个 helper，**不要**把 allow 加回去。
+>
+> `time.rs` 的测试模块用到了全部四个（`from_rfc3339` / `to_date_string` 等），
+> 但 `#[cfg(test)]` 里的使用**不算**生产代码的使用 —— 这是它当初报 dead_code 的原因。
 
 **为什么要有这一层**：派生宏要为每个字段生成「转成 `serde_json::Value`」和「从 `Value` 转回」两段代码。**不能**用 `serde_json::to_value(&self.field)` 一把梭 —— `OffsetDateTime` 与 `Date` 在 `time` 的 serde 实现下会序列化成 **`[year, ordinal, hour, ...]` 数组**，不是我们要的 RFC3339/`YYYY-MM-DD` 字符串。`Vec<u8>` 也会变成数字数组。所以必须逐类型显式转换。
 
