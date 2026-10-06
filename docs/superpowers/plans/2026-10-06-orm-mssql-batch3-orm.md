@@ -241,9 +241,17 @@ time = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+# `macros` 提供 #[tokio::test]，`rt` 提供运行时。workspace 的 tokio 是裸
+# `tokio = "1"`，不带 feature —— 缺这两项时测试里的 #[tokio::test] 直接编不过。
+# 兄弟 crate（ecat-data-sqlx / ecat-data-mssql）的 dev-dependencies 同款写法。
+tokio = { workspace = true, features = ["macros", "rt"] }
 ecat-data-sqlx = { workspace = true }
 ```
+
+> **实施记录（2026-10-06，Task 1 实测订正）**：本步原文写的是不带 feature 的
+> `tokio = { workspace = true }`。它在本任务里编得过（此时还没有测试），
+> 但会在 **Task 13**（`crud.rs` 首个 `#[tokio::test]`）直接编译失败。
+> 已在 Task 1 收尾时修正。
 
 - [ ] **Step 4: 在根 `Cargo.toml` 补 members 与 workspace.dependencies**
 
@@ -254,9 +262,11 @@ members 补两项（按现有格式，注意逗号与缩进）：
     "ecat-orm-derive",
 ```
 
-`[workspace.dependencies]` 补四项（`ecat-data` / `ecat-orm-derive` 照该表里其它 `ecat-*` 的写法，即 `{ version = "4.0.0", path = "..." }`）：
+`[workspace.dependencies]` 补**七项**：
 
 ```toml
+ecat-data = { version = "4.0.0", path = "ecat-data" }
+ecat-data-sqlx = { version = "4.0.0", path = "ecat-data-sqlx" }
 ecat-orm = { version = "4.0.0", path = "ecat-orm" }
 ecat-orm-derive = { version = "4.0.0", path = "ecat-orm-derive" }
 syn = { version = "2", features = ["full"] }
@@ -264,11 +274,17 @@ quote = "1"
 proc-macro2 = "1"
 ```
 
-⚠️ `ecat-data` 在表里应已存在（批次 1 加的）。**先 grep 确认再动**，不要重复插入：
+> **实施记录（2026-10-06，Task 1 实测订正）**：本步原文写「`ecat-data` 在表里应已存在（批次 1 加的）」——**错的，实测不存在**。
+> 本仓所有 `ecat-data-*` 后端都**直接写 path 依赖**（如 `ecat-data-mssql/Cargo.toml:11`），
+> 从没有人需要 `[workspace.dependencies]` 里的 `ecat-data`，所以批次 1 没加过它。
+> 同时原文「补四项」与自己列的五项对不上，且**漏了 `ecat-data-sqlx`**（`ecat-orm/Cargo.toml` 的
+> `[dev-dependencies]` 要用它）。
+>
+> 教训：`[workspace.dependencies]` 与 `[workspace] members` 是**两个不同的表**，
+> 「grep 到 `"ecat-data",`」命中的是 members —— 我用错了判据。
 
-```bash
-grep -n '^ecat-data\s*=\|^ecat-data-sqlx' Cargo.toml
-```
+⚠️ **后续任务注意**：上面这七个键**现在都已在表里**。若哪个任务的 snippet 又往
+`[workspace.dependencies]` 加同名键（尤其 `ecat-data` / `ecat-data-sqlx`），会撞 TOML 重复键。
 
 - [ ] **Step 5: 建两个 `lib.rs` 占位**
 

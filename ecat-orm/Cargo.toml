@@ -17,5 +17,7 @@ time = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+# `macros` 提供 #[tokio::test]，`rt` 提供运行时 —— 兄弟 crate 同款写法。
+# 不带这两项时，测试里的 #[tokio::test] 会直接编译失败。
+tokio = { workspace = true, features = ["macros", "rt"] }
 ecat-data-sqlx = { workspace = true }
