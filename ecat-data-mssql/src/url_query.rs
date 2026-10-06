@@ -51,8 +51,21 @@ pub(crate) fn parse_query(q: &str, url: &str) -> Result<UrlQuery, RdbmsError> {
 
 /// ADO 的 `encrypt` 取值 → tiberius 的 [`EncryptionLevel`]。
 ///
-/// 取值表跟 ADO.NET（`SqlClient`）的 `Encrypt` 字面量对齐：`true`/`yes`/`mandatory`
-/// 是 `Required`（要求加密），`false`/`no`/`optional` 是 `On`（服务端支持就加密）。
+/// `true` / `yes` / `false` / `no` 的映射**与 tiberius 自己的 ADO 解析器
+/// （`Config::from_ado_string`）逐一对齐** —— 这是本表唯一的硬约束：同一条连接串
+/// 走 URL 形态与 ADO 形态必须建出同一种连接，否则**用户从配置里看不出自己走的是
+/// 哪条路径**（`mssql://` 与 `Server=...` 都是本项目统一的配置形态）。对齐的是
+/// ADO.NET（`SqlClient`）的 `Encrypt` 语义：
+///
+/// - `true`/`yes`/`mandatory`/`required` → `Required`（要求全连接加密）
+/// - `false`/`no`/`optional` → `Off`（**只加密登录包**，其后明文；tiberius 的
+///   `Off` 正是这个意思 —— 登录后它把传输降级回裸 TCP）
+/// - `off`/`disable`/`notsupported` → `NotSupported`（全程不加密）
+///
+/// `false` 是这张表里最容易写错的一格：写 `Encrypt=false` 的用户要的是「不用全连接
+/// 加密（那套证书麻烦）」，而不是「什么都别加密」，也不是「照旧全加密」。映射成
+/// `On`（全加密、证书照验）会让 `false` 与 `true` 在用户看来几乎没区别 ——
+/// 自签证书照样连不上，而用户认为自己已经关掉了那套校验。
 ///
 /// `strict`（TDS 8.0 严格模式）按 `Required` 处理：tiberius 的严格模式要它自己的
 /// `tds80` feature（本 crate 没开，未开时它连 `Encrypt=strict` 的 ADO 串都会拒绝），
@@ -62,7 +75,7 @@ pub(crate) fn parse_query(q: &str, url: &str) -> Result<UrlQuery, RdbmsError> {
 fn parse_encrypt(v: &str) -> Result<EncryptionLevel, RdbmsError> {
     Ok(match v.to_ascii_lowercase().as_str() {
         "true" | "yes" | "mandatory" | "required" => EncryptionLevel::Required,
-        "false" | "no" | "optional" => EncryptionLevel::On,
+        "false" | "no" | "optional" => EncryptionLevel::Off,
         "off" | "disable" | "notsupported" => EncryptionLevel::NotSupported,
         "strict" => EncryptionLevel::Required,
         other => {

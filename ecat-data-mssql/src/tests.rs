@@ -121,9 +121,11 @@ fn url_query_supports_encrypt_and_trust() {
         ("yes", "Required"),
         ("mandatory", "Required"),
         ("required", "Required"),
-        ("false", "On"),
-        ("no", "On"),
-        ("optional", "On"),
+        // `false` 是 `Off`（只加密登录包），与 tiberius 的 ADO 解析器一致 ——
+        // 见 `url_query::parse_encrypt` 的理由。
+        ("false", "Off"),
+        ("no", "Off"),
+        ("optional", "Off"),
         ("off", "NotSupported"),
         ("disable", "NotSupported"),
         ("notsupported", "NotSupported"),
@@ -151,7 +153,7 @@ fn url_query_supports_encrypt_and_trust() {
         .unwrap();
     let dbg = format!("{:?}", c.build_config().unwrap());
     assert!(
-        dbg.contains("encryption: On") && dbg.contains("trust: TrustAll"),
+        dbg.contains("encryption: Off") && dbg.contains("trust: TrustAll"),
         "got: {dbg}"
     );
 

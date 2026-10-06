@@ -128,9 +128,10 @@ impl MssqlConfig {
     ///
     /// URL 形态的查询串**只认两个键**（大小写不敏感，ADO 风格）：
     ///
-    /// - `encrypt`：`true`/`yes`/`mandatory`/`required` → 要求加密；
-    ///   `false`/`no`/`optional` → 能加密就加密；`off`/`disable`/`notsupported`
-    ///   → 明文；`strict` 按 `required` 处理（理由见 `url_query::parse_encrypt`）。
+    /// - `encrypt`：`true`/`yes`/`mandatory`/`required` → 要求全连接加密；
+    ///   `false`/`no`/`optional` → 只加密登录包（ADO 语义，与 tiberius 的 ADO
+    ///   解析器一致）；`off`/`disable`/`notsupported` → 明文；`strict` 按
+    ///   `required` 处理（取值表的理由见 `url_query::parse_encrypt`）。
     /// - `trustservercertificate`：`true`/`yes`/`1` → 跳过服务端证书校验
     ///   （自签证书的开发/测试库与内部 CA 场景），`false`/`no`/`0` → 不动。
     ///
