@@ -4,7 +4,7 @@
 
 **Goal:** 新增 `ecat-data-mssql` crate，用 `tiberius-ng` + `deadpool` 实现 `SqlExecutor`，让 e-cat 的数据后端从 15 个增至 **16 个**。
 
-**Architecture:** 驱动细节全部封装在本 crate 内（`tiberius_ng::Client` 不外泄）。`MssqlClient` 持一个 `deadpool` 池；`SqlExecutor` 的每个方法取池连接、按 `@P1..@Pn` 绑定参数、执行、把 `ColumnData` 映射成 `ecat_data::Row`。
+**Architecture:** 驱动细节全部封装在本 crate 内（`tiberius::Client` 不外泄）。`MssqlClient` 持一个 `deadpool` 池；`SqlExecutor` 的每个方法取池连接、按 `@P1..@Pn` 绑定参数、执行、把 `ColumnData` 映射成 `ecat_data::Row`。
 
 **Tech Stack:** Rust 2024 · `tiberius-ng` 0.13（`rustls` + `tds73` + `time`）· `deadpool` 0.13 · `tokio-util`（`compat`）· `time` · `async-trait`
 
@@ -17,6 +17,15 @@
 ## 已核实的 API 事实（**不要重新猜，直接用**）
 
 来源：`tiberius-ng-0.13.1` 源码（已解包核对）。
+
+> ### ⚠️ 第一条事实：crate 名是 **`tiberius`**，不是 `tiberius_ng`
+>
+> 包名与 lib 名不同：`Cargo.toml:15` 是 `name = "tiberius-ng"`（**依赖里写这个**），
+> 但 `Cargo.toml:98-100` 有 `[lib] name = "tiberius"` —— **代码里必须写
+> `use tiberius::{Config, AuthMethod};`**。
+>
+> 写 `tiberius_ng::Config` **直接编译不过**。本计划的初稿在 7 处写错了这个前缀
+> （已订正），Task 2 的实现者第一次就是这么挂的。**Task 3/4 的注意。**
 
 | 事实 | 出处 |
 |---|---|
@@ -236,9 +245,9 @@ pub struct MssqlConfig {
 
 `MssqlConfig` 需要：
 - `from_str(s) -> Result<Self, MssqlError>` —— 判定 URL vs ADO。**判定规则**：以
-  `mssql://` / `sqlserver://` 开头视作 URL，否则交给 `tiberius_ng::Config::from_ado_string`
-- `build_config() -> Result<tiberius_ng::Config, MssqlError>` —— 把字段落到
-  `tiberius_ng::Config`：`host` / `port` / `database` / `application_name("ecat")` /
+  `mssql://` / `sqlserver://` 开头视作 URL，否则交给 `tiberius::Config::from_ado_string`
+- `build_config() -> Result<tiberius::Config, MssqlError>` —— 把字段落到
+  `tiberius::Config`：`host` / `port` / `database` / `application_name("ecat")` /
   `encryption(...)`；TLS 映射见下；**`skip_verify` 与 `ca_cert` 同时存在则返回 `Err`**
 - `pool() -> MssqlParams`（与 `SqlxConfig::pool()` 同构，含 `min` 夹到 `max`）
 - `query_timeout() -> Option<Duration>`（三态，同 `SqlxConfig`）
@@ -282,7 +291,7 @@ git commit -m "feat(ecat-data-mssql): MssqlConfig（URL/ADO 解析 + TLS 映射 
 ```rust
 /// deadpool 的连接管理器。
 pub struct MssqlManager {
-    config: tiberius_ng::Config,
+    config: tiberius::Config,
     session_init: Vec<String>,
     /// 空闲多久之内跳过 `SELECT 1` 探活。每次归还都探活会多一个网络往返；
     /// 而 SQL Server 的往返不便宜。默认 5 秒。
@@ -291,7 +300,7 @@ pub struct MssqlManager {
 
 #[async_trait]
 impl deadpool::managed::Manager for MssqlManager {
-    type Type = tiberius_ng::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
+    type Type = tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
     type Error = RdbmsError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
@@ -455,7 +464,7 @@ enum Bind { I64(i64), F64(f64), Str(String), Bool(bool), Null }
 
 impl Bind {
     fn from_json(v: &serde_json::Value) -> Self { /* String/Number/Bool/Null → 对应变体 */ }
-    fn as_tosql(&self) -> &dyn tiberius_ng::ToSql {
+    fn as_tosql(&self) -> &dyn tiberius::ToSql {
         match self {
             Self::I64(n) => n,
             Self::F64(n) => n,

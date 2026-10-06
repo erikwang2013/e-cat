@@ -327,7 +327,7 @@ impl MssqlClient {
 }
 ```
 
-- **参数绑定**：`serde_json::Value` → `&dyn tiberius_ng::ToSql`，SQL 内占位符为
+- **参数绑定**：`serde_json::Value` → `&dyn tiberius::ToSql`，SQL 内占位符为
   `@P1..@Pn`。沿用现有契约（调用方写后端原生占位符，与 `SqlxClient` 一致）。
 - **参数生命周期**：tiberius 的 `query(sql, &[&dyn ToSql])` 需要借用，实现内先把
   `Value` 物化成 `enum Bind { I64(i64), F64(f64), Str(String), Bool(bool), Null }`
