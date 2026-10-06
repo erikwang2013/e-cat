@@ -140,6 +140,7 @@ API-first подход к разработке, плагинная архите�
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Реализовано |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Реализовано |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Реализовано |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Кэш | Redis | `ecat-data-redis` | ✅ Реализовано |
 | Поиск | OpenSearch | `ecat-data-opensearch` | ✅ Реализовано |
 | Поиск | Elasticsearch | `ecat-data-elasticsearch` | ✅ Реализовано |

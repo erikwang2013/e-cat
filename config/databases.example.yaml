@@ -20,6 +20,17 @@ sql:
   # username: "app_user"     # 可选: 嵌入 URL 认证（与 password 配合）
   # password: "changeme"     # 可选
 
+# ── SQL Server ──────────────────────────────────────────────
+mssql:
+  # URL 形态：mssql://user:pass@host:1433/db
+  #   自签证书时加查询串：mssql://...?trustservercertificate=true
+  # ADO 形态：Server=host,1433;Database=db;User Id=user;Password=pass;TrustServerCertificate=true
+  url: "mssql://sa:changeme@localhost:1433/myapp"
+  # username / password 可选（嵌入 URL 认证）
+  # 池参数（可选）：max_connections / min_connections / acquire_timeout_secs
+  #                 query_timeout_secs（0 = 禁用）/ create_timeout_secs
+  # 注意：**没有** idle_timeout —— deadpool 不提供空闲回收，见 README
+
 # ── 缓存 ────────────────────────────────────────────────────
 redis:
   url: "redis://localhost:6379"

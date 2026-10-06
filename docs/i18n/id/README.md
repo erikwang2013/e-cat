@@ -140,6 +140,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Terimplementasi |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Terimplementasi |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Terimplementasi |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Cache | Redis | `ecat-data-redis` | ✅ Terimplementasi |
 | Pencarian | OpenSearch | `ecat-data-opensearch` | ✅ Terimplementasi |
 | Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi |

@@ -140,6 +140,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 구현됨 |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 구현됨 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 구현됨 |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | 캐시 | Redis | `ecat-data-redis` | ✅ 구현됨 |
 | 검색 | OpenSearch | `ecat-data-opensearch` | ✅ 구현됨 |
 | 검색 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 구현됨 |

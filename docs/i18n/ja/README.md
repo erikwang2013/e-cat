@@ -140,6 +140,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 実装済み |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 実装済み |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 実装済み |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | キャッシュ | Redis | `ecat-data-redis` | ✅ 実装済み |
 | 検索 | OpenSearch | `ecat-data-opensearch` | ✅ 実装済み |
 | 検索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 実装済み |

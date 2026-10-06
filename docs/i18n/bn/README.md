@@ -140,6 +140,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | ক্যাশ | Redis | `ecat-data-redis` | ✅ বাস্তবায়িত |
 | সার্চ | OpenSearch | `ecat-data-opensearch` | ✅ বাস্তবায়িত |
 | সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত |

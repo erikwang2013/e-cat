@@ -140,6 +140,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ लागू |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ लागू |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ लागू |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | कैश | Redis | `ecat-data-redis` | ✅ लागू |
 | खोज | OpenSearch | `ecat-data-opensearch` | ✅ लागू |
 | खोज | Elasticsearch | `ecat-data-elasticsearch` | ✅ लागू |

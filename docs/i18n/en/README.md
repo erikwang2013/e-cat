@@ -140,6 +140,7 @@ It offers an API-first development experience, a pluggable component architectur
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implemented |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Cache | Redis | `ecat-data-redis` | ✅ Implemented |
 | Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented |
 | Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented |

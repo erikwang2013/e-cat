@@ -140,6 +140,7 @@ Client-Anfrage
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implementiert |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementiert |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementiert |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Cache | Redis | `ecat-data-redis` | ✅ Implementiert |
 | Suche | OpenSearch | `ecat-data-opensearch` | ✅ Implementiert |
 | Suche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementiert |

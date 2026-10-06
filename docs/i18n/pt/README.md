@@ -140,6 +140,7 @@ Oferece uma experiência de desenvolvimento API-first, arquitetura de componente
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implementado |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementado |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementado |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Cache | Redis | `ecat-data-redis` | ✅ Implementado |
 | Busca | OpenSearch | `ecat-data-opensearch` | ✅ Implementado |
 | Busca | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementado |

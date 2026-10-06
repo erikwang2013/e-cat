@@ -135,6 +135,7 @@ Client Request
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implemented |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | Cache | Redis | `ecat-data-redis` | ✅ Implemented |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory only (not for production) |
 | Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented |

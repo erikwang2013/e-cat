@@ -140,6 +140,7 @@
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ مُنفَّذ |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ مُنفَّذ |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ مُنفَّذ |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | التخزين المؤقت | Redis | `ecat-data-redis` | ✅ مُنفَّذ |
 | البحث | OpenSearch | `ecat-data-opensearch` | ✅ مُنفَّذ |
 | البحث | Elasticsearch | `ecat-data-elasticsearch` | ✅ مُنفَّذ |

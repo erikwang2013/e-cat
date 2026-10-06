@@ -140,6 +140,7 @@ Ecat中文名：一只猫
 | RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 |
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
 | 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
 | 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 |
@@ -157,7 +158,7 @@ Ecat中文名：一只猫
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
-> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
+> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
 
 ### 数据库配置示例
 
