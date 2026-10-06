@@ -81,7 +81,8 @@ macro_rules! int_col {
             }
             fn from_json(column: &'static str, v: &Value) -> Result<Self, OrmError> {
                 // i32 也接受 Number 里的 i64（SQLite 只存 i64），越界才报错 ——
-                // 直接 as 截断会把 70000 静默变成 4464。
+                // 直接 `as` 会把越界值静默回绕（`2_147_483_648 as i32` 是
+                // `-2147483648`）。
                 v.as_i64()
                     .and_then(|n| <$t>::try_from(n).ok())
                     .ok_or_else(|| mismatch(column, $expected))
@@ -102,23 +103,26 @@ impl ColumnValue for f64 {
         } else if self.is_nan() {
             Value::String("NaN".into())
         } else if *self > 0.0 {
-            Value::String("inf".into())
+            // 拼写跟驱动对齐：两个驱动的 `float_to_json` 写的都是 `Infinity`
+            // （`ecat-data-sqlx/src/cell.rs:15-17`、`ecat-data-mssql/src/cell.rs:27-29`）。
+            // 它们已随 4.0.0 发布不能改，所以 ORM 这边跟随，避免同一份数据
+            // 在库里出现两种拼写。
+            Value::String("Infinity".into())
         } else {
-            Value::String("-inf".into())
+            Value::String("-Infinity".into())
         }
     }
 
     fn from_json(column: &'static str, v: &Value) -> Result<Self, OrmError> {
         // 与 to_json 对称：字符串形态的 NaN/±Inf 要能转回来。
-        // 两个驱动实际写出的是 `Infinity` / `-Infinity`
-        // （`ecat-data-sqlx/src/cell.rs:15-17`），也一并接受 ——
-        // 否则读驱动产出的行会假报 TypeMismatch。
+        // 除匹配的拼写外，**额外接受** Rust 自身的 `inf` / `-inf`
+        // （`f64::to_string()` 的形态）—— 别处工具或旧数据可能写的是它。
         match v {
             Value::Number(n) => n.as_f64().ok_or_else(|| mismatch(column, "f64")),
             Value::String(s) => match s.as_str() {
                 "NaN" => Ok(f64::NAN),
-                "inf" | "Infinity" => Ok(f64::INFINITY),
-                "-inf" | "-Infinity" => Ok(f64::NEG_INFINITY),
+                "Infinity" | "inf" => Ok(f64::INFINITY),
+                "-Infinity" | "-inf" => Ok(f64::NEG_INFINITY),
                 _ => Err(mismatch(column, "f64")),
             },
             _ => Err(mismatch(column, "f64")),
@@ -306,21 +310,45 @@ mod tests {
     }
 
     /// 浮点的 JSON 表示沿用批次 1 的约定：NaN/±Inf 装不进 serde_json::Number，
-    /// 转字符串而不是静默变 null（`ecat-data-sqlx/src/cell.rs:9-12` 同款处理）。
+    /// 转字符串而不是静默变 null（`ecat-data-sqlx/src/cell.rs:9-17` 同款处理，
+    /// **含 `Infinity` 这个拼写**）。
     #[test]
     fn non_finite_floats_become_strings() {
         assert_eq!(f64::NAN.to_json(), json!("NaN"));
-        assert_eq!(f64::INFINITY.to_json(), json!("inf"));
+        assert_eq!(f64::INFINITY.to_json(), json!("Infinity"));
+        assert_eq!(f64::NEG_INFINITY.to_json(), json!("-Infinity"));
         assert_eq!(1.5_f64.to_json(), json!(1.5));
     }
 
-    /// 两个驱动写出的拼写是 `Infinity` / `-Infinity`（不是本模块 to_json 的
-    /// `inf` / `-inf`）。`from_row_col` 的主用途正是读驱动产出的行，
-    /// 两种拼写都必须认，否则合法数据被假报 TypeMismatch。
+    /// 除 `Infinity` / `-Infinity` 外**额外**接受 Rust 自身的 `inf` / `-inf`
+    /// （`f64::to_string()` 的形态）—— 别处工具或旧数据可能写的是它。
+    /// 多认一种拼写的代价是一行 match 分支，漏认的代价是合法数据被假报
+    /// TypeMismatch。
     #[test]
     fn driver_spelled_infinities_are_accepted() {
-        let r = row(vec![("n", json!("Infinity")), ("m", json!("-Infinity"))]);
-        assert_eq!(from_row_col::<f64>(&r, "n").unwrap(), f64::INFINITY);
-        assert_eq!(from_row_col::<f64>(&r, "m").unwrap(), f64::NEG_INFINITY);
+        let r = row(vec![
+            ("a", json!("Infinity")),
+            ("b", json!("-Infinity")),
+            ("c", json!("inf")),
+            ("d", json!("-inf")),
+        ]);
+        assert_eq!(from_row_col::<f64>(&r, "a").unwrap(), f64::INFINITY);
+        assert_eq!(from_row_col::<f64>(&r, "b").unwrap(), f64::NEG_INFINITY);
+        assert_eq!(from_row_col::<f64>(&r, "c").unwrap(), f64::INFINITY);
+        assert_eq!(from_row_col::<f64>(&r, "d").unwrap(), f64::NEG_INFINITY);
+    }
+
+    /// 写出去的必须能读回来 —— 这条把 `to_json` 与 `from_json` 的拼写绑在一起。
+    /// 只测单侧时，两边拼写不一致也能各自「通过」。
+    #[test]
+    fn non_finite_floats_roundtrip_through_json() {
+        for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let json = v.to_json();
+            let back = f64::from_json("n", &json).expect("roundtrip must parse");
+            assert!(
+                (v.is_nan() && back.is_nan()) || v == back,
+                "roundtrip 失败：{v} → {json} → {back}"
+            );
+        }
     }
 }
