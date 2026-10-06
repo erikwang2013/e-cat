@@ -208,6 +208,36 @@ test result: ok. 0 passed; 0 failed; 0 ignored; ... finished in 0.00s
 
 ---
 
+## ⚠️ 全局硬规则之三：空验收 —— 验证步骤可能**察觉不到**它要验证的东西不存在
+
+### 判据（一句话）
+
+> **把本任务新增的那个东西整行删掉，这个验收步骤还会通过吗？会 → 它是空验收。**
+
+空验收比「没有验收」更危险：它给出一个绿的信号，让人以为验过了。
+
+### 本批次已实测复现的三个实例
+
+| # | 任务 | 验收步骤 | 为什么是空的 | 实测证据 |
+|---|---|---|---|---|
+| 1 | Task 2 | 「跑测试确认失败」 | 没加 `mod` 声明 → 新文件不参与编译 → 输出 `ok. 0 passed; 0 failed`、rc=0，看着像「通过」 | 手动删 `mod error;` 复现（见硬规则之一） |
+| 2 | Task 3 | 「跑测试确认通过」 | 3 个测试全在查 `META` 本身，**没有一个碰 `insertable_columns`** → 该方法里的编译错误只能等 crud.rs 首次调用才暴露 | 计划里那版 `.copied()` 确实编译不过（E0271），而测试全绿 |
+| 3 | Task 6 | 「跑测试确认通过」 | 测试套件里**没有任何一处**用到 `::ecat_orm::` 绝对路径 → 那一行删掉照样 31 passed | 删 `extern crate self as ecat_orm;` 后实测仍 31 passed、rc=0 |
+
+**三个实例的共同点**：验收步骤测的是「别的东西还正常」，不是「本任务新增的东西生效了」。
+
+### 每个任务必须做
+
+1. **问那个判据**。若答案不妙，**补一个能区分「有」与「无」的证据**：
+   - 删掉本任务新增的行/函数/属性，确认验收步骤**变红**（这是最强的证明）
+   - 或临时加一个探针（编译或运行期）证明它被真正使用，验证完删除
+2. **Task 6 实施者给出的正例**（照这个做）：加一个临时编译探针，逐一引用本任务新增的
+   绝对路径，`cargo check` rc=0，然后立即删除、不进提交、`git status` 为空可复核。
+   （它的附带实测值得记：探针首跑报 `E0782 expected a type, found a trait` —— 那**不是**解析失败，
+   恰恰是解析**成功**的证据，编译器找到了 trait、只是不接受把 trait 当类型。）
+
+---
+
 ## ⚠️ 全局硬规则之二：计划里的代码片段**不保证**过 rustfmt
 
 本仓库**没有 `rustfmt.toml`**，用 rustfmt 默认值。两条默认值已经连续绊倒两个任务：
@@ -2109,7 +2139,22 @@ git commit -m "feat(ecat-orm-derive): 列字段的 #[derive(Entity)]"
 
 **Files:**
 - Modify: `ecat-orm-derive/src/expand.rs`
+- Modify: `ecat-orm-derive/src/attr.rs`（**删掉两处 `#[allow(dead_code)]`** ← 见下方必做项）
 - Create: `ecat-orm/tests/derive_relations.rs`
+
+> ### ⚠️ 本任务必做：删掉 `attr.rs` 的两处 `#[allow(dead_code)]`
+>
+> Task 7 落地时，`Relation` 的 `target` / `foreign_key` / `local_key` 三个字段与
+> `to_pascal_case()` **只有 Task 8 才消费**，在本任务里是死代码，会让
+> `clippy -D warnings` 判死。Task 7 实施者加了 `#[allow(dead_code)]` 并注明归属
+> （`attr.rs:31` 与 `attr.rs:176`）。
+>
+> **本任务正是消费者**（生成 `RelationMeta` 与枚举变体名）。落地后必须删掉这两处。
+>
+> 验证：删后 `cargo clippy -p ecat-orm-derive --all-targets -- -D warnings` 仍须 rc=0。
+> **若又红，那是真发现**（有字段/函数没被用上）—— 要么补使用要么删除，**不要加回 allow**。
+> 这是本批次第二次出现「跨任务的临时 allow」，处置标准与 Task 4 的 `time.rs` 一致：
+> **临时桥必须在下一个消费者落地时拆掉，否则它会永久掩盖该文件将来的死代码。**
 
 **要生成的**（spec §5.2、§5.4）：每个实体一个 `XxxRelation` 枚举，每个关联字段一个变体；`EntityMeta.relations` 填上对应元数据，供 Task 13 的预加载使用。
 
