@@ -341,6 +341,24 @@ impl SqlExecutor for SqlxClient {
         .await
     }
 
+    /// 两步式原子执行：**自己开一个事务**包住两条语句并提交。
+    /// ORM 的 MySQL 主键回填走这里（`LAST_INSERT_ID()` 是连接作用域的，
+    /// 池下直发两条可能落到不同连接）；一步式后端用不到（默认实现报错）。
+    ///
+    /// 第一条失败时不提交，`tx` 在 drop 时由底层 sqlx 事务回滚。
+    async fn execute_then_query(
+        &self,
+        first: &str,
+        first_params: &[serde_json::Value],
+        second: &str,
+    ) -> Result<Vec<Row>, RdbmsError> {
+        let tx = self.transaction().await?;
+        tx.execute_with(first, first_params).await?;
+        let rows = tx.query(second).await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     fn dialect(&self) -> Dialect {
         // 注意是 `self.pool.dialect()`，写成 `self.dialect()` 会无限递归。
         self.pool.dialect()

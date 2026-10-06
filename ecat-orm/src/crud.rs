@@ -3,8 +3,7 @@
 //! CRUD。API 形态取自 spec §5.4 —— `User::insert(&db, &user)`，即全部是
 //! `Entity` 的**关联函数**；`entity.rs` 里的默认方法只做转发，实现在这里。
 
-use ecat_data::SqlExecutor;
-use ecat_data::{RdbmsClient, RdbmsError, Row};
+use ecat_data::{RdbmsError, Row, SqlExecutor};
 use serde_json::Value;
 
 use crate::dialect::InsertPlan;
@@ -81,15 +80,16 @@ where
 
 /// 插入并返回新生成的主键。
 ///
-/// **取 `RdbmsClient` 而不是 `SqlExecutor`**：MySQL 走两步式主键回填，
-/// 必须能把两条语句包进同一个事务（见下），而 `SqlExecutor` 上没有任何
-/// 「开事务 / 拿到固定连接」的入口 —— `transaction()` 在 `RdbmsClient`
-/// 上（`ecat-data/src/rdbms.rs:213`）。照计划写 `X: SqlExecutor` 会得到
-/// `E0599: no method named 'transaction' found for reference '&X'`。
+/// 取 `SqlExecutor`（而不是 `RdbmsClient`）：MySQL 的两步式主键回填经
+/// [`SqlExecutor::execute_then_query`] 发出，**客户端与 `Transaction` 都收** ——
+/// - 传客户端 → 它开一个事务把两条语句包起来（`LAST_INSERT_ID()` 是连接
+///   作用域的，池下两条各取连接可能落到不同连接、取回别的会话的 id：静默错值）
+/// - 传 `Transaction` → 直接在**调用方已有的事务**里跑，不另开也不提交，
+///   原子边界归调用方（spec §5.4 的 `User::insert(&tx, &user)`）
 pub(crate) async fn insert<E, X>(db: &X, e: &E) -> Result<i64, OrmError>
 where
     E: Entity,
-    X: RdbmsClient + ?Sized,
+    X: SqlExecutor + ?Sized,
 {
     let spec = lookup(db.dialect());
     let (cols, vals) = insert_parts(e);
@@ -103,15 +103,15 @@ where
             read_returned_pk::<E>(&rows)
         }
         InsertPlan::InsertThen { insert, fetch } => {
-            // **两步式必须包事务**：`LAST_INSERT_ID()` 是连接作用域的，
-            // 池下两次 query_write 可能落到不同连接，取回别的会话刚插入的 id
-            // （静默错值）。见 spec:585-589。
-            let tx = db.transaction().await.map_err(to_db)?;
-            tx.execute_with(&insert, &vals).await.map_err(to_db)?;
-            let rows = tx.query(&fetch).await.map_err(to_db)?;
-            let id = read_returned_pk::<E>(&rows)?;
-            tx.commit().await.map_err(to_db)?;
-            Ok(id)
+            // **两步式必须原子**（见函数文档）：`LAST_INSERT_ID()` 是连接作用域的，
+            // 池下直发两条可能落到不同连接，取回别的会话刚插入的 id（静默错值，
+            // 见 spec:585-589）。交给 executor：客户端自己开事务包两条，
+            // `Transaction` 直接复用调用方的。
+            let rows = db
+                .execute_then_query(&insert, &vals, &fetch)
+                .await
+                .map_err(to_db)?;
+            read_returned_pk::<E>(&rows)
         }
     }
 }
@@ -191,10 +191,13 @@ where
 }
 
 /// 主键为「未设置」时插入，否则更新。返回主键。
+///
+/// 两条路径都只要求 `SqlExecutor`，所以「事务里 save」与「事务里 insert」
+/// 一样成立（插入路径的两步式见 [`insert`]）。
 pub(crate) async fn save<E, X>(db: &X, e: &E) -> Result<i64, OrmError>
 where
     E: Entity,
-    X: RdbmsClient + ?Sized,
+    X: SqlExecutor + ?Sized,
 {
     let pk_meta = E::META.column(E::PK).expect("PK must be a declared column");
     // 「未设置」= **自增**主键为 0。少了 auto_increment 这一半，

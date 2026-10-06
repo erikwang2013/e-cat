@@ -308,6 +308,35 @@ async fn transaction_commit_persists() {
     assert_eq!(rows.len(), 1);
 }
 
+/// 客户端的 `execute_then_query` 覆写：**两条语句在同一个事务里跑完并提交**。
+/// ORM 的 MySQL 两步式主键回填走这条路径（`LAST_INSERT_ID()` 是连接作用域的，
+/// 两条语句必须落在同一条连接上）—— 不覆写就会走默认的「不支持」而报错。
+#[tokio::test]
+async fn execute_then_query_runs_both_statements_and_commits() {
+    let db = mem_sqlite("exec_then_query").await;
+    db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT NOT NULL)")
+        .await
+        .unwrap();
+
+    let rows = db
+        .execute_then_query(
+            "INSERT INTO t (v) VALUES (?)",
+            &[serde_json::json!("x")],
+            "SELECT last_insert_rowid() AS id",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        rows.first().and_then(|r| r.get("id")),
+        Some(&serde_json::json!(1)),
+        "第二条语句必须看到第一条刚插入的行（同一条连接）"
+    );
+
+    // 已提交：若是「跑完没提交」，事务 drop 时会回滚，这里就是 0 行。
+    let rows = db.query("SELECT count(*) AS n FROM t").await.unwrap();
+    assert_eq!(rows[0].get("n"), Some(&serde_json::json!(1)));
+}
+
 /// 事务内的方言必须透传，否则 ORM 在事务里会生成错误占位符。
 #[tokio::test]
 async fn transaction_reports_dialect() {

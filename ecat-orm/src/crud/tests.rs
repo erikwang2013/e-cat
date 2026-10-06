@@ -7,7 +7,7 @@
 use super::fixtures::*;
 use crate::entity::*;
 use crate::error::OrmError;
-use ecat_data::{Dialect, Row};
+use ecat_data::{Dialect, RdbmsClient, Row, SqlExecutor};
 use serde_json::json;
 
 // ---- insert ----
@@ -94,6 +94,87 @@ async fn insert_two_step_runs_both_statements_inside_one_transaction() {
     assert_eq!(
         calls[1].0, "SELECT LAST_INSERT_ID()",
         "第二步取回 id，且同在事务内"
+    );
+}
+
+/// **在调用方的事务里 insert**（spec §5.4：`User::insert(&tx, &user)`）。
+///
+/// 与上一条是同一能力的两条路径：客户端那条（`insert(&client, …)`）由
+/// `execute_then_query` **自己开一个**事务；`Transaction` 上的覆写**复用
+/// 调用方已有的**事务 —— 不再开第二个，也**不得替调用方 commit**。
+///
+/// `events` 先清空：开头那次 `transaction` 是**测试自己**开事务记下的，
+/// 与本方法无关；清掉后序列里剩下的每一条都是 insert 自己造成的。
+#[tokio::test]
+async fn insert_through_a_transaction_reuses_it_instead_of_opening_another() {
+    let spy = Spy {
+        dialect: Dialect::MySql,
+        ..Default::default()
+    };
+    *spy.rows.lock().unwrap() = vec![Row::new(vec!["id".into()], vec![json!(7)])];
+
+    let tx = spy.transaction().await.unwrap();
+    spy.events.lock().unwrap().clear();
+
+    let id = U::insert(
+        &tx,
+        &U {
+            id: 0,
+            name: "alice".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(id, 7);
+
+    assert_eq!(
+        spy.events(),
+        vec!["tx", "tx"],
+        "两条语句都归属调用方的事务；不得再开事务，也不得替调用方 commit"
+    );
+    let calls = spy.calls();
+    assert_eq!(calls[0].0, "INSERT INTO `users` (`name`) VALUES (?)");
+    assert_eq!(calls[1].0, "SELECT LAST_INSERT_ID()");
+
+    // commit 只能由调用方发起，且只此一次 —— 上面若提前提交，这里会看到两次。
+    tx.commit().await.unwrap();
+    assert_eq!(spy.events(), vec!["tx", "tx", "commit"]);
+}
+
+/// **spec §5.4 的事务示例本身**：`let tx = db.transaction().await?;`
+/// 然后 `User::insert(&tx, &user).await?`，最后 commit。
+///
+/// 这条测试的存在理由就是**让那行代码被编译到**。只断言「`insert` 接受
+/// `SqlExecutor`」是空验收 —— bound 改回 `RdbmsClient` 它照样绿。
+/// 唯有真的把 `&tx` 传进去（`Transaction` **不**实现 `RdbmsClient`），
+/// 才验得出「事务里能 insert」。
+#[tokio::test]
+async fn insert_inside_the_callers_transaction_lands_on_commit() {
+    let db = mem_sqlite("insert_in_tx").await;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)")
+        .await
+        .unwrap();
+
+    let tx = db.transaction().await.unwrap();
+    let id = U::insert(
+        &tx,
+        &U {
+            id: 0,
+            name: "alice".into(),
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    // 提交后经**客户端**读回：值与事务里那条 INSERT 一致 ——
+    // 语句确实落在事务所在的连接上，且真的写进去了。
+    assert_eq!(
+        U::find_by_id(&db, id).await.unwrap(),
+        Some(U {
+            id,
+            name: "alice".into()
+        })
     );
 }
 

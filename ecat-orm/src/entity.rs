@@ -140,19 +140,16 @@ pub trait Entity: Sized + Send + Sync {
 
     /// 插入并返回新生成的主键。
     ///
-    /// 自增主键不出现在列清单里（由数据库生成）。MySQL 路径会自动包事务 ——
-    /// 见 `crud::insert` 里 `InsertPlan::InsertThen` 分支的注释。
-    ///
-    /// 取 `RdbmsClient` 而不是 `SqlExecutor`：两步式回填要开事务，而
-    /// `SqlExecutor` 没有开事务的入口（`transaction()` 在 `RdbmsClient` 上）。
-    /// 代价：`Transaction` 本身不是 `RdbmsClient`，**不能传给 `insert`** ——
-    /// 要在事务里插数据，得用客户端（见 crate 文档的说明）。
+    /// 自增主键不出现在列清单里（由数据库生成）。MySQL 的两步式回填经
+    /// [`ecat_data::SqlExecutor::execute_then_query`] 发出 —— 传客户端时它开一个
+    /// 事务把两条语句包起来，传 `&tx` 时**直接在调用方的事务里跑**（spec §5.4 的
+    /// `User::insert(&tx, &user)`），不会另开事务、也不会替调用方提交。
     fn insert<X>(
         db: &X,
         entity: &Self,
     ) -> impl std::future::Future<Output = Result<i64, OrmError>> + Send
     where
-        X: ecat_data::RdbmsClient + ?Sized,
+        X: ecat_data::SqlExecutor + ?Sized,
         Self: Sync,
     {
         crate::crud::insert::<Self, X>(db, entity)
@@ -215,12 +212,14 @@ pub trait Entity: Sized + Send + Sync {
     /// 「未设置」判定：主键字段的自增标志为真**且** `pk_value()` 等于 0。
     /// 非自增主键（如 UUID 字符串）永远走 update —— 它的主键从来不是 0，
     /// 用 `pk == 0` 判断会让手工分配整数主键的实体**每次都变成 insert**。
+    ///
+    /// 与 [`Entity::insert`] 一样收 `&impl SqlExecutor`：`&tx` 也收。
     fn save<X>(
         db: &X,
         entity: &Self,
     ) -> impl std::future::Future<Output = Result<i64, OrmError>> + Send
     where
-        X: ecat_data::RdbmsClient + ?Sized,
+        X: ecat_data::SqlExecutor + ?Sized,
         Self: Sync,
     {
         crate::crud::save::<Self, X>(db, entity)
