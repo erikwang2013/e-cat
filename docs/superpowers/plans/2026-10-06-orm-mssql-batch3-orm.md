@@ -5609,6 +5609,53 @@ git commit -m "feat(ecat-orm): 自动时间戳、软删除与乐观锁"
 
 ## Task 15: 批量分块与分页（`batch.rs` + `page.rs`）
 
+> ### ⚠️ 本任务必做之一：补 `delete_where`（Task 11 实施者报回的 **spec 覆盖缺口**）
+>
+> **这是计划漏落，不是 spec 没要。** spec 有三处明确要求它：
+>
+> | 位置 | 要求 |
+> |---|---|
+> | spec:442 | 文件职责表把它归给 **`batch.rs`**（`insert_many / update_many / delete_where / upsert`）|
+> | spec:508 | §5.4 公开 API：`User::query().filter("age", Op::Lt, 18).delete_where(&db).await?` |
+> | spec:551 | §5.5b：`delete_where(Op::In, ...)` **必须按参数上限分块** |
+>
+> **而本计划全文 8 处 `delete_where` 全是引用（约束说明、compile_fail 正文、文件结构注释），
+> 一处定义都没有。** Task 12 无 DELETE 生成，Task 13 只有 `delete_by_id`，本任务正文原本
+> 一次都没提它。**不补，交付物就少一个 spec 写明的 API。**
+>
+> **落法**：
+>
+> ```rust
+> impl<E: Entity> Query<E, Filtered> {
+>     /// 按当前过滤条件删除。**返回受影响行数。**
+>     ///
+>     /// - 实体带 `soft_delete` 标志时是**软删除**（`UPDATE ... SET <sd> = ? WHERE <filters> AND <sd> IS NULL`），
+>     ///   与 `delete_by_id` 的语义一致（Task 14）。要物理删除用 [`hard_delete_where`]。
+>     /// - **`with_trashed()` 在此路径上无效** —— 见文首「缺口 B」的裁决：
+>     ///   删改路径的「连已软删的一起处理」是**另一个显式方法**，不是读取开关的重载。
+>     /// - filters 含 `Op::In` 时**按 `DialectSpec::max_params_per_stmt` 分块**
+>     ///   （spec:551 明确要求）。分块后多条的受影响行数**累加** —— 对 `IN` 语义等价。
+>     pub async fn delete_where<X>(self, db: &X) -> Result<u64, OrmError>
+>     where X: SqlExecutor + ?Sized;
+>
+>     /// 绕过软删除，真的发 `DELETE`。理由与 `hard_delete_by_id` 同：
+>     /// 合规要求 / 垃圾回收确实需要物理删除，不给口子会逼用户去拼裸 SQL。
+>     pub async fn hard_delete_where<X>(self, db: &X) -> Result<u64, OrmError>
+>     where X: SqlExecutor + ?Sized;
+> }
+> ```
+>
+> **WHERE 渲染复用 Task 12 的 `render_where`**（若 Task 12 已把它做成 `pub(crate)`）——
+> **不要重写一份**。两份 WHERE 渲染必然漂移，而那是安全边界（白名单在里面）。
+>
+> **必须补的测试**：
+> - 硬删除路径：无 `soft_delete` 的实体 → SQL 以 `DELETE FROM` 开头
+> - 软删除路径：带 `soft_delete` 的实体 → `UPDATE ... SET <sd> = ?`，且带 `AND <sd> IS NULL`
+> - `Op::In` 超过参数上限时**分成多条**，且**受影响行数累加**（用假 executor 记调用次数）
+> - **`with_trashed()` 对删除路径无效**：两种调用产出的 SQL 相同
+>
+> **空验收自证**：临时把分块逻辑去掉，确认「分块」那条测试 **FAILED**，再还原。
+
 > ### ⚠️ 本任务必做：修掉 pk-only 的 upsert（Task 10 实施者报回的洞）
 >
 > **现象**：当实体的可插列**只有主键**时，方言层的 `upsert` 生成非法 SQL ——
