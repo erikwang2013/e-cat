@@ -5453,6 +5453,27 @@ async fn execute_then_query(
 
 把 `Transaction` 的 `execute_then_query` 覆写删掉（退回默认报错），确认测试 1 **FAILED**，再还原。
 
+### ⚠️ Task 13 实施者留的两个落点（转自 `16907dc`，原样记录）
+
+**落点 1 —— 改 bound 要同步撤掉三处，否则文档与代码互相打脸**：
+- `ecat-orm/src/entity.rs:150-159`（以及 `save` 的那两处）—— 默认方法的 bound 跟着改回
+- `ecat-orm/src/lib.rs` —— 那里有一段 crate 文档写着「例外是 `insert`/`save`，它们取 `RdbmsClient`」，
+  **要点名撤掉**
+
+**落点 2（关键）—— `Spy` 不会自动获得 `SqlxClient` 的覆写**：
+`ecat-orm/src/crud/fixtures.rs` 的 `Spy` 是**手写的 `impl RdbmsClient`**，不是 `SqlxClient`。
+
+- `execute_then_query` 的默认实现是「不支持」→ `Spy` 用默认 → 报错 →
+  **`events() == ["transaction","tx","tx","commit"]` 那条既有回归会变红**
+- **必须在 `Spy` 上显式覆写** `execute_then_query`，行为与 `SqlxClient` 的一致
+
+**那条断言本身不许改** —— 它是「客户端路径要包事务」的既有回归。改的是它**经过哪条路径**
+（从「`insert` 直接调 `db.transaction()`」变成「`insert` 调 `execute_then_query`，后者开事务」），
+**不是序列本身**。
+
+> 这同时是一条**空验收**的反面教材：若 `Spy` 用了默认实现而那条断言还是绿的，
+> 说明它根本没测到事务包裹。**跑之前先想一遍它为什么该红。**
+
 ---
 
 ## Task 14: 自动行为（时间戳 / 软删除 / 乐观锁）
