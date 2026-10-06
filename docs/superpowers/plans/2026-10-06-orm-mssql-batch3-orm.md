@@ -388,6 +388,12 @@ git commit -m "feat(ecat-orm): 两个 crate 的骨架与依赖"
 
 - [ ] **Step 1: 写失败测试**
 
+⚠️ **本步必须同时把 `mod error;` 加进 `ecat-orm/src/lib.rs`**（`pub use` 留到 Step 3）。
+不加声明则 `error.rs` 不被编译，Step 2 会看到 `ok. 0 passed; 0 failed` 的**假绿灯**，
+而不是期望的编译错误。见文首「全局硬规则：TDD 的假绿灯」。
+
+（`52316a9` 实施时已按此处理，最终文件状态与计划一致。）
+
 `ecat-orm/src/error.rs` 末尾：
 
 ```rust
