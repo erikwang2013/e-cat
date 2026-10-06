@@ -314,11 +314,14 @@ async fn update_reports_missing_row() {
 // ---- save ----
 
 /// `save` 对**自增**且主键为 0 的实体走 insert。
+///
+/// `save` **不回吐主键**（Task 14 改的返回类型）：需要新生成的主键时用
+/// [`Entity::insert`]。所以这里断言的是「INSERT 真的发出去了」，不是返回值。
 #[tokio::test]
 async fn save_inserts_when_pk_is_unset() {
     let spy = Spy::default();
     *spy.rows.lock().unwrap() = vec![Row::new(vec!["id".into()], vec![json!(9)])];
-    let id = U::save(
+    U::save(
         &spy,
         &U {
             id: 0,
@@ -327,8 +330,12 @@ async fn save_inserts_when_pk_is_unset() {
     )
     .await
     .unwrap();
-    assert_eq!(id, 9);
-    assert!(last(&spy).0.starts_with("INSERT"), "got: {}", last(&spy).0);
+    let (sql, params) = last(&spy);
+    assert_eq!(
+        sql,
+        r#"INSERT INTO "users" ("name") VALUES (?) RETURNING "id""#
+    );
+    assert_eq!(params, vec![json!("new")]);
 }
 
 #[tokio::test]
@@ -374,4 +381,27 @@ async fn save_updates_a_manual_pk_even_when_it_is_zero() {
         sql.starts_with("UPDATE"),
         "手工主键 0 也必须走 UPDATE，而不是 INSERT: {sql}"
     );
+}
+
+/// **字符串主键（UUID）的 `save` 必须成功**（Task 13 实施者报回的写后错）。
+///
+/// 旧实现里 `save` 返回 `i64`，更新路径要把主键 `as_i64()` —— 对 UUID 必然失败，
+/// 于是在 **UPDATE 已经成功之后**才报错：数据写进去了，调用方却拿到 `Err`。
+/// `save` 的语义本就是「存进去」（insert 或 update 二选一），不回吐主键。
+#[tokio::test]
+async fn save_of_a_string_pk_entity_succeeds() {
+    let spy = Spy {
+        affected: 1,
+        ..Default::default()
+    };
+    let s = S {
+        id: "0f8fad5b-d9cb-469f-a165-70867728950e".into(),
+        name: "uuid".into(),
+    };
+    S::save(&spy, &s)
+        .await
+        .expect("字符串主键的 save 不得报错（旧实现在 UPDATE 成功之后才报）");
+    let (sql, params) = last(&spy);
+    assert_eq!(sql, r#"UPDATE "uuid_rows" SET "name" = ? WHERE "id" = ?"#);
+    assert_eq!(params, vec![json!("uuid"), json!(s.id)]);
 }

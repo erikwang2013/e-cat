@@ -13,16 +13,59 @@ use crate::error::OrmError;
 use crate::query::Op;
 use crate::query::Query;
 
+/// 当前时间。
+///
+/// **不做可注入的全局时钟** —— 那是个进程级 `static`，一个测试设了固定时间会污染
+/// 同二进制的其它测试（`cargo test` 默认并行跑，行为随机）。批次 1 在 clickhouse 的
+/// TTL 测试上吃过同族问题。可测性由**断言的选择**提供：见 `crud/auto_tests.rs` 用
+/// `assert_ne!` 与「与此刻相差 < 1 分钟」这类性质断言，都不依赖具体时刻。
+fn now() -> time::OffsetDateTime {
+    time::OffsetDateTime::now_utc()
+}
+
+/// 按 `flags` 填入自动时间戳，返回该列的最终值（`None` = 保持原值）。
+///
+/// `always_overwrite` 为真时无条件覆盖；为假时**只在当前值为 NULL 时**填。
+/// 这个不对称是**故意的**（spec:522-523）：
+/// - `created_at`（假）：事实记录 —— 数据导入时要保留原始创建时间，显式值优先
+/// - `updated_at`（真）：变更追踪 —— insert 与 update 都填，显式传旧值没有意义
+///
+/// **不要为了「看着匀称」把它改成一致**：静默改掉会让数据导入场景丢时间。
+fn auto_timestamp(
+    flags_value: Option<&'static str>,
+    column: &str,
+    current: &Value,
+    always_overwrite: bool,
+) -> Option<Value> {
+    if flags_value != Some(column) {
+        return None;
+    }
+    if always_overwrite || current.is_null() {
+        Some(crate::value::ColumnValue::to_json(&now()))
+    } else {
+        None
+    }
+}
+
 /// 建 `INSERT` 的列清单与参数（**跳过自增主键** —— 它由数据库生成）。
+///
+/// 时间戳在**构造列清单时**填，不修改实体本身：`insert` 取 `&E`，没有可变性可用，
+/// 也**不该**有 —— 让 `insert` 偷偷改动调用方的实体是意外副作用。
 fn insert_parts<E: Entity>(e: &E) -> (Vec<String>, Vec<Value>) {
     let mut cols = Vec::new();
     let mut vals = Vec::new();
-    for (name, v) in e.to_values() {
+    for (name, mut v) in e.to_values() {
         let meta = E::META
             .column(name)
             .expect("to_values returned an unknown column");
         if meta.pk && meta.auto_increment {
             continue;
+        }
+        if let Some(filled) = auto_timestamp(E::META.flags.created_at, name, &v, false) {
+            v = filled;
+        }
+        if let Some(filled) = auto_timestamp(E::META.flags.updated_at, name, &v, true) {
+            v = filled;
         }
         cols.push(name.to_string());
         vals.push(v);
@@ -31,15 +74,20 @@ fn insert_parts<E: Entity>(e: &E) -> (Vec<String>, Vec<Value>) {
 }
 
 /// 建 `UPDATE` 的 SET 片段（**跳过主键** —— 主键是定位条件，不是被更新的列）。
+///
+/// 只刷新 `updated_at`：`created_at` 是事实记录，update 不得动它。
 fn update_parts<E: Entity>(e: &E) -> (Vec<String>, Vec<Value>) {
     let mut cols = Vec::new();
     let mut vals = Vec::new();
-    for (name, v) in e.to_values() {
+    for (name, mut v) in e.to_values() {
         let meta = E::META
             .column(name)
             .expect("to_values returned an unknown column");
         if meta.pk {
             continue;
+        }
+        if let Some(filled) = auto_timestamp(E::META.flags.updated_at, name, &v, true) {
+            v = filled;
         }
         cols.push(name.to_string());
         vals.push(v);
@@ -141,7 +189,12 @@ where
     rows.iter().map(E::from_row).collect()
 }
 
-/// 按主键整行更新。影响 0 行返回 [`OrmError::NotFound`]。
+/// 按主键整行更新。
+///
+/// - 影响 0 行且实体声明了 `version` flag → [`OrmError::OptimisticLockConflict`]
+/// - 影响 0 行且无 `version` → [`OrmError::NotFound`]
+///
+/// 两者**必须可区分**：前者重试有意义（重新加载再试），后者没有。
 pub(crate) async fn update<E, X>(db: &X, e: &E) -> Result<u64, OrmError>
 where
     E: Entity,
@@ -155,22 +208,104 @@ where
         .map(|(i, c)| format!("{} = {}", spec.quote(c), spec.placeholder(i + 1)))
         .collect::<Vec<_>>()
         .join(", ");
-    let pk_ph = spec.placeholder(vals.len() + 1);
-    let sql = format!(
-        "UPDATE {} SET {set} WHERE {} = {pk_ph}",
-        spec.quote(E::TABLE),
-        spec.quote(E::PK)
-    );
+
+    // 乐观锁：SET 写**新值**（旧值 + 1）、WHERE 比对**旧值** —— 于是「读-改-写」
+    // 之间的并发改动会让 UPDATE 影响 0 行，而不是静默覆盖别人刚写的值。
+    // 旧值必须在覆盖前取走：覆盖之后 `vals[pos]` 里只剩新值。
+    let mut old_version = None;
+    if let Some(vc) = E::META.flags.version
+        && let Some(pos) = cols.iter().position(|c| c.as_str() == vc)
+    {
+        let old = vals[pos].as_i64().unwrap_or(0);
+        old_version = Some(vals[pos].clone());
+        vals[pos] = Value::from(old + 1);
+    }
+
+    let mut where_parts = vec![format!(
+        "{} = {}",
+        spec.quote(E::PK),
+        spec.placeholder(vals.len() + 1)
+    )];
     vals.push(e.pk_value());
+    if let (Some(vc), Some(old)) = (E::META.flags.version, old_version) {
+        where_parts.push(format!(
+            "{} = {}",
+            spec.quote(vc),
+            spec.placeholder(vals.len() + 1)
+        ));
+        vals.push(old);
+    }
+
+    let sql = format!(
+        "UPDATE {} SET {set} WHERE {}",
+        spec.quote(E::TABLE),
+        where_parts.join(" AND ")
+    );
+
     let n = db.execute_with(&sql, &vals).await.map_err(to_db)?;
+    if n == 0 {
+        // 带 version 的实体：0 行几乎总是版本不匹配（行被别人改过），
+        // 而不是行不存在 —— 报冲突让调用方知道该重新加载再试。
+        return Err(if E::META.flags.version.is_some() {
+            OrmError::OptimisticLockConflict
+        } else {
+            OrmError::NotFound
+        });
+    }
+    Ok(n)
+}
+
+/// 按主键删除。影响 0 行返回 [`OrmError::NotFound`]。
+///
+/// **软删除实体（`flags.soft_delete`）发的是 `UPDATE`，不是 `DELETE`** ——
+/// 真的要物理删除见 [`hard_delete_by_id`]。
+pub(crate) async fn delete_by_id<E, X, K>(db: &X, pk: K) -> Result<u64, OrmError>
+where
+    E: Entity,
+    X: SqlExecutor + ?Sized,
+    K: Into<Value>,
+{
+    let spec = lookup(db.dialect());
+    let pk: Value = pk.into();
+
+    // 一条 match 同时产出 SQL 与参数：分两次判断同一个 flag，改了一处漏另一处
+    // 就是「参数与语句错位」—— 静默错值，不报错。
+    let (sql, params) = match E::META.flags.soft_delete {
+        Some(sd) => (
+            // `AND sd IS NULL`：重复删除同一行影响 0 行 → NotFound，
+            // 而不是把 deleted_at 覆盖成新时刻（那会让「何时删的」失真）。
+            format!(
+                "UPDATE {} SET {} = {} WHERE {} = {} AND {} IS NULL",
+                spec.quote(E::TABLE),
+                spec.quote(sd),
+                spec.placeholder(1),
+                spec.quote(E::PK),
+                spec.placeholder(2),
+                spec.quote(sd)
+            ),
+            vec![crate::value::ColumnValue::to_json(&now()), pk],
+        ),
+        None => (
+            format!(
+                "DELETE FROM {} WHERE {} = {}",
+                spec.quote(E::TABLE),
+                spec.quote(E::PK),
+                spec.placeholder(1)
+            ),
+            vec![pk],
+        ),
+    };
+
+    let n = db.execute_with(&sql, &params).await.map_err(to_db)?;
     if n == 0 {
         return Err(OrmError::NotFound);
     }
     Ok(n)
 }
 
-/// 按主键删除。影响 0 行返回 [`OrmError::NotFound`]。
-pub(crate) async fn delete_by_id<E, X, K>(db: &X, pk: K) -> Result<u64, OrmError>
+/// 绕过软删除，真的发 `DELETE`。软删除实体有时确实需要物理删除
+/// （合规要求、垃圾回收）—— 不提供这个口子会逼用户去拼裸 SQL。
+pub(crate) async fn hard_delete_by_id<E, X, K>(db: &X, pk: K) -> Result<u64, OrmError>
 where
     E: Entity,
     X: SqlExecutor + ?Sized,
@@ -190,11 +325,15 @@ where
     Ok(n)
 }
 
-/// 主键为「未设置」时插入，否则更新。返回主键。
+/// 主键为「未设置」时插入，否则更新。**返回 `()`，不回吐主键。**
+///
+/// 需要新生成的主键时用 [`insert`]（自增主键必然是整数）；更新路径的主键调用方
+/// 本来就有（在实体上）。旧版返回 `i64` 时，字符串主键（UUID）实体会在
+/// **UPDATE 已经成功之后**才报错 —— 数据写进去了，调用方拿到 `Err`。
 ///
 /// 两条路径都只要求 `SqlExecutor`，所以「事务里 save」与「事务里 insert」
 /// 一样成立（插入路径的两步式见 [`insert`]）。
-pub(crate) async fn save<E, X>(db: &X, e: &E) -> Result<i64, OrmError>
+pub(crate) async fn save<E, X>(db: &X, e: &E) -> Result<(), OrmError>
 where
     E: Entity,
     X: SqlExecutor + ?Sized,
@@ -207,19 +346,15 @@ where
     // 取决于 serde_json 的数值归一化 —— 显式要求「整数 0」没有歧义。
     let unset = pk_meta.auto_increment && e.pk_value().as_i64() == Some(0);
     if unset {
-        insert(db, e).await
+        insert(db, e).await.map(|_| ())
     } else {
-        update(db, e).await?;
-        // update 成功时主键不变，原样返回，让 save 两条路径的返回类型一致。
-        e.pk_value().as_i64().ok_or_else(|| {
-            to_db(RdbmsError::Database(
-                "primary key is not an integer; save() returns i64".into(),
-            ))
-        })
+        update(db, e).await.map(|_| ())
     }
 }
 
-// 夹具与断言分两个文件：合在一起会顶过「每个源文件 < 500 行」的硬规则。
+// 夹具与断言分三个文件：合在一起会顶过「每个源文件 < 500 行」的硬规则。
+#[cfg(test)]
+mod auto_tests;
 #[cfg(test)]
 mod fixtures;
 #[cfg(test)]

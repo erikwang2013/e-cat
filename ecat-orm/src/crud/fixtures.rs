@@ -283,3 +283,56 @@ impl Entity for P {
         Ok(())
     }
 }
+
+// ---- 字符串主键（UUID）----
+
+static UUID_COLS: [ColumnMeta; 2] = [
+    ColumnMeta {
+        name: "id",
+        ty: ColType::Text,
+        nullable: false,
+        pk: true,
+        auto_increment: false,
+    },
+    ColumnMeta {
+        name: "name",
+        ty: ColType::Text,
+        nullable: false,
+        pk: false,
+        auto_increment: false,
+    },
+];
+static UUID_META: EntityMeta = EntityMeta {
+    table: "uuid_rows",
+    pk: "id",
+    columns: &UUID_COLS,
+    relations: &[],
+    flags: EntityFlags::NONE,
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct S {
+    pub(crate) id: String,
+    pub(crate) name: String,
+}
+
+impl Entity for S {
+    const TABLE: &'static str = "uuid_rows";
+    const PK: &'static str = "id";
+    const META: &'static EntityMeta = &UUID_META;
+    fn from_row(r: &Row) -> Result<Self, OrmError> {
+        Ok(S {
+            id: crate::value::from_row_col::<String>(r, "id")?,
+            name: crate::value::from_row_col::<String>(r, "name")?,
+        })
+    }
+    fn to_values(&self) -> Vec<(&'static str, serde_json::Value)> {
+        vec![("id", json!(self.id)), ("name", json!(self.name))]
+    }
+    fn pk_value(&self) -> serde_json::Value {
+        json!(self.id)
+    }
+    fn set_relation(&mut self, _name: &str, _rows: Vec<Row>) -> Result<(), OrmError> {
+        Ok(())
+    }
+}

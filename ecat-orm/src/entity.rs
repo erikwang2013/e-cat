@@ -138,7 +138,7 @@ pub trait Entity: Sized + Send + Sync {
         crate::query::Query::new()
     }
 
-    /// 插入并返回新生成的主键。
+    /// 插入并返回新生成的主键。**不需要新主键时用 [`Entity::save`]**。
     ///
     /// 自增主键不出现在列清单里（由数据库生成）。MySQL 的两步式回填经
     /// [`ecat_data::SqlExecutor::execute_then_query`] 发出 —— 传客户端时它开一个
@@ -195,6 +195,10 @@ pub trait Entity: Sized + Send + Sync {
     }
 
     /// 按主键删除。影响 0 行时返回 [`OrmError::NotFound`]。
+    ///
+    /// 声明了 `soft_delete` flag 的实体发的是 `UPDATE`（置软删除列），行还在表里，
+    /// 只是默认查不到了；且重复删除返回 `NotFound`，不会刷新删除时刻。
+    /// 要物理删除用 [`Entity::hard_delete_by_id`]。
     fn delete_by_id<X, K>(
         db: &X,
         pk: K,
@@ -207,17 +211,37 @@ pub trait Entity: Sized + Send + Sync {
         crate::crud::delete_by_id::<Self, X, K>(db, pk)
     }
 
-    /// 主键为「未设置」时插入，否则更新。返回主键。
+    /// 绕过软删除，真的发 `DELETE`。签名与 [`Entity::delete_by_id`] 相同。
+    ///
+    /// 软删除实体有时确实需要物理删除（合规要求、垃圾回收）。
+    fn hard_delete_by_id<X, K>(
+        db: &X,
+        pk: K,
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        K: Into<serde_json::Value> + Send,
+        Self: Sync,
+    {
+        crate::crud::hard_delete_by_id::<Self, X, K>(db, pk)
+    }
+
+    /// 主键为「未设置」时插入，否则更新。**返回 `()`，不回吐主键。**
     ///
     /// 「未设置」判定：主键字段的自增标志为真**且** `pk_value()` 等于 0。
     /// 非自增主键（如 UUID 字符串）永远走 update —— 它的主键从来不是 0，
     /// 用 `pk == 0` 判断会让手工分配整数主键的实体**每次都变成 insert**。
     ///
+    /// **需要新生成的主键时用 [`Entity::insert`]**（它返回 `i64`，自增主键必然是
+    /// 整数）；更新路径的主键调用方本来就有（在实体上）。字符串主键的实体尤其
+    /// 要用这个签名：让 `save` 回吐主键会逼它在 UPDATE 成功后去 `as_i64()` 主键，
+    /// 失败就报错 —— 数据写进去了，调用方却拿到 `Err`。
+    ///
     /// 与 [`Entity::insert`] 一样收 `&impl SqlExecutor`：`&tx` 也收。
     fn save<X>(
         db: &X,
         entity: &Self,
-    ) -> impl std::future::Future<Output = Result<i64, OrmError>> + Send
+    ) -> impl std::future::Future<Output = Result<(), OrmError>> + Send
     where
         X: ecat_data::SqlExecutor + ?Sized,
         Self: Sync,
