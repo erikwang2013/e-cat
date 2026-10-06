@@ -280,6 +280,28 @@ git commit -m "feat(ecat-data-mssql): MssqlConfig（URL/ADO 解析 + TLS 映射 
 
 ---
 
+### ⚠️ Task 5 必读：deadpool 侧的三个超时缺一不可（Task 3 实施者预警）
+
+`recycle` 的探活面对**半开连接**（服务端已消失但 TCP 未 RST）会**阻塞在 read 上**，
+直到 OS 重传超时 —— 可能几十秒到分钟级。而 `recycle` 是在 **`Pool::get()` 路径上同步等**的。
+
+**后果**：一次死连接就能把取连接卡到 `acquire_timeout` 为止。
+
+**建池时必须设三个超时**（`PoolBuilder`）：
+
+| 超时 | 作用 |
+|---|---|
+| `wait_timeout` | 取连接的总等待（= `MssqlParams.acquire_timeout`） |
+| **`create_timeout`** | 建连（含 TCP + TDS 握手 + TLS + `session_init`）的上限 |
+| **`recycle_timeout`** | **探活的上限** —— 缺它则半开连接会卡住 `Pool::get()` |
+
+spec §2.8 那条链（「关闭每次 ping 后由 `max_lifetime` + 查询超时 + 首次使用报错兜底」）
+在 deadpool 侧**还缺 recycle/create 超时这一环** —— 补上它，链条才完整。
+
+> 这条是 Task 3 的实施者主动向后续任务预警的（它的原话：「请务必在池上设 …，
+> 否则一次死连接可能把取连接卡死到 acquire 超时」）。**一个任务发现的坑变成下个任务的护栏**，
+> 比只在自己这里绕过有价值得多。
+
 ## Task 3: `MssqlManager`（deadpool）
 
 **Files:**
