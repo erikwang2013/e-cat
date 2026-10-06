@@ -19,6 +19,7 @@
 // serde 用同样的手法（`extern crate self as serde;`）。
 extern crate self as ecat_orm;
 
+pub mod dialect;
 mod entity;
 mod error;
 pub mod relation;
