@@ -230,3 +230,76 @@ fn timestamp_serializes_as_rfc3339() {
         .unwrap();
     assert_eq!(v, serde_json::json!("2026-10-05T04:00:00Z"));
 }
+
+/// 覆盖 `column = "..."` 重命名与 `updated_at` / `soft_delete` 标志位。
+///
+/// **补测理由**（Task 7 实施者的空验收探针发现）：
+/// - `column` 属性在原 14 个测试里**零覆盖**
+/// - `updated_at` / `soft_delete` 只被断言为 `None` —— 那是**恒真**的，
+///   测不出「没接线」与「接线了但恰好是 None」的区别
+///
+/// 探针当时验证过它们能工作，但探针未进提交，洞就还在。
+#[derive(Entity, Debug, PartialEq)]
+#[entity(table = "articles")]
+pub struct Article {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    #[entity(column = "headline")]
+    pub title: String,
+    #[entity(updated_at)]
+    pub touched_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub removed_at: Option<OffsetDateTime>,
+}
+
+#[test]
+fn column_attribute_renames_the_column() {
+    let names: Vec<_> = Article::META.columns.iter().map(|c| c.name).collect();
+    assert_eq!(names, vec!["id", "headline", "touched_at", "removed_at"]);
+    assert!(Article::META.column("headline").is_some());
+    assert!(
+        Article::META.column("title").is_none(),
+        "字段名不该出现在列名里 —— 重命名没生效"
+    );
+}
+
+/// 重命名必须同时作用于**读写两个方向**：只改元数据不改 `from_row`/`to_values`
+/// 的话，SQL 用 `headline` 而取值用 `title`，会静默报 UnknownColumn。
+#[test]
+fn renamed_column_roundtrips_through_row_and_values() {
+    let r = row(
+        &["id", "headline", "touched_at", "removed_at"],
+        vec![
+            serde_json::json!(1),
+            serde_json::json!("hello"),
+            serde_json::json!(null),
+            serde_json::json!(null),
+        ],
+    );
+    let a = Article::from_row(&r).unwrap();
+    assert_eq!(a.title, "hello");
+
+    let vals = a.to_values();
+    assert!(
+        vals.iter()
+            .any(|(n, v)| *n == "headline" && v == &serde_json::json!("hello")),
+        "to_values 必须用重命名后的列名，得到: {vals:?}"
+    );
+    assert!(
+        !vals.iter().any(|(n, _)| *n == "title"),
+        "to_values 不得出现字段名: {vals:?}"
+    );
+}
+
+#[test]
+fn updated_at_and_soft_delete_flags_point_at_the_marked_columns() {
+    assert_eq!(
+        Article::META.flags.updated_at,
+        Some("touched_at"),
+        "updated_at 必须指向被标记的那一列（字段名，非类型名）"
+    );
+    assert_eq!(Article::META.flags.soft_delete, Some("removed_at"));
+    // 对照：User 没标记这两者，应为 None —— 这条让上面两条不再是恒真断言
+    assert_eq!(User::META.flags.updated_at, None);
+    assert_eq!(User::META.flags.soft_delete, None);
+}
