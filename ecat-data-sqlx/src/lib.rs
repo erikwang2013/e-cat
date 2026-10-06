@@ -81,6 +81,15 @@ impl SqlxClient {
     }
 
     pub async fn from_config(cfg: SqlxConfig) -> Result<Self, sqlx::Error> {
+        // 响亮失败而非静默忽略：本字段曾被 serde 接受却从不读，
+        // 用户以为开了 TLS 实际什么都没发生。
+        if cfg.tls.is_some() {
+            return Err(sqlx::Error::Configuration(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "SqlxConfig.tls is not supported: configure TLS through URL parameters \
+                 instead (e.g. postgres://...?sslmode=require)",
+            ))));
+        }
         let params = cfg.pool();
         let url = match (&cfg.username, &cfg.password) {
             (Some(u), Some(p)) if !u.is_empty() || !p.is_empty() => {

@@ -12,8 +12,9 @@ pub struct SqlxConfig {
     pub username: Option<String>,
     #[serde(default)]
     pub password: Option<String>,
-    /// SQLx 的 TLS 通过 URL 参数配置（如 `?sslmode=require`）。
-    /// 本字段预留给未来的程序化 TLS 支持。
+    /// **当前不支持**。SQLx 的 TLS 走 URL 参数（如 `?sslmode=require`）；
+    /// 设了本字段会在 [`crate::SqlxClient::from_config`] 处**报错**，
+    /// 而不是静默忽略。
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
     /// 会话初始化语句；未配置时按方言给默认值，见
@@ -241,5 +242,28 @@ mod tests {
         let cfg: SqlxConfig =
             serde_json::from_str(r#"{"url": "sqlite::memory:", "query_timeout_secs": 0}"#).unwrap();
         assert_eq!(cfg.query_timeout(), None);
+    }
+
+    /// 设了 `tls` 必须响亮失败 —— 曾静默忽略，与「不伪造/不静默」的原则冲突。
+    #[tokio::test]
+    async fn tls_field_is_rejected_not_silently_ignored() {
+        let cfg: SqlxConfig =
+            serde_json::from_str(r#"{"url": "postgres://h/db", "tls": {"skip_verify": true}}"#)
+                .unwrap();
+        assert!(
+            cfg.tls.is_some(),
+            "serde 应当照旧接受该字段（报错发生在 from_config）"
+        );
+
+        // 不用 unwrap_err（SqlxClient 未实现 Debug，为测试给它加 derive 是本末倒置）
+        let Err(err) = crate::SqlxClient::from_config(cfg).await else {
+            panic!("tls 字段设了必须报错，不能静默忽略");
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("tls"), "got: {msg}");
+        assert!(
+            msg.contains("sslmode"),
+            "错误信息要指向正确做法，got: {msg}"
+        );
     }
 }
