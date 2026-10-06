@@ -2791,20 +2791,30 @@ mod tests {
         }
     }
 
+    /// `lookup` 的**接线把守**：本任务唯一真接线的非 Standard 方言必须真的被接上。
+    ///
+    /// ⚠️ **不要把断言打在 Mssql / Postgres 上** —— 本任务按 Step 3 的规定把
+    /// 它们暂时接到 `StandardSpec`，断言它们的「真值」等于断言 `Standard` 自己，
+    /// **必然红且毫无意义**。Task 10 接线后再补它们（见 Task 10 Step 4b）。
+    ///
+    /// 挑轴原则：**必须与 `Standard` 取值不同**，否则「退回 Standard」照样绿。
+    /// `quote` 在 Sqlite 与 Standard 上都是双引号 —— 区分不了，故不用它。
     #[test]
-    fn mssql_is_looked_up_not_falling_back_to_standard() {
-        // 最容易犯的错：忘了给某个方言接线，它静默退回 Standard，
-        // 于是生成 `"col"` 而 SQL Server 要 `[col]` —— 语法错误。
-        assert_eq!(lookup(Dialect::Mssql).quote("id"), "[id]");
-        assert_eq!(lookup(Dialect::Standard).quote("id"), "\"id\"");
+    fn sqlite_is_looked_up_not_falling_back_to_standard() {
+        assert_eq!(lookup(Dialect::Standard).bool_literal(false), "FALSE");
+        assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
+        assert_eq!(lookup(Dialect::Sqlite).bool_literal(false), "0");
+        assert_eq!(lookup(Dialect::Sqlite).max_params_per_stmt(), 999);
     }
 
+    /// SQLite 的 999 是最紧的**已实现**方言值（MSSQL 的 2100 在 Task 10 才接线）。
+    ///
+    /// ⚠️ 原版还断言了 Mssql(2100) 与 Postgres(65535) —— 本任务里那两条**必红**
+    /// （它们暂时接到 Standard），已移除，Task 10 Step 4b 补回。
     #[test]
     fn max_params_reflects_the_tightest_backend() {
-        // SQL Server 的 2100 是最紧的，写错成 65535 会让批量插入在真库上炸。
-        assert_eq!(lookup(Dialect::Mssql).max_params_per_stmt(), 2100);
         assert_eq!(lookup(Dialect::Sqlite).max_params_per_stmt(), 999);
-        assert_eq!(lookup(Dialect::Postgres).max_params_per_stmt(), 65535);
+        assert_eq!(lookup(Dialect::Standard).max_params_per_stmt(), 65535);
     }
 
     #[test]
@@ -3227,7 +3237,12 @@ impl DialectSpec for SqliteSpec {
 cd /home/wwwroot/e-cat && cargo test -p ecat-orm dialect 2>&1 | tail -20; echo "rc=${PIPESTATUS[0]}"
 ```
 
-期望：15 passed（mod.rs 4 + sqlite 11）。
+期望：**14 passed**（mod.rs 4 + sqlite 10）。
+
+> **实施记录（2026-10-06，`e7c62aa` 订正）**：原文写「15 passed（mod.rs 4 + sqlite 11）」——
+> **是计划自己数错了**，Step 1 里给出的 sqlite 代码块实际只有 **10** 个 `#[test]`
+> （独立审查者用 `sed -n '2759,3248p' <plan> | grep -cE '^\s*#\[test\]'` 实测 = 14，与实现一致）。
+> 实施者没有漏写，不要去凑数。
 
 - [ ] **Step 7: 提交**
 
