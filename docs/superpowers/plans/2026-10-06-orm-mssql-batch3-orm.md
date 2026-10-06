@@ -5370,7 +5370,118 @@ git commit -m "feat(ecat-orm): CRUD（含 MySQL 两步式主键回填的事务�
 
 ---
 
+## Task 13b: 恢复 spec §5.4 的「事务内 insert」
+
+> **这是 Task 13 实施者报回的偏离，我裁决为「正面修」而不是「接受」。**
+
+### 问题
+
+Task 13 把 `insert` / `save` 的 bound 定成 `RdbmsClient`（因为 MySQL 的 `InsertThen` 两步式需要 `transaction()`，
+而它只在 `RdbmsClient` 上）。**编译上这是被迫的**：照 spec 的 `SqlExecutor` 写会得到
+`error[E0599]: no method named 'transaction' found for reference '&X'`。
+
+**但代价是 spec §5.4 的事务示例废了**：
+
+```rust
+let tx = db.transaction().await?;
+User::insert(&tx, &user).await?;   // ← 编译不过：Transaction 只实现 SqlExecutor，不实现 RdbmsClient
+```
+
+而 spec 给的正是理由「`Transaction` 实现 `SqlExecutor`」。
+
+**为什么不能接受这个代价**：「**不能在事务里 insert**」是 ORM 的**实质性缺口** ——
+事务是多语句原子操作的主要手段，而插入是最常用的写操作。用户被迫用 `update`
+绕路，或者放弃原子性。
+
+### 根因
+
+`transaction()` 表达的是「**开一个新事务**」，而 `Transaction` **已经在**事务里 ——
+它需要的不是「开事务」，是「**在这条连接上把两条语句原子地跑完**」。这两个是不同的能力，
+之前用同一个方法名硬套，才会两头不讨好。
+
+### 修法：给 `SqlExecutor` 加一个**有默认实现**的能力方法
+
+```rust
+// ecat-data/src/rdbms.rs，加进 `pub trait SqlExecutor`
+/// 在**同一条连接**上先执行 `first`、再执行 `second`（查询），两者原子。
+///
+/// 存在的理由：MySQL 的 `LAST_INSERT_ID()` 是**连接作用域**的 ——
+/// 池下两次独立取用可能落到不同连接、取回别的会话的值（静默错值），
+/// 所以 `insert` 的两步式必须落在同一条连接上。
+///
+/// 默认实现返回「不支持」。三种覆写：
+/// - `Transaction` —— **直接在自己身上跑两条**（它本来就在一条连接上的事务里）
+/// - `SqlxClient` / 需要两步式的客户端 —— **开一个事务，跑完提交**
+/// - 一步式后端（MSSQL 的 `OUTPUT INSERTED`、PG/SQLite 的 `RETURNING`）—— 用不到，不覆写
+async fn execute_then_query(
+    &self,
+    _first: &str,
+    _first_params: &[serde_json::Value],
+    _second: &str,
+) -> Result<Vec<Row>, RdbmsError> {
+    Err(RdbmsError::Database(
+        "this backend cannot run two statements atomically on one connection".into(),
+    ))
+}
+```
+
+**加默认方法是向后兼容的** —— 既有实现者零改动（它们不会用到 MySQL 两步式）。
+
+### 改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `ecat-data/src/rdbms.rs` | `SqlExecutor::execute_then_query`（默认报错） |
+| 同上 | `impl SqlExecutor for Transaction` 覆写：跑 `first` 再跑 `second`，**不开新事务** |
+| `ecat-data-sqlx/src/lib.rs` | `SqlxClient` 覆写：开事务 → `execute_with(first)` → `query(second)` → `commit` |
+| `ecat-orm/src/crud.rs` | `insert` / `save` 的 bound **改回 `SqlExecutor`**；`InsertThen` 分支改调 `execute_then_query` |
+| `ecat-orm/src/entity.rs` | 默认方法的 bound 同步改回 `SqlExecutor` |
+| `ecat-orm/src/lib.rs` | 删掉「事务内不能 insert」那段说明（它不再成立） |
+
+### 必须补的测试
+
+1. **`insert(&tx, ...)` 能编译且能跑** —— 在 SQLite 上：开事务 → `insert(&tx, &u)` → `commit`，
+   断言数据落库。**这条是 spec §5.4 示例的直接回归。**
+2. **`insert(&tx, ...)` 在 MySQL 上也走同一条连接** —— 用假 executor 断言
+   `events() == ["tx", "tx"]`（**不是** `["transaction", "tx", "tx", "commit"]`）：
+   已经在事务里了，**不该再开一个**。
+3. **`insert(&client, ...)` 在 MySQL 上仍包事务** —— Task 13 那条
+   `insert_two_step_runs_both_statements_inside_one_transaction` **必须仍然通过**（它是既有回归）。
+4. `SqlExecutor` 的默认 `execute_then_query` 报错而不是静默返回空 —— 一条测试即可。
+
+### 空验收自证
+
+把 `Transaction` 的 `execute_then_query` 覆写删掉（退回默认报错），确认测试 1 **FAILED**，再还原。
+
+---
+
 ## Task 14: 自动行为（时间戳 / 软删除 / 乐观锁）
+
+> ### ⚠️ 本任务必做之一：`save` 的返回类型要改（Task 13 实施者报回的写后错）
+>
+> **现象**：`save` 返回 `i64`。对**字符串主键**（UUID）的实体，`update` 路径会把主键
+> `as_i64()` 失败 → 报 `RdbmsError::Database("primary key is not an integer…")` ——
+> 而这是在 **UPDATE 已经成功之后**才报的。**数据写进去了，调用方拿到错误。**
+>
+> **修法**：`save` 改返回 `Result<(), OrmError>`。
+> - 它的语义本就是「存进去」（insert 或 update 二选一），不需要回吐主键
+> - 更新路径的主键调用方本来就有（在实体上）
+> - **需要新生成的主键时用 `insert`**（它返回 `i64`，因为自增主键必然是整数）
+>
+> rustdoc 要写明这一点，并在 `insert` 的文档里指向 `save`（「不需要新主键时用它」）。
+>
+> **必须补的测试**：字符串主键实体 `save` 返回 `Ok(())` 且不报错（当前实现会报）。
+
+> ### 另两条偏离（已裁决接受，记录在案）
+>
+> 1. **`find_by_id` / `find_all` 经 `build_select`**（计划原文写 `Self::query().fetch(db)`）——
+>    `fetch` 是 Task 15 的交付物，本任务里不存在。实施者改成复用一个私有
+>    `select_rows` 收口函数，**没有另写一条 SQL 生成路径**。这是对的做法：
+>    列清单、方言引号、占位符编号、**软删除闸门**全在 `Query` 一处，写两份必然漂移。
+>    `select_rows` 的文档已注明「Task 15 的 `Query::fetch` 落地后本函数可由它取代」——
+>    **Task 15 落地时照此替换**。
+> 2. **`hard_delete_by_id` 留在本任务**（Task 13 的派单把列进了 Task 13，是**我的派单错**，
+>    计划一直把它放在本任务 —— 它依赖本任务的软删除 flag 接线）。
 
 **Files:**
 - Modify: `ecat-orm/src/crud.rs`
