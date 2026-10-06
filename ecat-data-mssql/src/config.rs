@@ -17,7 +17,13 @@ const DEFAULT_PORT: u16 = 1433;
 /// 注意：本后端**没有** `idle_timeout` —— deadpool 0.13 不提供空闲回收。
 /// 需要空闲回收时用 `max_connections` 限制规模、或依赖查询超时与
 /// `recycle_timeout` 兜底。（sqlx 后端有 `idle_timeout_secs`，那边是 sqlx 原生支持。）
+///
+/// 未知键**响亮失败**（`deny_unknown_fields`）：拼错的键名（`acquire_timeout_second`
+/// 少个 s）、或已删掉的 `idle_timeout_secs`，静默走默认值等于「配了却没生效」，
+/// 用户还以为生效了。本 crate 是新后端、没有既有配置文件包袱，所以从严；
+/// 其它 `XxxConfig` 要不要照办是独立决策，不在本 crate 内替它们定。
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MssqlConfig {
     /// 连接串。两种形态都接受：
     /// - URL：`mssql://user:pass@host:1433/db`（`sqlserver://` 同义）

@@ -62,6 +62,22 @@ fn zero_query_timeout_means_disabled() {
     assert_eq!(c.query_timeout(), None);
 }
 
+/// 未知键必须**响亮失败**，不能静默走默认值：拼错的 `acquire_timeout_second`
+/// 少个 s、或已删掉的 `idle_timeout_secs`（deadpool 不提供空闲回收，见
+/// [`MssqlConfig`] 文档），都属于「配了却没生效」—— 静默忽略会让用户以为生效了。
+#[test]
+fn unknown_config_keys_are_rejected() {
+    for json in [
+        r#"{"url": "mssql://h/db", "acquire_timeout_second": 5}"#,
+        r#"{"url": "mssql://h/db", "idle_timeout_secs": 600}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<MssqlConfig>(json).is_err(),
+            "未知键必须报错: {json}"
+        );
+    }
+}
+
 /// 默认会话初始化是 `SET ARITHABORT ON`。
 /// 理由：ARITHABORT 取值不同会让同一查询在 SQL Server 上产生**多份执行计划**，
 /// 造成计划缓存污染。显式空数组表示「主动关闭」。
@@ -296,6 +312,37 @@ async fn query_maps_connect_failure_to_connection_error() {
         matches!(err, RdbmsError::Connection(_)),
         "应为 RdbmsError::Connection，got: {err:?}"
     );
+}
+
+/// 查询超时在**建连阶段**也要能开火：假服务端只 accept、一个字节都不回，
+/// `pool.get()` 里的 TDS 握手就一直等着 —— 没有 `run_with_timeout` 的话它会一直
+/// 占着池子信号量（见 `ecat-data/src/timeout.rs` 的存在理由）。
+/// 不依赖外部服务：假服务端是本进程的一个 `TcpListener`。
+#[tokio::test]
+async fn query_timeout_fires_while_connect_stalls() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    // 收下连接后挂住不放：握手等不到响应，也断不了。
+    let stall = tokio::spawn(async move {
+        let _sock = listener.accept().await.unwrap().0;
+        std::future::pending::<()>().await;
+    });
+
+    let c: MssqlConfig = serde_json::from_str(&format!(
+        r#"{{"url": "mssql://sa:pw@127.0.0.1:{port}/app", "query_timeout_secs": 1}}"#
+    ))
+    .unwrap();
+    let client = MssqlClient::from_config(c).await.unwrap();
+
+    let err = client
+        .query("SELECT 1")
+        .await
+        .expect_err("握手不会完成，必须超时");
+    assert!(
+        matches!(err, RdbmsError::Timeout(_)),
+        "应为 RdbmsError::Timeout，got: {err:?}"
+    );
+    stall.abort();
 }
 
 /// ADO 里用 `{}` 包住含 `;` 的值时本 crate 的扫描器读不准 —— 必须**不回答**
