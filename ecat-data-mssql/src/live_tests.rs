@@ -9,10 +9,16 @@
 //! - `ECAT_REQUIRE_LIVE_DB`：设了（非空）时，「缺 URL」按**失败**处理而不是跳过
 //!   —— CI 用这个开关把静默跳过变成红灯。
 //!
-//! **连本地的开发容器要用 ADO 形态带 `TrustServerCertificate=true`**：tiberius 默认
+//! **连本地的开发容器要在连接串里跳过证书校验**：tiberius 默认
 //! `EncryptionLevel::Required` 且校验证书，容器自签的证书过不了（rustls 实测报
-//! `invalid peer certificate: Other(OtherError(UnsupportedCertVersion))`），而 URL
-//! 形态**不支持查询串**（TLS 配置走 `tls` 字段，见 `MssqlConfig`）：
+//! `invalid peer certificate: Other(OtherError(UnsupportedCertVersion))`）。两种形态
+//! 各有各的写法 —— URL 形态加查询串（[`MssqlConfig::from_str`]）：
+//!
+//! ```text
+//! ECAT_TEST_MSSQL_URL='mssql://sa:Ecat_Test_2026!@localhost:14333?trustservercertificate=true'
+//! ```
+//!
+//! ADO 形态的等价写法（`TrustServerCertificate=true` 由 tiberius 自己解析）：
 //!
 //! ```text
 //! ECAT_TEST_MSSQL_URL='Server=localhost,14333;User Id=sa;Password=Ecat_Test_2026!;TrustServerCertificate=true'
@@ -21,7 +27,7 @@
 //! 例子里的 14333 是手工起的临时容器（避开宿主机上已占用的 1433）；根目录
 //! `docker-compose.dev.yml` 的 mssql 服务映射的是 1433，把端口换掉即可。
 //!
-//! **`#tmp` 跨语句活不下来**（与 sqlx 侧相反）：tiberius 的 `query` / `execute`
+//! **`#tmp` 跨语句活不下来**（sqlx 的 PG / MySQL / SQLite 路径上可以）：tiberius 的 `query` / `execute`
 //! 一律走 sp_executesql RPC，而动态批里建的临时表在**批结束时就没了** —— 实测
 //! `EXEC sp_executesql N'CREATE TABLE #t (a int)'; SELECT ... FROM #t` 报
 //! `Invalid object name '#t'`。所以：
@@ -366,19 +372,24 @@ async fn session_init_opens_arithabort() {
     );
 }
 
-/// 池的三个超时里唯一能在进程内验的一条：`create_timeout`（建连 30s 上限）。
+/// 这条用例把建连上限压到 2 秒（生产默认 30 秒，见
+/// [`MssqlConfig::create_timeout_secs`]）：验证的性质不变，但不必真等 30 秒 ——
+/// 否则每次 `cargo test` 都固定为此付出 30 秒（本 crate 测试的总耗时就是这么来的）。
+const TEST_CREATE_TIMEOUT_SECS: u64 = 2;
+
+/// 池的三个超时里唯一能在进程内验的一条：`create_timeout`（建连上限）。
 ///
 /// **不连真库**，所以不受 `ECAT_TEST_MSSQL_URL` 门控 —— 任何环境下都跑。
 ///
 /// 两段：
 /// 1. 死端口（无人监听）：connect 立刻被拒，走 `PoolError::Backend` 分支。
 /// 2. 黑洞端口（accept 但永不回 prelogin）：tiberius 自己没有握手超时，能结束
-///    建连的只有池的 `create_timeout` —— 断言它**等了约 30s 才失败**，而不是
+///    建连的只有池的 `create_timeout` —— 断言它**等满这个上限才失败**，而不是
 ///    无限等（`recycle` 是在 `Pool::get()` 路径上同步等的，一次卡死的建连会把
 ///    取用拖到 `wait_timeout`）。
 ///
-/// 第 2 段关掉 `query_timeout_secs`：查询超时也是 30s，同样从 `pool.get()` 起算，
-/// 不关的话会抢在 `create_timeout` 前面报 `Timeout`，验不到池那一层。
+/// 第 2 段关掉 `query_timeout_secs`：查询超时也从这个上限起算，不关的话会抢在
+/// `create_timeout` 前面报 `Timeout`，验不到池那一层。
 #[tokio::test]
 async fn pool_create_timeout_bounds_create() {
     // ① 死端口：先占再释放，得到一个必然没人监听的地址（不依赖外部环境）。
@@ -413,7 +424,7 @@ async fn pool_create_timeout_bounds_create() {
         }
     });
     let cfg: MssqlConfig = serde_json::from_str(&format!(
-        r#"{{"url": "mssql://sa:pw@127.0.0.1:{}", "query_timeout_secs": 0}}"#,
+        r#"{{"url": "mssql://sa:pw@127.0.0.1:{}", "query_timeout_secs": 0, "create_timeout_secs": {TEST_CREATE_TIMEOUT_SECS}}}"#,
         addr.port()
     ))
     .unwrap();
@@ -429,14 +440,15 @@ async fn pool_create_timeout_bounds_create() {
     );
     assert!(
         msg.to_lowercase().contains("timeout"),
-        "该是池的建连超时（CREATE_TIMEOUT = 30s），got: {msg}"
+        "该是池的建连超时（create_timeout = {TEST_CREATE_TIMEOUT_SECS}s），got: {msg}"
+    );
+    // 下界留 0.5s 余量：短于它说明建连是被别的什么结束的，不是 create_timeout。
+    assert!(
+        elapsed >= Duration::from_secs(TEST_CREATE_TIMEOUT_SECS) - Duration::from_millis(500),
+        "该耗到 {TEST_CREATE_TIMEOUT_SECS}s 的 create_timeout，实际只有 {elapsed:?}"
     );
     assert!(
-        elapsed >= Duration::from_secs(25),
-        "该耗到 30s 的 create_timeout，实际只有 {elapsed:?}（说明不是它结束的建连）"
-    );
-    assert!(
-        elapsed < Duration::from_secs(60),
+        elapsed < Duration::from_secs(TEST_CREATE_TIMEOUT_SECS + 6),
         "建连没被 create_timeout 掐住，实际 {elapsed:?}"
     );
 }

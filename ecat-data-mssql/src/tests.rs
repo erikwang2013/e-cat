@@ -51,6 +51,7 @@ fn pool_defaults_match_documented_values() {
     let p = c.pool();
     assert_eq!(p.max_connections, 10);
     assert_eq!(p.acquire_timeout, Duration::from_secs(30));
+    assert_eq!(p.create_timeout, Duration::from_secs(30));
     assert_eq!(p.query_timeout, Some(Duration::from_secs(30)));
 }
 
@@ -107,13 +108,115 @@ fn build_config_parses_url_without_from_str() {
     assert_eq!(cfg.get_addr(), "db.local:1444");
 }
 
-/// URL 里的查询串不支持。`?encrypt=` 这类开关直接决定加密与证书校验，
-/// 静默忽略等于「配了却没生效」—— 报错，并指向 `tls` 字段。
+/// URL 查询串的两个键都要真的落到 `tiberius::Config` 上 —— 这是自签证书库的
+/// 连接通路：`mssql://sa:pw@host:14333/db?trustservercertificate=true`。
+///
+/// 断言看的是 `Config` 的 `Debug` 输出：tiberius 的 `Config` 字段是 `pub(crate)`，
+/// `encryption` / `trust` 都没有 getter，Debug（它有 derive）是唯一的观察面。
 #[test]
-fn url_query_string_is_rejected() {
-    let err = MssqlConfig::from_str("mssql://h/db?encrypt=false").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("tls"), "错误信息要指向正确做法，got: {msg}");
+fn url_query_supports_encrypt_and_trust() {
+    // encrypt 的取值表逐个钉住：映射改错了这里就红。
+    for (value, level) in [
+        ("true", "Required"),
+        ("yes", "Required"),
+        ("mandatory", "Required"),
+        ("required", "Required"),
+        ("false", "On"),
+        ("no", "On"),
+        ("optional", "On"),
+        ("off", "NotSupported"),
+        ("disable", "NotSupported"),
+        ("notsupported", "NotSupported"),
+        ("strict", "Required"), // tds80 未开，降级成 Required，理由见 parse_encrypt
+    ] {
+        let c = MssqlConfig::from_str(&format!("mssql://sa:pw@h/db?encrypt={value}")).unwrap();
+        let dbg = format!("{:?}", c.build_config().unwrap());
+        assert!(
+            dbg.contains(&format!("encryption: {level}")),
+            "encrypt={value} 该是 {level}，got: {dbg}"
+        );
+    }
+
+    // trustservercertificate=true → 跳过校验；=false → 不动（保持默认校验）。
+    let c = MssqlConfig::from_str("mssql://sa:pw@h/db?trustservercertificate=true").unwrap();
+    let dbg = format!("{:?}", c.build_config().unwrap());
+    assert!(dbg.contains("trust: TrustAll"), "got: {dbg}");
+
+    let c = MssqlConfig::from_str("mssql://sa:pw@h/db?trustservercertificate=false").unwrap();
+    let dbg = format!("{:?}", c.build_config().unwrap());
+    assert!(dbg.contains("trust: Default"), "got: {dbg}");
+
+    // 两个键同时给：各归各的，互不覆盖。
+    let c = MssqlConfig::from_str("mssql://sa:pw@h/db?encrypt=false&trustservercertificate=true")
+        .unwrap();
+    let dbg = format!("{:?}", c.build_config().unwrap());
+    assert!(
+        dbg.contains("encryption: On") && dbg.contains("trust: TrustAll"),
+        "got: {dbg}"
+    );
+
+    // 查询串不能把地址与库名吃掉 —— 带路径与不带路径两种写法都要拆对
+    // （`live_tests` 的文档示例用的就是不带路径的那种）。
+    for url in [
+        "mssql://sa:pw@db.local:1444/app?trustservercertificate=true",
+        "mssql://sa:pw@db.local:1444?trustservercertificate=true",
+    ] {
+        let c = MssqlConfig::from_str(url).unwrap();
+        assert_eq!(
+            c.build_config().unwrap().get_addr(),
+            "db.local:1444",
+            "{url}"
+        );
+    }
+}
+
+/// 键名与取值都**不区分大小写**（ADO 风格：`TrustServerCertificate=True` 是常见写法）。
+#[test]
+fn url_query_keys_are_case_insensitive() {
+    let c =
+        MssqlConfig::from_str("mssql://sa:pw@h/db?ENCRYPT=OFF&TrustServerCertificate=Yes").unwrap();
+    let dbg = format!("{:?}", c.build_config().unwrap());
+    assert!(dbg.contains("encryption: NotSupported"), "got: {dbg}");
+    assert!(dbg.contains("trust: TrustAll"), "got: {dbg}");
+}
+
+/// 不认识的查询键、认不出的取值都必须报错：`trustservercertificat`（少个 e）
+/// 被静默忽略 = 证书校验没跳过，连不上还找不到原因。错误信息要点名那个键。
+#[test]
+fn unknown_url_query_key_is_rejected() {
+    let err = MssqlConfig::from_str("mssql://h/db?encrypt=false&trustservercertificat=true")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("trustservercertificat"),
+        "错误信息要点名出错的键，got: {err}"
+    );
+
+    let err = MssqlConfig::from_str("mssql://h/db?encrypt=nope")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("encrypt"), "取值错也要点名，got: {err}");
+}
+
+/// `trustservercertificate=true`（跳过校验）与 `tls.ca_cert`（信任锚）互斥 ——
+/// 与 `tls.skip_verify` / `ca_cert` 那条规则同源：不能既要跳过校验又配置信任锚。
+#[test]
+fn trust_query_conflicts_with_ca_cert() {
+    let c: MssqlConfig = serde_json::from_str(
+        r#"{"url": "mssql://h/db?trustservercertificate=true", "tls": {"ca_cert": "/tmp/ca.pem"}}"#,
+    )
+    .unwrap();
+    assert!(
+        c.build_config().is_err(),
+        "既要跳过校验又要信任锚，必须报错"
+    );
+
+    // 与 `tls.skip_verify` 同时给**不是**冲突：两者指向同一件事。
+    let c: MssqlConfig = serde_json::from_str(
+        r#"{"url": "mssql://h/db?trustservercertificate=true", "tls": {"skip_verify": true}}"#,
+    )
+    .unwrap();
+    assert!(c.build_config().is_ok());
 }
 
 /// 半配置的客户端证书（只有 cert 没有 key）必须报错，不能静默只配一半。

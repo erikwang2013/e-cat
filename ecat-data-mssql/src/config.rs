@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
+use crate::url_query::{UrlQuery, parse_query};
 use ecat_data::{Dialect, RdbmsError};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
@@ -30,7 +31,8 @@ pub struct MssqlConfig {
     /// - ADO：`Server=host,1433;Database=db;User Id=user;Password=pass`
     ///
     /// URL 形态**不做 percent-decode**（`%40` 不会被还原成 `@`），密码里要写
-    /// `@` / `/` 等分隔符请改用 ADO 形态；也不支持查询串，见 [`Self::from_str`]。
+    /// `@` / `/` 等分隔符请改用 ADO 形态；查询串只认 `encrypt` 与
+    /// `trustservercertificate` 两个键，其余键报错，见 [`Self::from_str`]。
     /// IPv6 字面量写方括号（`mssql://[::1]:1433/db`），方括号会保留 ——
     /// `get_addr()` 拼的是 `host:port`，那正是 std 认的 IPv6 形式。
     pub url: String,
@@ -67,6 +69,12 @@ pub struct MssqlConfig {
     /// 与 [`Self::query_timeout_secs`] 的 `0`（禁用）语义不同。
     #[serde(default)]
     pub acquire_timeout_secs: Option<u64>,
+    /// 建连上限（TCP + TDS 握手 + TLS + 认证 + 会话初始化全算在内），默认 30 秒。
+    ///
+    /// **不设的后果**：不给它上限的话，一次卡在建连上的取用会一直占着池子信号量 ——
+    /// 直到 [`Self::acquire_timeout_secs`] 把等连接的一方也一起拖下水。
+    #[serde(default)]
+    pub create_timeout_secs: Option<u64>,
     /// `0` = 禁用。
     #[serde(default)]
     pub query_timeout_secs: Option<u64>,
@@ -78,6 +86,7 @@ pub struct MssqlParams {
     pub max_connections: u32,
     pub min_connections: u32,
     pub acquire_timeout: Duration,
+    pub create_timeout: Duration,
     pub query_timeout: Option<Duration>,
 }
 
@@ -88,6 +97,7 @@ impl Default for MssqlParams {
             max_connections: 10,
             min_connections: 0,
             acquire_timeout: Duration::from_secs(30),
+            create_timeout: Duration::from_secs(30),
             query_timeout: Some(Duration::from_secs(30)),
         }
     }
@@ -104,6 +114,9 @@ struct ParsedUrl {
     database: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    /// 查询串里的开关。ADO 形态恒为默认值：那边的同名键（`Encrypt` /
+    /// `TrustServerCertificate`）由 tiberius 整串解析，不走这里。
+    query: UrlQuery,
 }
 
 impl MssqlConfig {
@@ -113,8 +126,17 @@ impl MssqlConfig {
     /// 是关联函数而非 `FromStr`：本函数只收连接串一种形态，返回项目统一的
     /// [`RdbmsError`]（`FromStr` 要求 `Err: Debug` 那套约束在这里没有意义）。
     ///
-    /// URL 形态的查询串（`?encrypt=...` 等）**不支持**：那些开关直接决定加密
-    /// 与证书校验，静默忽略等于「配了却没生效」。TLS 请走 [`Self::tls`]。
+    /// URL 形态的查询串**只认两个键**（大小写不敏感，ADO 风格）：
+    ///
+    /// - `encrypt`：`true`/`yes`/`mandatory`/`required` → 要求加密；
+    ///   `false`/`no`/`optional` → 能加密就加密；`off`/`disable`/`notsupported`
+    ///   → 明文；`strict` 按 `required` 处理（理由见 `url_query::parse_encrypt`）。
+    /// - `trustservercertificate`：`true`/`yes`/`1` → 跳过服务端证书校验
+    ///   （自签证书的开发/测试库与内部 CA 场景），`false`/`no`/`0` → 不动。
+    ///
+    /// 其余键、以及认不出的取值都**报错**：它们是安全相关的开关，静默忽略
+    /// 等于「配了却没生效」。更细的 TLS 配置（客户端证书、CA 信任锚）走
+    /// [`Self::tls`]。
     // 名字与 `FromStr::from_str` 撞车但**故意**不实现该 trait（见上一段的理由），
     // 关掉这条 lint 而不是为了迎合它把返回值改成 `Infallible`。
     #[allow(clippy::should_implement_trait)]
@@ -132,6 +154,7 @@ impl MssqlConfig {
             max_connections: None,
             min_connections: None,
             acquire_timeout_secs: None,
+            create_timeout_secs: None,
             query_timeout_secs: None,
         })
     }
@@ -154,14 +177,16 @@ impl MssqlConfig {
             database: self.database.clone().or(parsed.database),
             username: self.username.clone().or(parsed.username),
             password: self.password.clone().or(parsed.password),
+            // 查询串没有「显式字段优先」一说：加密开关只有查询串这一个来源。
+            query: parsed.query,
         })
     }
 
     /// 生成 tiberius 的配置（[`tiberius::Config`]）。
     ///
-    /// 加密级别（`EncryptionLevel`）**不在此暴露**：tiberius 默认 `Required`
-    /// （整条连接必须加密），改它得先想清楚 `Off` / `NotSupported` 的语义与
-    /// 默认值，本批次不做 —— 即没配 [`Self::tls`] 也要求加密。
+    /// 加密级别（`EncryptionLevel`）默认 `Required`（整条连接必须加密，即没配
+    /// [`Self::tls`] 也要求加密），要改就走 URL 查询串的 `?encrypt=`（见
+    /// [`Self::from_str`]）—— 没有单独的字段，加密开关不散落在两处配置里。
     pub fn build_config(&self) -> Result<Config, RdbmsError> {
         let t = self.target()?;
         let mut cfg = if is_url_form(&self.url) {
@@ -194,30 +219,44 @@ impl MssqlConfig {
         // 无从判断用户是否显式设过。
         cfg.application_name("ecat");
 
-        self.apply_tls(&mut cfg)?;
+        // 加密级别只在 URL 查询串里给（见 `Self::from_str`）；ADO 形态的
+        // `Encrypt` 键由 `Config::from_ado_string` 自己解析，`t.query` 因此恒为默认。
+        if let Some(level) = t.query.encrypt {
+            cfg.encryption(level);
+        }
+
+        self.apply_tls(&mut cfg, t.query.trust_server_certificate)?;
         Ok(cfg)
     }
 
-    /// 把 [`Self::tls`] 映射到 tiberius 的证书开关上。
+    /// 把 [`Self::tls`]（与 URL 的 `trustservercertificate`）映射到 tiberius 的
+    /// 证书开关上。
     ///
     /// 互斥检查必须自己做：tiberius 的 `trust_cert` / `trust_cert_ca` 在两者
     /// 都调用时是 **panic** 而不是返回 `Err`（`config.rs:264,291`），
     /// 配置错误不该让进程崩掉。
-    fn apply_tls(&self, cfg: &mut Config) -> Result<(), RdbmsError> {
-        let Some(tls) = &self.tls else {
-            return Ok(());
-        };
+    fn apply_tls(&self, cfg: &mut Config, trust_from_url: bool) -> Result<(), RdbmsError> {
+        let tls = self.tls.as_ref();
 
-        // 与 `TlsClientConfig` 同一条规则：skip_verify 与 ca_cert 同时配置等于
-        // 「既要校验又不校验」，必须报错而非静默选一个。
-        if tls.skip_verify == Some(true) && tls.ca_cert.is_some() {
+        // 「跳过校验」的诉求有两个来源（`tls.skip_verify` 与 URL 的
+        // `trustservercertificate=true`），两者同时给不冲突 —— 它们指向同一件事。
+        // 但「跳过校验」与「信任锚」（`tls.ca_cert`）互斥：同时配置等于「既要校验
+        // 又不校验」，与 `TlsClientConfig` 自己的规则同源，必须报错而非静默选一个。
+        let skip_verify = trust_from_url || tls.is_some_and(|t| t.skip_verify == Some(true));
+        if skip_verify && tls.is_some_and(|t| t.ca_cert.is_some()) {
             return Err(RdbmsError::Config(
-                "tls.skip_verify=true 与 tls.ca_cert 互斥：不能既要跳过证书校验又配置信任锚".into(),
+                "跳过证书校验（tls.skip_verify 或 URL 的 trustservercertificate=true）与 \
+                 tls.ca_cert 互斥：不能既要跳过校验又配置信任锚"
+                    .into(),
             ));
         }
-        if tls.skip_verify == Some(true) {
+        if skip_verify {
             cfg.trust_cert();
         }
+
+        let Some(tls) = tls else {
+            return Ok(());
+        };
         if let Some(ca) = &tls.ca_cert {
             cfg.trust_cert_ca(ca);
         }
@@ -252,6 +291,9 @@ impl MssqlConfig {
             acquire_timeout: self
                 .acquire_timeout_secs
                 .map_or(d.acquire_timeout, Duration::from_secs),
+            create_timeout: self
+                .create_timeout_secs
+                .map_or(d.create_timeout, Duration::from_secs),
             query_timeout: self.query_timeout(),
         }
     }
@@ -285,7 +327,7 @@ fn is_url_form(url: &str) -> bool {
 }
 
 /// 解析连接串。URL 形态手拆 —— workspace 里没有 `url` crate，不为这一处解析
-/// 引入依赖。语法 `scheme://[user[:pass]@]host[:port][/db]`。
+/// 引入依赖。语法 `scheme://[user[:pass]@]host[:port][/db][?query]`。
 fn parse_url(url: &str) -> Result<ParsedUrl, RdbmsError> {
     // 与 `Dialect::from_url` 同一套谓词（url crate 的 `ch <= ' '`），否则
     // 两边对空白的判定会分叉。
@@ -295,17 +337,17 @@ fn parse_url(url: &str) -> Result<ParsedUrl, RdbmsError> {
         return parse_ado(s, url);
     }
 
-    if s.contains('?') {
-        return Err(RdbmsError::Config(format!(
-            "连接串不支持查询参数（{url}）：TLS 与证书校验请用 `tls` 字段配置，\
-             不做静默忽略"
-        )));
-    }
-
     let rest = s
         .split_once("://")
         .map(|(_, rest)| rest)
         .ok_or_else(|| RdbmsError::Config(format!("连接串缺少 `://`: {url}")))?;
+
+    // 查询串从**第一个** `?` 起算（与 WHATWG 一致：`?` 之前的是 authority / path）。
+    // 密码里要写 `?` 请改用 ADO 形态 —— 与 `@` / `/` 同一条既有约定。
+    let (rest, query) = match rest.split_once('?') {
+        Some((rest, q)) => (rest, parse_query(q, url)?),
+        None => (rest, UrlQuery::default()),
+    };
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
 
     // 拆在**最后一个** `@`：与 WHATWG（url crate）一致，前面的 `@` 属于密码。
@@ -332,6 +374,7 @@ fn parse_url(url: &str) -> Result<ParsedUrl, RdbmsError> {
         database: (!path.is_empty()).then(|| path.to_string()),
         username,
         password,
+        query,
     })
 }
 
@@ -347,6 +390,9 @@ fn parse_ado(s: &str, url: &str) -> Result<ParsedUrl, RdbmsError> {
         database: ado_value(s, &["database", "initial catalog"]),
         username: None,
         password: None,
+        // ADO 串里的 `Encrypt` / `TrustServerCertificate` 由 tiberius 自己解析，
+        // 与 URL 查询串是两套语法，不能混着认。
+        query: UrlQuery::default(),
     })
 }
 

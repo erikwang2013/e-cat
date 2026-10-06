@@ -20,12 +20,6 @@ use serde_json::Value;
 use std::time::Duration;
 use tiberius::ToSql;
 
-/// 建连上限：TCP + TDS 握手 + TLS + 认证 + 会话初始化全算在内。
-///
-/// 不给它上限的话，一次卡在建连上的取用会一直占着池子信号量 —— 直到
-/// `wait_timeout` 把等连接的一方也一起拖下水。
-const CREATE_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// 取用时探活/清脏的上限。
 ///
 /// 比建连短得多：探活本该是一次往返的事，超了就是这条连接有问题，该丢弃重建。
@@ -70,9 +64,10 @@ impl MssqlClient {
 
         let pool = Pool::builder(manager)
             .max_size(params.max_connections as usize)
-            // 三个超时缺一不可，理由见 CREATE_TIMEOUT / RECYCLE_TIMEOUT。
+            // 三个超时缺一不可，理由见 MssqlConfig 的 create_timeout_secs 与
+            // RECYCLE_TIMEOUT。
             .wait_timeout(Some(acquire_timeout))
-            .create_timeout(Some(CREATE_TIMEOUT))
+            .create_timeout(Some(params.create_timeout))
             .recycle_timeout(Some(RECYCLE_TIMEOUT))
             // 设了超时就**必须**给运行时，否则 `build()` 直接失败
             // （`deadpool-0.13.1/src/managed/builder.rs:90-98`）。

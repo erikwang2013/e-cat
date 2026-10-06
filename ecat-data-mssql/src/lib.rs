@@ -23,6 +23,7 @@ mod live_tests;
 mod pool;
 #[cfg(test)]
 mod tests;
+mod url_query;
 
 pub use client::MssqlClient;
 pub use config::{MssqlConfig, MssqlParams};

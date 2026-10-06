@@ -646,6 +646,42 @@ tiberius-ng 也原生支持 —— 五个后端统一，**零特例**。
 > **定回纯日期**。最终判据是上面那条「不伪造源数据」，它比「格式统一更简单」更硬。
 > 教训：把「一个格式更简单」当作硬约束去压语义正确性，是错的。
 
+### SQL Server：临时表 `#tmp` 跨语句活不下来（驱动层差异，修不了）
+
+**现象**：分两次调用发出的「建表 → 用表」拿不到临时表 ——
+
+```rust
+db.execute("CREATE TABLE #t (a int)").await?;
+db.query("SELECT a FROM #t").await?;          // 报 Msg 208: Invalid object name '#t'
+```
+
+**成因**：tiberius 的 `query` / `execute` **一律**走 `sp_executesql` RPC（连 0 参数
+也是），而动态批里建的本地临时表在**该批结束时就丢掉**。等价复现（sqcmd 直接验证）：
+
+```sql
+EXEC sp_executesql N'CREATE TABLE #t (a int)'; SELECT a FROM #t   -- Msg 208
+```
+
+**为什么不去修**：把无参路径改成 `simple_query`（普通 batch，临时表能活到会话结束）
+看似能修，但**连接池下下一次调用可能落到另一条连接** —— 「先建表、再分几条语句用它」
+跨的是两次池取用，本就不可靠。即使驱动改了，用户代码也是「有时能跑、有时 Msg 208」。
+**这不是本后端的 bug，是驱动 API 形态（每条语句一个动态批）与临时表作用域的共同结果 ——
+如实告知，不假装支持。**
+
+**用户该怎么办**（`ecat-data-mssql/src/live_tests.rs` 的两条路径就是范例）：
+
+1. 把「建表 → 插 → 查」写在**同一条语句**里（一个批，参数绑定照常工作）；
+2. 或者用 tempdb 里的**真实表**（`tempdb.dbo.<名字>`，服务端重启即清）——
+   池里有多条连接，名字要带唯一后缀，否则并发用例互相撞名；
+3. **别指望事务**：事务保证的是同一条**连接**，而临时表的生死按**批**算 ——
+   事务里的每条 `execute` / `query` 仍是各自一个批，包进事务也照样丢。
+
+**与其它后端的可观察差异（用户需知晓）**：sqlx 的 PG / MySQL / SQLite 路径上，
+`CREATE TEMP TABLE` 建的表在后续语句里照常可用（那三个引擎的临时表本就是会话级，
+sqlx 也不把语句包进 `sp_executesql`）。所以「临时表当草稿纸」的写法从 sqlx 后端
+搬过来会直接撞上 Msg 208。（MSSQL 不走 sqlx：`mssql://` 由 `ecat-data-mssql` 承接，
+`ecat-data-sqlx` 会明确拒绝该 scheme。）
+
 ## 7. 迁移系统
 
 **执行位置：用户代码。取消 CLI 方案。**
