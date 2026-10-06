@@ -4838,6 +4838,10 @@ git commit -m "feat(ecat-orm): SELECT/COUNT 生成（SQL 与参数同步产出�
 > 这实测证明了「**只断言 `contains` 在 SQL 生成层是空验收**」：片段存在 ≠ 片段在正确的位置。
 > 后续凡涉及 SQL 生成的断言，**必须有一条钉住整体形状的**，不能只有零散的 `contains`。
 
+---
+
+## Task 13: CRUD（`crud.rs`）
+
 > ### ⚠️ 本任务必做之零：删掉 `sql.rs` 上那行 `#[allow(dead_code)]`
 >
 > Task 12 落地时，`build_select` / `render_where` 只被 `#[cfg(test)]` 使用 ——
