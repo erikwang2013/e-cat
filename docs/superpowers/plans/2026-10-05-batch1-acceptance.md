@@ -105,7 +105,14 @@
 | ⑤ | 7 个 i18n 副本的 yaml 注释仍是中文 | 独立小清理 | 一行 sed，但改动前已有 |
 | ⑥ | **f32 最短表示只覆盖 PG**，MySQL `FLOAT` 仍返回加宽值（`0.1` → `0.10000000149011612`） | 独立立项 | **不要靠「f32 挪到 f64 前」修** —— 会让 `DOUBLE` 列 `1e300`→`inf` 真丢数据。详见计划文件的已知限制一节 |
 
-① 与 ② 是**既有红灯**，与本次改动无关，但在用当前工具链时会让 CI 失败。
+| ③ | **`cargo audit --deny warnings` 失败**：`h2 0.4.15`（RUSTSEC-2026-0258）、`rustls 0.23.43`（RUSTSEC-2026-0285，**5.3 medium**）、`chacha20 0.10.1`（yanked） | 独立 | 升 `h2`/`rustls`，或按 `.cargo/audit.toml` 既有方针加 ignore + 补 CVE 评估表 |
+
+① ② ③ 是**既有红灯**，与本次改动无关，但在用当前工具链时会让 CI 失败。**CI 的三道闸门在 `main` 上都是红的。**
+
+③ 的验证方式（批次 2 Task 1 实测）：导出 HEAD 的 lockfile 单跑 CI 钉的同一 audit 二进制
+（v0.22.2 musl），得到**同样三条、版本一字不差**；两条 advisory 的发布日期
+（2026-08-17 / 2026-09-14）晚于仓库上次审计报告（2026-08-14）→ 是 advisory 库更新所致。
+`chacha20` 的 yank 来自 `mongodb → hickory → rand`。**`tiberius-ng` / `deadpool` 零告警。**
 
 ## 五、待你决策（2 项）
 
