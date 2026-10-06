@@ -100,7 +100,7 @@ http = "1"
 thiserror = "2"
 futures-core = "0.3"
 sha2 = "0.10"
-time = { version = "0.3", features = ["formatting", "parsing"] }
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 # SQL Server: default-features = false 关掉 native-tls + winauth（与 rustls 栈冲突，
 # winauth 还会引入 SSPI 依赖）；tds73 覆盖 SQL Server 2008+。
 tiberius-ng = { version = "0.13", default-features = false, features = ["rustls", "tds73", "time"] }
