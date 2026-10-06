@@ -26,6 +26,9 @@ pub struct SqlxConfig {
     pub max_connections: Option<u32>,
     #[serde(default)]
     pub min_connections: Option<u32>,
+    /// 取连接的最长等待。注意 **`0` 不是「禁用」** —— sqlx 对
+    /// `acquire_timeout(Duration::ZERO)` 的处理是**立即超时**（拿不到连接就失败），
+    /// 与 [`SqlxConfig::query_timeout_secs`] 的 `0`（禁用）语义不同。
     #[serde(default)]
     pub acquire_timeout_secs: Option<u64>,
     #[serde(default)]

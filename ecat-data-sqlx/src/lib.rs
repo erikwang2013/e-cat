@@ -6,6 +6,7 @@ mod live_tests;
 mod pool;
 #[cfg(test)]
 mod tests;
+mod transaction;
 
 use async_trait::async_trait;
 use cell::{mysql_rows_to_result, pg_rows_to_result, sqlite_rows_to_result};
@@ -13,8 +14,8 @@ use ecat_data::{
     Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
     run_with_timeout,
 };
-use sqlx::Executor as _;
 use std::time::Duration;
+use transaction::{MyTx, PgTx, SqTx};
 
 pub use config::{PoolParams, SqlxConfig};
 pub use pool::{Pool, PoolGuard};
@@ -44,11 +45,6 @@ fn with_auth_in_url(url: &str, username: &str, password: &str) -> String {
 /// 统一走这里避免 6 处重复。
 fn db_err(e: sqlx::Error) -> RdbmsError {
     RdbmsError::Database(e.to_string())
-}
-
-/// 已结束（提交或回滚过）的事务再执行 SQL 的错误。
-fn tx_finished() -> RdbmsError {
-    RdbmsError::Database("transaction already finished".into())
 }
 
 pub struct SqlxClient {
@@ -355,128 +351,26 @@ impl SqlExecutor for SqlxClient {
 impl RdbmsClient for SqlxClient {
     async fn transaction(&self) -> Result<Transaction, RdbmsError> {
         let dialect = self.pool.dialect();
+        // 超时值随事务一起带走：`transaction()` 之后调用方手里只有 `Transaction`，
+        // 事务 wrapper 是唯一知道该用什么超时的地方。
+        let query_timeout = self.query_timeout;
         let inner: Box<dyn TransactionInner> = match &self.pool {
             Pool::Pg(p) => Box::new(PgTx {
                 inner: Some(p.begin().await.map_err(db_err)?),
                 dialect,
+                query_timeout,
             }),
             Pool::My(p) => Box::new(MyTx {
                 inner: Some(p.begin().await.map_err(db_err)?),
                 dialect,
+                query_timeout,
             }),
             Pool::Sq(p) => Box::new(SqTx {
                 inner: Some(p.begin().await.map_err(db_err)?),
                 dialect,
+                query_timeout,
             }),
         };
         Ok(Transaction::with_inner(inner))
     }
 }
-
-/// 事务 wrapper：三种驱动的 `Transaction<'static, DB>` 是三种类型，
-/// 用宏生成三份同构实现，各自配对应的 `*_rows_to_result`。
-macro_rules! tx_wrapper {
-    ($name:ident, $db:ty, $rows:ident) => {
-        struct $name {
-            inner: Option<sqlx::Transaction<'static, $db>>,
-            dialect: Dialect,
-        }
-
-        #[async_trait]
-        impl TransactionInner for $name {
-            async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError> {
-                let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
-                tx.execute(sql)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(db_err)
-            }
-
-            async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-                let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
-                let rows = tx.fetch_all(sql).await.map_err(db_err)?;
-                $rows(rows)
-            }
-
-            async fn execute_with(
-                &mut self,
-                sql: &str,
-                params: &[serde_json::Value],
-            ) -> Result<u64, RdbmsError> {
-                let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
-                let mut q = sqlx::query(sql);
-                for param in params {
-                    q = match param {
-                        serde_json::Value::String(s) => q.bind(s.as_str()),
-                        serde_json::Value::Number(n) => {
-                            if let Some(i) = n.as_i64() {
-                                q.bind(i)
-                            } else if let Some(f) = n.as_f64() {
-                                q.bind(f)
-                            } else {
-                                q.bind(n.to_string())
-                            }
-                        }
-                        serde_json::Value::Bool(b) => q.bind(*b),
-                        serde_json::Value::Null => q.bind(None::<String>),
-                        _ => q.bind(param.to_string()),
-                    };
-                }
-                q.execute(&mut **tx)
-                    .await
-                    .map(|r| r.rows_affected())
-                    .map_err(db_err)
-            }
-
-            async fn query_with(
-                &mut self,
-                sql: &str,
-                params: &[serde_json::Value],
-            ) -> Result<Vec<Row>, RdbmsError> {
-                let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
-                let mut q = sqlx::query(sql);
-                for param in params {
-                    q = match param {
-                        serde_json::Value::String(s) => q.bind(s.as_str()),
-                        serde_json::Value::Number(n) => {
-                            if let Some(i) = n.as_i64() {
-                                q.bind(i)
-                            } else if let Some(f) = n.as_f64() {
-                                q.bind(f)
-                            } else {
-                                q.bind(n.to_string())
-                            }
-                        }
-                        serde_json::Value::Bool(b) => q.bind(*b),
-                        serde_json::Value::Null => q.bind(None::<String>),
-                        _ => q.bind(param.to_string()),
-                    };
-                }
-                let rows = q.fetch_all(&mut **tx).await.map_err(db_err)?;
-                $rows(rows)
-            }
-
-            fn dialect(&self) -> Dialect {
-                self.dialect
-            }
-
-            async fn commit(&mut self) -> Result<(), RdbmsError> {
-                if let Some(tx) = self.inner.take() {
-                    tx.commit().await.map_err(db_err)?;
-                }
-                Ok(())
-            }
-
-            async fn rollback(&mut self) -> Result<(), RdbmsError> {
-                if let Some(tx) = self.inner.take() {
-                    tx.rollback().await.map_err(db_err)?;
-                }
-                Ok(())
-            }
-        }
-    };
-}
-
-tx_wrapper!(PgTx, sqlx::Postgres, pg_rows_to_result);
-tx_wrapper!(MyTx, sqlx::MySql, mysql_rows_to_result);
-tx_wrapper!(SqTx, sqlx::Sqlite, sqlite_rows_to_result);

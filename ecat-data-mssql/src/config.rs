@@ -13,6 +13,10 @@ const DEFAULT_PORT: u16 = 1433;
 /// SQL Server 连接配置。
 ///
 /// 除 [`Self::url`] 外的字段都是可选的：要么覆盖连接串里的值，要么是池参数。
+///
+/// 注意：本后端**没有** `idle_timeout` —— deadpool 0.13 不提供空闲回收。
+/// 需要空闲回收时用 `max_connections` 限制规模、或依赖查询超时与
+/// `recycle_timeout` 兜底。（sqlx 后端有 `idle_timeout_secs`，那边是 sqlx 原生支持。）
 #[derive(Debug, Clone, Deserialize)]
 pub struct MssqlConfig {
     /// 连接串。两种形态都接受：
@@ -52,10 +56,11 @@ pub struct MssqlConfig {
     /// deadpool **没有** sqlx 的 `min_connections` 概念，本字段仅供 `warm_up()` 用。
     #[serde(default)]
     pub min_connections: Option<u32>,
+    /// 取连接的最长等待。注意 **`0` 不是「禁用」** —— deadpool 的
+    /// `wait_timeout(Some(Duration::ZERO))` 是**非阻塞**（取不到立即失败），
+    /// 与 [`Self::query_timeout_secs`] 的 `0`（禁用）语义不同。
     #[serde(default)]
     pub acquire_timeout_secs: Option<u64>,
-    #[serde(default)]
-    pub idle_timeout_secs: Option<u64>,
     /// `0` = 禁用。
     #[serde(default)]
     pub query_timeout_secs: Option<u64>,
@@ -67,7 +72,6 @@ pub struct MssqlParams {
     pub max_connections: u32,
     pub min_connections: u32,
     pub acquire_timeout: Duration,
-    pub idle_timeout: Duration,
     pub query_timeout: Option<Duration>,
 }
 
@@ -78,7 +82,6 @@ impl Default for MssqlParams {
             max_connections: 10,
             min_connections: 0,
             acquire_timeout: Duration::from_secs(30),
-            idle_timeout: Duration::from_secs(600),
             query_timeout: Some(Duration::from_secs(30)),
         }
     }
@@ -123,7 +126,6 @@ impl MssqlConfig {
             max_connections: None,
             min_connections: None,
             acquire_timeout_secs: None,
-            idle_timeout_secs: None,
             query_timeout_secs: None,
         })
     }
@@ -244,9 +246,6 @@ impl MssqlConfig {
             acquire_timeout: self
                 .acquire_timeout_secs
                 .map_or(d.acquire_timeout, Duration::from_secs),
-            idle_timeout: self
-                .idle_timeout_secs
-                .map_or(d.idle_timeout, Duration::from_secs),
             query_timeout: self.query_timeout(),
         }
     }

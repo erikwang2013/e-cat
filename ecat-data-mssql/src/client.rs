@@ -233,8 +233,15 @@ impl SqlExecutor for MssqlClient {
 /// 带着未关闭的事务直接回到池里。清脏由 `MssqlManager::recycle` 负责 —— 依据就是
 /// 连接上的 `in_transaction` 标记，本结构在 drop 时**不需要**做任何事（Drop 里也
 /// 没法 await 回滚）。见 [`Self::finish`]。
+///
+/// **超时语义**：四个执行方法与客户端一样套 [`run_with_timeout`] —— 事务里挂死的
+/// 查询一样会永久占住连接，事务不是例外。但超时把查询从半路切断后，**事务状态
+/// 不再确定**（服务端可能已执行、可能还在执行、也可能已中止），本结构不会自作
+/// 主张回滚，只返回 [`RdbmsError::Timeout`] 交由调用方判断；**调用方应当回滚或
+/// 直接丢弃本事务，不要在这个事务上继续执行**。
 struct MssqlTransaction {
     conn: Object<MssqlManager>,
+    query_timeout: Option<Duration>,
 }
 
 impl MssqlTransaction {
@@ -249,30 +256,41 @@ impl MssqlTransaction {
 
 #[async_trait]
 impl TransactionInner for MssqlTransaction {
-    // 四个执行方法不套 `run_with_timeout`，与 `ecat-data-sqlx` 的事务 wrapper 一致：
-    // 事务中途被超时打断会把「事务还开着」这件事留在一个谁都接不住的位置。
+    // 四个执行方法与客户端同一套 `run_with_timeout`（超时语义见结构体文档）。
     async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError> {
-        let result = self.conn.execute(sql, &[]).await.map_err(db_err)?;
-        Ok(result.total())
+        run_with_timeout(self.query_timeout, async {
+            let result = self.conn.execute(sql, &[]).await.map_err(db_err)?;
+            Ok(result.total())
+        })
+        .await
     }
 
     async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        let stream = self.conn.query(sql, &[]).await.map_err(db_err)?;
-        rows_to_result(stream.into_first_result().await.map_err(db_err)?)
+        run_with_timeout(self.query_timeout, async {
+            let stream = self.conn.query(sql, &[]).await.map_err(db_err)?;
+            rows_to_result(stream.into_first_result().await.map_err(db_err)?)
+        })
+        .await
     }
 
     async fn execute_with(&mut self, sql: &str, params: &[Value]) -> Result<u64, RdbmsError> {
-        let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
-        let refs = to_sql_refs(&binds);
-        let result = self.conn.execute(sql, &refs).await.map_err(db_err)?;
-        Ok(result.total())
+        run_with_timeout(self.query_timeout, async {
+            let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
+            let refs = to_sql_refs(&binds);
+            let result = self.conn.execute(sql, &refs).await.map_err(db_err)?;
+            Ok(result.total())
+        })
+        .await
     }
 
     async fn query_with(&mut self, sql: &str, params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
-        let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
-        let refs = to_sql_refs(&binds);
-        let stream = self.conn.query(sql, &refs).await.map_err(db_err)?;
-        rows_to_result(stream.into_first_result().await.map_err(db_err)?)
+        run_with_timeout(self.query_timeout, async {
+            let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
+            let refs = to_sql_refs(&binds);
+            let stream = self.conn.query(sql, &refs).await.map_err(db_err)?;
+            rows_to_result(stream.into_first_result().await.map_err(db_err)?)
+        })
+        .await
     }
 
     fn dialect(&self) -> Dialect {
@@ -301,6 +319,9 @@ impl RdbmsClient for MssqlClient {
         // 不存在「服务端事务开了但标记没打上」的缝隙。之后的一切交给
         // `MssqlManager::recycle`（见 pool.rs 的清脏说明）。
         conn.in_transaction = true;
-        Ok(Transaction::with_inner(Box::new(MssqlTransaction { conn })))
+        Ok(Transaction::with_inner(Box::new(MssqlTransaction {
+            conn,
+            query_timeout: self.query_timeout,
+        })))
     }
 }
