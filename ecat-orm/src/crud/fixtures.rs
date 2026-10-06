@@ -231,6 +231,15 @@ pub(crate) fn last(spy: &Spy) -> (String, Vec<serde_json::Value>) {
     spy.calls().pop().expect("no call recorded")
 }
 
+/// 指定方言与受影响行数的 spy。批量测试要按方言的上限分块，逐个写字面量太吵。
+pub(crate) fn spy(dialect: Dialect, affected: u64) -> Spy {
+    Spy {
+        dialect,
+        affected,
+        ..Default::default()
+    }
+}
+
 // ---- 非自增主键（手工分配）----
 
 pub(crate) static MANUAL_COLS: [ColumnMeta; 2] = [

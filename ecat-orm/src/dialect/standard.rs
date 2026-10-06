@@ -18,11 +18,13 @@ impl DialectSpec for StandardSpec {
         "?".into()
     }
 
-    fn limit_clause(&self, limit: u64, offset: u64, _has_order: bool) -> Limit {
-        let suffix = if offset == 0 {
-            format!(" LIMIT {limit}")
-        } else {
-            format!(" LIMIT {limit} OFFSET {offset}")
+    fn limit_clause(&self, limit: Option<u64>, offset: u64, _has_order: bool) -> Limit {
+        let suffix = match (limit, offset) {
+            // `None` = 不限制行数：整个 LIMIT 子句省略（见 trait 的文档）。
+            (None, 0) => String::new(),
+            (None, o) => format!(" OFFSET {o}"),
+            (Some(l), 0) => format!(" LIMIT {l}"),
+            (Some(l), o) => format!(" LIMIT {l} OFFSET {o}"),
         };
         Limit {
             prefix: String::new(),
@@ -68,11 +70,29 @@ impl DialectSpec for StandardSpec {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        // 可更新列集为空（只有主键列的表）时 `DO UPDATE SET ` 是**空 SET**，
+        // 真库语法错误。空集语义 = 「已存在就什么都不做」→ `DO NOTHING`。
+        let action = if assigns.is_empty() {
+            "DO NOTHING".to_string()
+        } else {
+            format!("DO UPDATE SET {assigns}")
+        };
         format!(
-            "INSERT INTO {} ({cols_sql}) VALUES ({ph}) ON CONFLICT ({}) DO UPDATE SET {assigns}",
+            "INSERT INTO {} ({cols_sql}) VALUES ({ph}) ON CONFLICT ({}) {action}",
             self.quote(table),
             self.quote(pk)
         )
+    }
+
+    fn update_many_stmt(
+        &self,
+        table: &str,
+        pk: &str,
+        set_cols: &[String],
+        where_extra: &[String],
+        n_rows: usize,
+    ) -> String {
+        super::update_many_from_values(self, table, pk, set_cols, where_extra, n_rows)
     }
 
     fn bool_literal(&self, b: bool) -> String {
@@ -102,5 +122,66 @@ impl DialectSpec for StandardSpec {
 
     fn max_params_per_stmt(&self) -> usize {
         65535
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s() -> StandardSpec {
+        StandardSpec
+    }
+
+    /// 分页片段的三种形态：只 limit、limit + offset、**只 offset**（`None`）。
+    /// 最后一种必须**整个省略 LIMIT** —— 用 `u64::MAX` 顶替「未设置」会产出
+    /// `LIMIT 18446744073709551615`，超出 BIGINT，真库拒收。
+    #[test]
+    fn limit_clause_states_every_shape() {
+        assert_eq!(s().limit_clause(Some(10), 0, false).suffix, " LIMIT 10");
+        assert_eq!(
+            s().limit_clause(Some(10), 20, false).suffix,
+            " LIMIT 10 OFFSET 20"
+        );
+        assert_eq!(s().limit_clause(None, 20, false).suffix, " OFFSET 20");
+        // 两者都没设置（`build_select` 不该走到这里，但走到也不能产出哨兵值）
+        assert_eq!(s().limit_clause(None, 0, false), Limit::none());
+    }
+
+    /// 多行 UPDATE：每行一个 `(主键, …SET 值…)` 元组，`SET` 从别名取值。
+    /// **整串断言** —— 「含 UPDATE 关键字」这种查法对「SET 与 WHERE 错位」恒真。
+    #[test]
+    fn update_many_uses_from_values() {
+        let sql = s().update_many_stmt("docs", "id", &["name".into()], &[], 2);
+        assert_eq!(
+            sql,
+            "UPDATE \"docs\" SET \"name\" = v.\"name\" FROM (VALUES (?, ?), (?, ?)) \
+             AS v(\"id\", \"name\") WHERE \"docs\".\"id\" = v.\"id\""
+        );
+    }
+
+    /// 带逐行 WHERE 比对列（乐观锁的旧版本号）：别名加 `__old` 后缀，
+    /// 与 SET 里的同名列区分开 —— 否则两个 `"version"` 撞名。
+    #[test]
+    fn update_many_puts_where_extras_in_the_alias_with_an_old_suffix() {
+        let sql = s().update_many_stmt("docs", "id", &["name".into()], &["version".into()], 1);
+        assert_eq!(
+            sql,
+            "UPDATE \"docs\" SET \"name\" = v.\"name\" FROM (VALUES (?, ?, ?)) \
+             AS v(\"id\", \"name\", \"version__old\") \
+             WHERE \"docs\".\"id\" = v.\"id\" AND \"docs\".\"version\" = v.\"version__old\""
+        );
+    }
+
+    /// **只有主键列时**：可更新列集为空 → 原实现产出 `DO UPDATE SET `
+    /// （空 SET，真库语法错误）。空集语义是「已存在就什么都不做」→ `DO NOTHING`。
+    /// 形态与 `sqlite.rs` / `postgres.rs` 的同名测试一致 —— 三者共用同款写法。
+    #[test]
+    fn upsert_with_only_the_pk_column_does_nothing() {
+        let sql = s().upsert("users", &["id".into()], "id", 1);
+        assert_eq!(
+            sql,
+            "INSERT INTO \"users\" (\"id\") VALUES (?) ON CONFLICT (\"id\") DO NOTHING"
+        );
     }
 }

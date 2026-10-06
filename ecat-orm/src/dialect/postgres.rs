@@ -18,13 +18,15 @@ impl DialectSpec for PostgresSpec {
         format!("${index}")
     }
 
-    fn limit_clause(&self, limit: u64, offset: u64, _has_order: bool) -> Limit {
+    fn limit_clause(&self, limit: Option<u64>, offset: u64, _has_order: bool) -> Limit {
         Limit {
             prefix: String::new(),
-            suffix: if offset == 0 {
-                format!(" LIMIT {limit}")
-            } else {
-                format!(" LIMIT {limit} OFFSET {offset}")
+            suffix: match (limit, offset) {
+                // `None` = 不限制行数：整个 LIMIT 子句省略（见 trait 的文档）。
+                (None, 0) => String::new(),
+                (None, o) => format!(" OFFSET {o}"),
+                (Some(l), 0) => format!(" LIMIT {l}"),
+                (Some(l), o) => format!(" LIMIT {l} OFFSET {o}"),
             },
         }
     }
@@ -58,8 +60,15 @@ impl DialectSpec for PostgresSpec {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        // 可更新列集为空（只有主键列的表）时 `DO UPDATE SET ` 是**空 SET**，
+        // 真库语法错误。空集语义 = 「已存在就什么都不做」→ `DO NOTHING`。
+        let action = if assigns.is_empty() {
+            "DO NOTHING".to_string()
+        } else {
+            format!("DO UPDATE SET {assigns}")
+        };
         format!(
-            "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {assigns}",
+            "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) {action}",
             self.quote(table),
             cols.iter()
                 .map(|c| self.quote(c))
@@ -71,6 +80,19 @@ impl DialectSpec for PostgresSpec {
                 .join(", "),
             self.quote(pk)
         )
+    }
+
+    /// `UPDATE … FROM (VALUES …)` —— 与 Standard / SQLite / MSSQL 同形，
+    /// 差别只在 `$n` 编号占位符（由 `self.placeholder` 提供）。
+    fn update_many_stmt(
+        &self,
+        table: &str,
+        pk: &str,
+        set_cols: &[String],
+        where_extra: &[String],
+        n_rows: usize,
+    ) -> String {
+        super::update_many_from_values(self, table, pk, set_cols, where_extra, n_rows)
     }
 
     fn bool_literal(&self, b: bool) -> String {
@@ -133,12 +155,27 @@ mod tests {
 
     #[test]
     fn limit_is_a_suffix() {
-        assert_eq!(s().limit_clause(10, 0, false).suffix, " LIMIT 10");
+        assert_eq!(s().limit_clause(Some(10), 0, false).suffix, " LIMIT 10");
         assert_eq!(
-            s().limit_clause(10, 20, false).suffix,
+            s().limit_clause(Some(10), 20, false).suffix,
             " LIMIT 10 OFFSET 20"
         );
-        assert_eq!(s().limit_clause(10, 0, false).prefix, "");
+        assert_eq!(s().limit_clause(Some(10), 0, false).prefix, "");
+    }
+
+    /// **只设 offset 不设 limit**：`None` 时整个 `LIMIT` 子句必须**省略**。
+    /// 用 `u64::MAX` 顶替「未设置」会产出
+    /// `LIMIT 18446744073709551615 OFFSET 20` —— 超出 BIGINT，真库拒收。
+    #[test]
+    fn offset_without_limit_omits_the_limit_clause() {
+        let l = s().limit_clause(None, 20, false);
+        assert_eq!(l.prefix, "");
+        assert_eq!(l.suffix, " OFFSET 20");
+        assert!(
+            !l.suffix.contains("18446744073709551615") && !l.suffix.contains("9223372036854775807"),
+            "分页片段里不得出现哨兵数字: {}",
+            l.suffix
+        );
     }
 
     #[test]
@@ -155,6 +192,18 @@ mod tests {
         }
     }
 
+    /// 多行 UPDATE：`$n` 编号在**整个语句**里连续，跨行也接着数 ——
+    /// 每行重新从 `$1` 开始会让第二行绑到第一行的值上（静默错值）。
+    #[test]
+    fn update_many_numbers_placeholders_across_rows() {
+        let sql = s().update_many_stmt("docs", "id", &["name".into()], &[], 2);
+        assert_eq!(
+            sql,
+            "UPDATE \"docs\" SET \"name\" = v.\"name\" FROM (VALUES ($1, $2), ($3, $4)) \
+             AS v(\"id\", \"name\") WHERE \"docs\".\"id\" = v.\"id\""
+        );
+    }
+
     #[test]
     fn upsert_uses_on_conflict() {
         let sql = s().upsert("users", &["id".into(), "name".into()], "id", 2);
@@ -169,6 +218,18 @@ mod tests {
     fn upsert_never_assigns_the_pk() {
         let sql = s().upsert("users", &["id".into(), "name".into()], "id", 2);
         assert!(!sql.contains("\"id\" = excluded"), "主键不该被更新: {sql}");
+    }
+
+    /// **只有主键列时**：可更新列集为空 → 原实现产出 `DO UPDATE SET `（空 SET，
+    /// 真库语法错误）。空集语义是「已存在就什么都不做」→ `DO NOTHING`。
+    #[test]
+    fn upsert_with_only_the_pk_column_does_nothing() {
+        let sql = s().upsert("users", &["id".into()], "id", 1);
+        assert_eq!(
+            sql,
+            "INSERT INTO \"users\" (\"id\") VALUES ($1) ON CONFLICT (\"id\") DO NOTHING"
+        );
+        assert!(!sql.contains("SET"), "不得留下空的 SET 片段: {sql}");
     }
 
     #[test]

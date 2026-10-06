@@ -74,14 +74,16 @@ static AUTO_META: EntityMeta = EntityMeta {
     },
 };
 
+/// `pub(crate)`：`batch` 的测试复用同一个「四种自动行为全开」的实体 ——
+/// 各写一份必然漂移，漂移的表现是「批量路径静默漏掉版本闸门」。
 #[derive(Debug, Clone)]
-struct D {
-    id: i64,
-    name: String,
-    created_at: Option<OffsetDateTime>,
-    updated_at: Option<OffsetDateTime>,
-    deleted_at: Option<OffsetDateTime>,
-    version: i64,
+pub(crate) struct D {
+    pub(crate) id: i64,
+    pub(crate) name: String,
+    pub(crate) created_at: Option<OffsetDateTime>,
+    pub(crate) updated_at: Option<OffsetDateTime>,
+    pub(crate) deleted_at: Option<OffsetDateTime>,
+    pub(crate) version: i64,
 }
 
 impl Entity for D {
@@ -126,7 +128,7 @@ impl Entity for D {
 }
 
 /// 全空的实体：时间戳为 `None`、version 为 0。
-fn blank() -> D {
+pub(crate) fn blank() -> D {
     D {
         id: 0,
         name: "x".into(),
@@ -138,7 +140,7 @@ fn blank() -> D {
 }
 
 /// 与 [`blank`] 比：主键已设置、version = 5（update/乐观锁用）。
-fn stored() -> D {
+pub(crate) fn stored() -> D {
     D {
         id: 1,
         version: 5,
@@ -152,7 +154,7 @@ const AUTO_FILLED: &str = "2020-01-01T00:00:00Z";
 ///
 /// 用性质断言而不是 `assert_eq!` 某个精确时刻：既能证明「填的是当前时间」，
 /// 又不依赖具体时刻 —— 因此**不需要可注入的时钟**（见 `crud.rs` 的 `now()` 文档）。
-fn assert_filled_now(v: &serde_json::Value) {
+pub(crate) fn assert_filled_now(v: &serde_json::Value) {
     let s = v
         .as_str()
         .unwrap_or_else(|| panic!("自动时间戳应是 RFC3339 字符串，得到 {v}"));

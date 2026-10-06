@@ -18,13 +18,15 @@ impl DialectSpec for MySqlSpec {
         "?".into()
     }
 
-    fn limit_clause(&self, limit: u64, offset: u64, _has_order: bool) -> Limit {
+    fn limit_clause(&self, limit: Option<u64>, offset: u64, _has_order: bool) -> Limit {
         Limit {
             prefix: String::new(),
-            suffix: if offset == 0 {
-                format!(" LIMIT {limit}")
-            } else {
-                format!(" LIMIT {limit} OFFSET {offset}")
+            suffix: match (limit, offset) {
+                // `None` = 不限制行数：整个 LIMIT 子句省略（见 trait 的文档）。
+                (None, 0) => String::new(),
+                (None, o) => format!(" OFFSET {o}"),
+                (Some(l), 0) => format!(" LIMIT {l}"),
+                (Some(l), o) => format!(" LIMIT {l} OFFSET {o}"),
             },
         }
     }
@@ -61,6 +63,15 @@ impl DialectSpec for MySqlSpec {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        // 可更新列集为空（只有主键列的表）时 `ON DUPLICATE KEY UPDATE ` 后面
+        // 什么都不剩 —— 空赋值列表，真库语法错误。MySQL 没有 `DO NOTHING`，
+        // 用**主键自赋值**（`id = id`，恒等、无操作）表达「已存在就不动」。
+        let assigns = if assigns.is_empty() {
+            let q = self.quote(pk);
+            format!("{q} = {q}")
+        } else {
+            assigns
+        };
         format!(
             "INSERT INTO {} ({}) VALUES ({}) ON DUPLICATE KEY UPDATE {assigns}",
             self.quote(table),
@@ -73,6 +84,68 @@ impl DialectSpec for MySqlSpec {
                 .collect::<Vec<_>>()
                 .join(", ")
         )
+    }
+
+    /// MySQL **没有** `UPDATE … FROM (VALUES …)` —— 用 JOIN 一个派生表表达：
+    /// `SELECT ? AS col UNION ALL SELECT ?, ?`，第一行给出列名。
+    fn update_many_stmt(
+        &self,
+        table: &str,
+        pk: &str,
+        set_cols: &[String],
+        where_extra: &[String],
+        n_rows: usize,
+    ) -> String {
+        let alias = super::update_many_aliases(self, pk, set_cols, where_extra);
+        let per_row = alias.len();
+        let selects = (0..n_rows)
+            .map(|r| {
+                let cols = (0..per_row)
+                    .map(|c| {
+                        let ph = self.placeholder(r * per_row + c + 1);
+                        // 派生表的列名取自**第一个** SELECT 的别名，
+                        // 后续分支再写一遍是死重量。
+                        if r == 0 {
+                            format!("{ph} AS {}", alias[c])
+                        } else {
+                            ph
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("SELECT {cols}")
+            })
+            .collect::<Vec<_>>()
+            .join(" UNION ALL ");
+        let q_table = self.quote(table);
+        let sets = set_cols
+            .iter()
+            .map(|c| {
+                let q = self.quote(c);
+                format!("{q_table}.{q} = v.{q}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut sql = format!(
+            "UPDATE {q_table} JOIN ({selects}) AS v ON {q_table}.{} = v.{} SET {sets}",
+            self.quote(pk),
+            self.quote(pk)
+        );
+        if !where_extra.is_empty() {
+            let conds = where_extra
+                .iter()
+                .map(|c| {
+                    format!(
+                        "{q_table}.{} = v.{}",
+                        self.quote(c),
+                        self.quote(&format!("{c}__old"))
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            sql.push_str(&format!(" WHERE {conds}"));
+        }
+        sql
     }
 
     fn bool_literal(&self, b: bool) -> String {
@@ -147,10 +220,77 @@ mod tests {
     }
 
     #[test]
+    fn limit_is_a_suffix() {
+        let l = s().limit_clause(Some(10), 0, false);
+        assert_eq!(l.prefix, "");
+        assert_eq!(l.suffix, " LIMIT 10");
+        assert_eq!(
+            s().limit_clause(Some(10), 20, false).suffix,
+            " LIMIT 10 OFFSET 20"
+        );
+    }
+
+    /// **只设 offset 不设 limit**：`None` 时整个 `LIMIT` 子句必须**省略**。
+    /// 用 `u64::MAX` 顶替「未设置」会产出
+    /// `LIMIT 18446744073709551615 OFFSET 20` —— 超出 BIGINT，真库拒收。
+    #[test]
+    fn offset_without_limit_omits_the_limit_clause() {
+        let l = s().limit_clause(None, 20, false);
+        assert_eq!(l.prefix, "");
+        assert_eq!(l.suffix, " OFFSET 20");
+        assert!(
+            !l.suffix.contains("18446744073709551615") && !l.suffix.contains("9223372036854775807"),
+            "分页片段里不得出现哨兵数字: {}",
+            l.suffix
+        );
+    }
+
+    /// 多行 UPDATE：MySQL **没有** `UPDATE … FROM (VALUES …)`，
+    /// 用 JOIN 一个派生表表达（`SELECT ? AS col UNION ALL …`）。
+    #[test]
+    fn update_many_uses_a_joined_derived_table() {
+        let sql = s().update_many_stmt("docs", "id", &["name".into()], &[], 2);
+        assert_eq!(
+            sql,
+            "UPDATE `docs` JOIN (SELECT ? AS `id`, ? AS `name` UNION ALL SELECT ?, ?) AS v \
+             ON `docs`.`id` = v.`id` SET `docs`.`name` = v.`name`"
+        );
+    }
+
+    /// 带逐行 WHERE 比对列时，条件放在 `SET` 之后的 `WHERE`；
+    /// 别名加 `__old` 后缀，与 SET 里的同名列区分开。
+    #[test]
+    fn update_many_puts_where_extras_after_the_set_clause() {
+        let sql = s().update_many_stmt("docs", "id", &["name".into()], &["version".into()], 1);
+        assert_eq!(
+            sql,
+            "UPDATE `docs` JOIN (SELECT ? AS `id`, ? AS `name`, ? AS `version__old`) AS v \
+             ON `docs`.`id` = v.`id` SET `docs`.`name` = v.`name` \
+             WHERE `docs`.`version` = v.`version__old`"
+        );
+    }
+
+    #[test]
     fn upsert_uses_on_duplicate_key() {
         let sql = s().upsert("users", &["id".into(), "name".into()], "id", 2);
         assert!(sql.contains("ON DUPLICATE KEY UPDATE"), "got: {sql}");
         assert!(sql.contains("`name` = VALUES(`name`)"), "got: {sql}");
+    }
+
+    /// **只有主键列时**：可更新列集为空 → 原实现产出
+    /// `ON DUPLICATE KEY UPDATE `（空赋值列表，真库语法错误）。
+    /// MySQL 没有 `DO NOTHING`，用**主键自赋值**（无操作）表达同一语义。
+    #[test]
+    fn upsert_with_only_the_pk_column_is_a_self_assignment() {
+        let sql = s().upsert("users", &["id".into()], "id", 1);
+        assert_eq!(
+            sql,
+            "INSERT INTO `users` (`id`) VALUES (?) ON DUPLICATE KEY UPDATE `id` = `id`"
+        );
+        assert!(
+            !sql.trim_end().ends_with("UPDATE"),
+            "不得留下空的赋值列表: {sql}"
+        );
     }
 
     #[test]

@@ -30,6 +30,73 @@ impl Limit {
     }
 }
 
+/// `update_many_stmt` 的别名列名（已按方言引用）：主键、`set_cols`，
+/// 然后是 `where_extra` 的 `<列名>__old`。**参数顺序与它一致**。
+pub(crate) fn update_many_aliases(
+    spec: &dyn DialectSpec,
+    pk: &str,
+    set_cols: &[String],
+    where_extra: &[String],
+) -> Vec<String> {
+    std::iter::once(pk.to_string())
+        .chain(set_cols.iter().cloned())
+        .chain(where_extra.iter().map(|c| format!("{c}__old")))
+        .map(|c| spec.quote(&c))
+        .collect()
+}
+
+/// `UPDATE … FROM (VALUES …) AS v(…)` 形态的多行 UPDATE。
+///
+/// Standard / SQLite / PostgreSQL / SQL Server **四者形状相同**，只差标识符引号
+/// 与占位符写法（都由 `spec` 提供）；MySQL 没有 `UPDATE … FROM`，自己实现。
+pub(crate) fn update_many_from_values(
+    spec: &dyn DialectSpec,
+    table: &str,
+    pk: &str,
+    set_cols: &[String],
+    where_extra: &[String],
+    n_rows: usize,
+) -> String {
+    let alias = update_many_aliases(spec, pk, set_cols, where_extra).join(", ");
+    let per_row = 1 + set_cols.len() + where_extra.len();
+    let rows = (0..n_rows)
+        .map(|r| {
+            let ph = (0..per_row)
+                .map(|c| spec.placeholder(r * per_row + c + 1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({ph})")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    // SET 的左边是**裸列名**（PG / SQLite 不接受限定名），值来自别名。
+    let sets = set_cols
+        .iter()
+        .map(|c| {
+            let q = spec.quote(c);
+            format!("{q} = v.{q}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let q_table = spec.quote(table);
+    let mut conds = vec![format!(
+        "{q_table}.{} = v.{}",
+        spec.quote(pk),
+        spec.quote(pk)
+    )];
+    for c in where_extra {
+        conds.push(format!(
+            "{q_table}.{} = v.{}",
+            spec.quote(c),
+            spec.quote(&format!("{c}__old"))
+        ));
+    }
+    format!(
+        "UPDATE {q_table} SET {sets} FROM (VALUES {rows}) AS v({alias}) WHERE {}",
+        conds.join(" AND ")
+    )
+}
+
 /// 主键回填方案。
 ///
 /// `InsertThen` 存在的原因是 **MySQL 的 `LAST_INSERT_ID()` 是连接作用域的** ——
@@ -51,11 +118,33 @@ pub trait DialectSpec: Send + Sync {
     /// 绑定占位符，1-based。`?` 类方言忽略下标。
     fn placeholder(&self, index: usize) -> String;
 
-    fn limit_clause(&self, limit: u64, offset: u64, has_order: bool) -> Limit;
+    /// 分页片段。`limit == None` 表示**不限制行数**（只设了 `offset`）——
+    /// 此时 `LIMIT` / `FETCH` 必须**整个省略**。
+    ///
+    /// **不要用哨兵值顶替 `None`**：`u64::MAX` 会产出
+    /// `LIMIT 18446744073709551615`（MSSQL 是 `FETCH NEXT … ROWS ONLY`），
+    /// 超出 BIGINT 上限，**真库直接拒收** —— 而 `.offset(n)` 是公开且合法的调用。
+    fn limit_clause(&self, limit: Option<u64>, offset: u64, has_order: bool) -> Limit;
 
     fn insert_plan(&self, table: &str, cols: &[String], pk: &str, n_params: usize) -> InsertPlan;
 
     fn upsert(&self, table: &str, cols: &[String], pk: &str, n_params: usize) -> String;
+
+    /// 多行 `UPDATE`（`batch::update_many` 用）。`n_rows` 行的**单条**语句 ——
+    /// 分块（每块一条）由调用方按 [`DialectSpec::max_params_per_stmt`] 决定。
+    ///
+    /// 绑定参数的顺序固定为：**每行依次是主键、`set_cols` 的值、`where_extra` 的值**。
+    /// `set_cols` 不含主键（主键只做定位）；`where_extra` 是逐行比对的额外列
+    /// （乐观锁的旧版本号），它们的别名列名是 `<列名>__old` —— 与 SET 里的同名列
+    /// 区分开，否则 `version` 会撞名。
+    fn update_many_stmt(
+        &self,
+        table: &str,
+        pk: &str,
+        set_cols: &[String],
+        where_extra: &[String],
+        n_rows: usize,
+    ) -> String;
 
     fn bool_literal(&self, b: bool) -> String;
 

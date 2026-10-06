@@ -11,7 +11,6 @@ use crate::dialect::lookup;
 use crate::entity::Entity;
 use crate::error::OrmError;
 use crate::query::Op;
-use crate::query::Query;
 
 /// 当前时间。
 ///
@@ -19,7 +18,8 @@ use crate::query::Query;
 /// 同二进制的其它测试（`cargo test` 默认并行跑，行为随机）。批次 1 在 clickhouse 的
 /// TTL 测试上吃过同族问题。可测性由**断言的选择**提供：见 `crud/auto_tests.rs` 用
 /// `assert_ne!` 与「与此刻相差 < 1 分钟」这类性质断言，都不依赖具体时刻。
-fn now() -> time::OffsetDateTime {
+/// `pub(crate)`：`batch::delete_where` 的软删除路径也要填删除时刻。
+pub(crate) fn now() -> time::OffsetDateTime {
     time::OffsetDateTime::now_utc()
 }
 
@@ -51,7 +51,10 @@ fn auto_timestamp(
 ///
 /// 时间戳在**构造列清单时**填，不修改实体本身：`insert` 取 `&E`，没有可变性可用，
 /// 也**不该**有 —— 让 `insert` 偷偷改动调用方的实体是意外副作用。
-fn insert_parts<E: Entity>(e: &E) -> (Vec<String>, Vec<Value>) {
+///
+/// `pub(crate)`：`batch::insert_many` / `batch::upsert` 复用同一份 ——
+/// 各写一份必然漂移，而漂移的表现是「批量插入静默丢掉自动时间戳」。
+pub(crate) fn insert_parts<E: Entity>(e: &E) -> (Vec<String>, Vec<Value>) {
     let mut cols = Vec::new();
     let mut vals = Vec::new();
     for (name, mut v) in e.to_values() {
@@ -109,23 +112,6 @@ fn read_returned_pk<E: Entity>(rows: &[Row]) -> Result<i64, OrmError> {
     crate::value::from_row_col::<i64>(row, E::PK)
 }
 
-/// 走查询构建器发一条 SELECT，返回原始行。
-///
-/// `find_by_id` / `find_all` 都经这里 —— **不另写一条 SQL 生成路径**：
-/// 列清单、方言引号与占位符编号、软删除闸门全在 `Query` 一处。写两份必然漂移，
-/// 而漂移的表现是「某些路径静默绕过了软删除」这种不报错的错。
-/// （Task 15 的 `Query::fetch` 落地后，本函数可由它取代。）
-async fn select_rows<E, X, S>(db: &X, q: &Query<E, S>) -> Result<Vec<Row>, OrmError>
-where
-    E: Entity,
-    X: SqlExecutor + ?Sized,
-{
-    let built = crate::query::sql::build_select(q, db.dialect(), false);
-    db.query_with(&built.sql, &built.params)
-        .await
-        .map_err(to_db)
-}
-
 /// 插入并返回新生成的主键。
 ///
 /// 取 `SqlExecutor`（而不是 `RdbmsClient`）：MySQL 的两步式主键回填经
@@ -165,6 +151,10 @@ where
 }
 
 /// 按主键取一行。列清单与软删除闸门交给查询构建器。
+///
+/// 走 [`crate::query::Query::fetch`] —— **不另写一条 SQL 生成路径**：
+/// 列清单、方言引号与占位符编号、软删除闸门全在 `Query` 一处。写两份必然漂移，
+/// 而漂移的表现是「某些路径静默绕过了软删除」这种不报错的错。
 pub(crate) async fn find_by_id<E, X, K>(db: &X, pk: K) -> Result<Option<E>, OrmError>
 where
     E: Entity,
@@ -172,11 +162,7 @@ where
     K: Into<Value>,
 {
     let q = E::query().filter(E::PK, Op::Eq, pk)?;
-    select_rows(db, &q)
-        .await?
-        .first()
-        .map(E::from_row)
-        .transpose()
+    Ok(q.fetch(db).await?.into_iter().next())
 }
 
 /// 取该实体的全部行（不带任何过滤）。等价于 `Self::query().fetch(db)`。
@@ -185,8 +171,43 @@ where
     E: Entity,
     X: SqlExecutor + ?Sized,
 {
-    let rows = select_rows(db, &E::query()).await?;
-    rows.iter().map(E::from_row).collect()
+    E::query().fetch(db).await
+}
+
+/// 单行 UPDATE 的 SET 列/参数与乐观锁要用的**旧**版本号。
+///
+/// `crud::update`（单行）与 `batch::update_many`（多行）**共用同一份** ——
+/// 两份必然漂移，漂移的表现是「批量路径静默漏掉版本闸门」这种不报错的错。
+pub(crate) struct UpdateRow {
+    /// SET 的目标列（不含主键），顺序与 `set_values` 一一对应。
+    pub(crate) set_cols: Vec<String>,
+    /// SET 的参数。带 `version` flag 时，version 那一格已经是**新值**（旧值 + 1）。
+    pub(crate) set_values: Vec<Value>,
+    /// 乐观锁：WHERE 要比对的旧版本号（`None` = 该实体没有 version flag）。
+    pub(crate) old_version: Option<Value>,
+}
+
+/// 按 `update` 的规则生成一行的 SET 部件（含乐观锁的「SET 写新值」半边）。
+pub(crate) fn update_row<E: Entity>(e: &E) -> UpdateRow {
+    let (set_cols, mut set_values) = update_parts(e);
+
+    // 乐观锁：SET 写**新值**（旧值 + 1）、WHERE 比对**旧值** —— 于是「读-改-写」
+    // 之间的并发改动会让 UPDATE 影响 0 行，而不是静默覆盖别人刚写的值。
+    // 旧值必须在覆盖前取走：覆盖之后 `vals[pos]` 里只剩新值。
+    let mut old_version = None;
+    if let Some(vc) = E::META.flags.version
+        && let Some(pos) = set_cols.iter().position(|c| c.as_str() == vc)
+    {
+        let old = set_values[pos].as_i64().unwrap_or(0);
+        old_version = Some(set_values[pos].clone());
+        set_values[pos] = Value::from(old + 1);
+    }
+
+    UpdateRow {
+        set_cols,
+        set_values,
+        old_version,
+    }
 }
 
 /// 按主键整行更新。
@@ -201,25 +222,15 @@ where
     X: SqlExecutor + ?Sized,
 {
     let spec = lookup(db.dialect());
-    let (cols, mut vals) = update_parts(e);
-    let set = cols
+    let row = update_row(e);
+    let set = row
+        .set_cols
         .iter()
         .enumerate()
         .map(|(i, c)| format!("{} = {}", spec.quote(c), spec.placeholder(i + 1)))
         .collect::<Vec<_>>()
         .join(", ");
-
-    // 乐观锁：SET 写**新值**（旧值 + 1）、WHERE 比对**旧值** —— 于是「读-改-写」
-    // 之间的并发改动会让 UPDATE 影响 0 行，而不是静默覆盖别人刚写的值。
-    // 旧值必须在覆盖前取走：覆盖之后 `vals[pos]` 里只剩新值。
-    let mut old_version = None;
-    if let Some(vc) = E::META.flags.version
-        && let Some(pos) = cols.iter().position(|c| c.as_str() == vc)
-    {
-        let old = vals[pos].as_i64().unwrap_or(0);
-        old_version = Some(vals[pos].clone());
-        vals[pos] = Value::from(old + 1);
-    }
+    let mut vals = row.set_values;
 
     let mut where_parts = vec![format!(
         "{} = {}",
@@ -227,7 +238,7 @@ where
         spec.placeholder(vals.len() + 1)
     )];
     vals.push(e.pk_value());
-    if let (Some(vc), Some(old)) = (E::META.flags.version, old_version) {
+    if let (Some(vc), Some(old)) = (E::META.flags.version, row.old_version) {
         where_parts.push(format!(
             "{} = {}",
             spec.quote(vc),
@@ -353,9 +364,11 @@ where
 }
 
 // 夹具与断言分三个文件：合在一起会顶过「每个源文件 < 500 行」的硬规则。
+// `pub(crate)`：`batch` 的测试也复用这两份夹具 —— 各写一份必然漂移，
+// 漂移的表现是「批量路径的自动行为与单行路径不一致」。
 #[cfg(test)]
-mod auto_tests;
+pub(crate) mod auto_tests;
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg(test)]
 mod tests;

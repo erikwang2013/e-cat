@@ -155,6 +155,55 @@ pub trait Entity: Sized + Send + Sync {
         crate::crud::insert::<Self, X>(db, entity)
     }
 
+    /// 批量插入，返回**受影响行数**（不是主键列表）。
+    ///
+    /// 不回吐主键是 spec:504-506 的要求：MySQL 的 `LAST_INSERT_ID()` 只给批量的
+    /// 首行、SQLite 给末行，跨后端语义不可靠。要新主键请逐行 [`Entity::insert`]。
+    ///
+    /// 按方言的单语句参数上限自动分块（spec §5.5b），各块行数累加 ——
+    /// 不分块的话，几千行的批量在 SQL Server（上限 2100）上必然报错。
+    /// 自动时间戳**逐行**填，与单行插入同一份实现。
+    fn insert_many<X>(
+        db: &X,
+        entities: &[Self],
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        Self: Sync,
+    {
+        crate::batch::insert_many(db, entities)
+    }
+
+    /// 按主键整行更新一批，返回**受影响行数之和**。
+    ///
+    /// 逐行的乐观锁条件照旧生效（SET 写新值、WHERE 比对旧值），但**批量报不出
+    /// 是哪一行冲突** —— 返回行数 < 传入行数就是有人被版本闸门挡下了。
+    /// 要精确定位冲突行请逐行 [`Entity::update`]。
+    fn update_many<X>(
+        db: &X,
+        entities: &[Self],
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        Self: Sync,
+    {
+        crate::batch::update_many(db, entities)
+    }
+
+    /// 按主键 upsert（方言各自用 `ON CONFLICT` / `ON DUPLICATE KEY` / `MERGE`）。
+    ///
+    /// 单行版：主键只有一个值。批量导入用 [`Entity::insert_many`]（它不处理冲突）。
+    fn upsert<X>(
+        db: &X,
+        entity: &Self,
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        Self: Sync,
+    {
+        crate::batch::upsert(db, entity)
+    }
+
     /// 按主键取一行。找不到返回 `Ok(None)`。
     ///
     /// 走查询构建器 —— 列清单与软删除闸门与 `Query` 完全一致。
@@ -173,7 +222,7 @@ pub trait Entity: Sized + Send + Sync {
     /// 取该实体的**全部**行（不带任何过滤）。等价于 `Self::query().fetch(db)`。
     ///
     /// ⚠️ 大表上这就是**全表扫描**：没有 WHERE、没有 LIMIT。要分页取数请走
-    /// `Self::query().paginate(&db, page, per_page)`（Task 15 交付）。
+    /// [`crate::query::Query::paginate`]。
     fn find_all<X>(db: &X) -> impl std::future::Future<Output = Result<Vec<Self>, OrmError>> + Send
     where
         X: ecat_data::SqlExecutor + ?Sized,

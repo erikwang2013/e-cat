@@ -25,6 +25,10 @@ pub(crate) struct Built {
     pub params: Vec<Value>,
 }
 
+/// COUNT 查询的列别名。`Row` 只能按列名取值，所以这个名字是
+/// `build_select` 与 `page::paginate` 之间的契约 —— 两边共用同一个常量。
+pub(crate) const COUNT_ALIAS: &str = "ecat_count";
+
 /// 顺次发号，避免手写计数器。
 pub(crate) struct Placeholders<'a> {
     spec: &'a dyn DialectSpec,
@@ -129,8 +133,9 @@ pub(crate) fn render_where(
 
 /// `for_count` 为真时生成 COUNT 查询：**去掉 ORDER BY / LIMIT / OFFSET**。
 ///
-/// 生产调用方：`crud::find_by_id` / `crud::find_all`（Task 13 落地，
-/// 经 `crud::select_rows`）。`fetch` / `paginate`（Task 15）是接下来的消费者。
+/// COUNT 列**显式取别名 `ecat_count`**：不取名字时 PostgreSQL 会把 `COUNT(*)`
+/// 小写化成 `count`、SQL Server 的未命名聚合列干脆没有名字，而 `Row` 只能按
+/// 名字取值 —— 那样 `paginate` 在真库上读不到 total。
 pub(crate) fn build_select<E: Entity, S>(q: &Query<E, S>, d: Dialect, for_count: bool) -> Built {
     let spec = lookup(d);
     let meta = E::META;
@@ -138,7 +143,7 @@ pub(crate) fn build_select<E: Entity, S>(q: &Query<E, S>, d: Dialect, for_count:
     let mut params: Vec<Value> = Vec::new();
 
     let cols = if for_count {
-        "COUNT(*)".to_string()
+        format!("COUNT(*) AS {}", spec.quote(COUNT_ALIAS))
     } else {
         meta.columns
             .iter()
@@ -148,17 +153,14 @@ pub(crate) fn build_select<E: Entity, S>(q: &Query<E, S>, d: Dialect, for_count:
     };
 
     // 分页片段：COUNT 不带（见「裁决 C」——它是 prefix + suffix）。
-    // 两个都没设置时也不生成：`limit_clause(u64::MAX)` 会产出
-    // `LIMIT 18446744073709551615`，语义等价但很难看，且 MSSQL 上
-    // `TOP (18446744073709551615)` 超出 int 范围。
-    let limit = if for_count || (q.limit.is_none() && q.offset.is_none()) {
+    // 「没设 limit」以 `None` 传下去，由方言决定省略 `LIMIT` / `FETCH` ——
+    // **不能在校验口填 `u64::MAX`**：那会产出 `LIMIT 18446744073709551615`
+    // （MSSQL 是 `FETCH NEXT … ROWS ONLY`），超出 BIGINT，真库拒收。
+    // 两个都没设置时也走同一条路：`limit_clause(None, 0, _)` 返回空片段。
+    let limit = if for_count {
         Limit::none()
     } else {
-        spec.limit_clause(
-            q.limit.unwrap_or(u64::MAX),
-            q.offset.unwrap_or(0),
-            !q.orders.is_empty(),
-        )
+        spec.limit_clause(q.limit, q.offset.unwrap_or(0), !q.orders.is_empty())
     };
 
     let mut sql = format!(

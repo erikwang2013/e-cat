@@ -252,6 +252,56 @@ fn mssql_limit_without_offset_uses_top_prefix() {
     assert!(b.sql.starts_with("SELECT TOP (10) "), "got: {}", b.sql);
 }
 
+/// **只设 offset 不设 limit**：`offset()` 是 Task 11 已交付的公开方法，
+/// `.offset(n).fetch()` 完全合法 —— 而旧实现在**四个方言上都产出真库拒收的 SQL**
+/// （PG/SQLite/MySQL `LIMIT 18446744073709551615 OFFSET 20`、MSSQL
+/// `FETCH NEXT 18446744073709551615 ROWS ONLY`，都超 BIGINT）。
+///
+/// 这里**五个方言各整串断言一次**：`contains` 式断言对「子句出现在错误位置」
+/// 恒真（Task 12 实测），而这条要钉的正是「整个 LIMIT/FETCH 片段不在」。
+#[test]
+fn offset_without_limit_never_emits_a_sentinel_number() {
+    let q = U::query().offset(20);
+    let expected = [
+        (
+            Dialect::Standard,
+            r#"SELECT "id", "name", "deleted_at" FROM "users" WHERE "deleted_at" IS NULL OFFSET 20"#,
+        ),
+        (
+            Dialect::Sqlite,
+            r#"SELECT "id", "name", "deleted_at" FROM "users" WHERE "deleted_at" IS NULL OFFSET 20"#,
+        ),
+        (
+            Dialect::Postgres,
+            r#"SELECT "id", "name", "deleted_at" FROM "users" WHERE "deleted_at" IS NULL OFFSET 20"#,
+        ),
+        (
+            Dialect::MySql,
+            "SELECT `id`, `name`, `deleted_at` FROM `users` WHERE `deleted_at` IS NULL OFFSET 20",
+        ),
+        (
+            Dialect::Mssql,
+            "SELECT [id], [name], [deleted_at] FROM [users] WHERE [deleted_at] IS NULL \
+             ORDER BY (SELECT NULL) OFFSET 20 ROWS",
+        ),
+    ];
+    for (d, want) in expected {
+        let b = sel(&q, d);
+        assert_eq!(b.sql, want, "{d:?} 的 SQL 形状不对");
+        assert!(
+            !b.sql.contains("18446744073709551615") && !b.sql.contains("9223372036854775807"),
+            "{d:?} 漏出哨兵数字: {}",
+            b.sql
+        );
+        assert!(
+            !b.sql.contains("LIMIT") && !b.sql.contains("FETCH"),
+            "{d:?} 不该带 LIMIT/FETCH: {}",
+            b.sql
+        );
+        assert!(b.params.is_empty());
+    }
+}
+
 // ---- JOIN（「必做之一」） ----
 
 /// **`Left` 不能渲染成裸 `JOIN`（= `INNER`）** —— 那是不报错的错结果。

@@ -28,10 +28,12 @@
 // serde 用同样的手法（`extern crate self as serde;`）。
 extern crate self as ecat_orm;
 
+mod batch;
 mod crud;
 pub mod dialect;
 mod entity;
 mod error;
+pub mod page;
 pub mod query;
 pub mod relation;
 mod time;
@@ -41,6 +43,7 @@ pub use ecat_data::{Row, SqlExecutor};
 pub use ecat_orm_derive::Entity;
 pub use entity::{ColType, ColumnMeta, EntityFlags, EntityMeta, RelationKind, RelationMeta};
 pub use error::OrmError;
+pub use page::Page;
 
 /// 重导出 `serde_json`：派生宏生成的代码要写 `::ecat_orm::serde_json::Value`。
 /// 不重导的话，每个用户 crate 都得自己把 `serde_json` 加进依赖才能用 ORM —— 而
