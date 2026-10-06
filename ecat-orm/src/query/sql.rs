@@ -129,10 +129,8 @@ pub(crate) fn render_where(
 
 /// `for_count` 为真时生成 COUNT 查询：**去掉 ORDER BY / LIMIT / OFFSET**。
 ///
-/// ⚠️ 本任务唯一的生产调用方在 **Task 13**（`fetch` / `paginate`）—— 在那之前
-/// 只有本文件的测试用它，而 `#[cfg(test)]` 的使用**不算**生产使用，
-/// `clippy -D warnings` 会判 `dead_code`。Task 13 落地后删掉这一行属性。
-#[allow(dead_code)]
+/// 生产调用方：`crud::find_by_id` / `crud::find_all`（Task 13 落地，
+/// 经 `crud::select_rows`）。`fetch` / `paginate`（Task 15）是接下来的消费者。
 pub(crate) fn build_select<E: Entity, S>(q: &Query<E, S>, d: Dialect, for_count: bool) -> Built {
     let spec = lookup(d);
     let meta = E::META;

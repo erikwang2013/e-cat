@@ -2,14 +2,24 @@
 //!
 //! `ecat-orm` —— e-cat 的 ORM。实体宏、查询构建器、CRUD、关联预加载、迁移。
 //!
-//! 所有数据操作取 `&impl SqlExecutor`，因此**客户端与 `Transaction` 通吃**：
+//! 数据操作取 `&impl SqlExecutor`（`find_by_id` / `find_all` / `update` /
+//! `delete_by_id`），因此**客户端与 `Transaction` 通吃**：
 //!
 //! ```ignore
-//! User::insert(&db, &user).await?;      // db: SqlxClient
+//! User::find_by_id(&db, 1).await?;      // db: SqlxClient
 //! let tx = db.transaction().await?;
-//! User::insert(&tx, &user).await?;      // tx: Transaction —— 同一个 API
+//! User::update(&tx, &user).await?;      // tx: Transaction —— 读/改/删同一个 API
 //! tx.commit().await?;
 //! ```
+//!
+//! **例外是 `insert` / `save`：它们取 `&impl RdbmsClient`。** 理由不是洁癖 ——
+//! MySQL 的主键回填是两步式（`INSERT` 然后 `SELECT LAST_INSERT_ID()`），而
+//! `LAST_INSERT_ID()` 是**连接作用域**的，两条语句必须包在同一事务里、落在同一条
+//! 连接上，否则会取回别的会话刚插入的 id（静默错值）。开事务的入口
+//! (`transaction()`) 在 `ecat_data::RdbmsClient` 上，不在 `SqlExecutor` 上，
+//! 所以这两条路径拿不到「事务」这个能力。代价是 `&Transaction` 不能传给
+//! `insert` —— 需要在事务里插数据时，用客户端（或让外层流程自己开事务并直接
+//! 发语句）。
 //!
 //! 用法见 `docs/api.md` 的 ORM 段。
 
@@ -19,6 +29,7 @@
 // serde 用同样的手法（`extern crate self as serde;`）。
 extern crate self as ecat_orm;
 
+mod crud;
 pub mod dialect;
 mod entity;
 mod error;

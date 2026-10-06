@@ -4,9 +4,11 @@
 //! 变成编译错误 —— `User::query().delete_where(&db)` 不该能编译。
 
 pub mod filter;
-mod sql;
+// `pub(crate)`：`crud::find_by_id` / `find_all` 要复用同一条 SELECT 生成路径
+// （不另写一份 —— 写两份必然漂移）。
+pub(crate) mod sql;
 // `sql.rs` 的测试单独成文件：两者合在一起会顶过「每个源文件 < 500 行」的硬规则。
-// 它需要 `mod sql` 是 `query` 的私有子模块 —— 测试要够得着 `pub(crate)` 的生成函数。
+// 测试要够得着 `pub(crate)` 的生成函数，所以是 `query` 的子模块。
 #[cfg(test)]
 mod sql_tests;
 

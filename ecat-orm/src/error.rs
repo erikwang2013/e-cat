@@ -16,6 +16,14 @@ pub enum OrmError {
     #[error("optimistic lock conflict")]
     OptimisticLockConflict,
 
+    /// 期望存在一行但影响行数为 0。
+    ///
+    /// 与「静默成功」的区别在这里：`delete_by_id` 删了 0 行却返回 `Ok(0)`，
+    /// 调用方会以为删掉了。**与 [`OrmError::OptimisticLockConflict`] 必须可区分** ——
+    /// 前者是「行不存在」（重试无意义），后者是「行被并发改过」（重试有意义）。
+    #[error("row not found")]
+    NotFound,
+
     /// 迁移不可逆（未提供反向 SQL）。
     #[error("migration is not reversible: {0}")]
     MigrationIrreversible(String),

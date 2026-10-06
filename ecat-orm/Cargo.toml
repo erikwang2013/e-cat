@@ -22,3 +22,7 @@ thiserror = { workspace = true }
 # 不带这两项时，测试里的 #[tokio::test] 会直接编译失败。
 tokio = { workspace = true, features = ["macros", "rt"] }
 ecat-data-sqlx = { workspace = true }
+# 假 executor 要实现 `#[async_trait]` 的 `SqlExecutor` / `TransactionInner`
+# （`ecat-data/src/rdbms.rs` 两个 trait 都是 async-trait 展开的形态，
+#  手写展开后的签名不现实）。仅测试用。
+async-trait = { workspace = true }

@@ -138,6 +138,94 @@ pub trait Entity: Sized + Send + Sync {
         crate::query::Query::new()
     }
 
+    /// 插入并返回新生成的主键。
+    ///
+    /// 自增主键不出现在列清单里（由数据库生成）。MySQL 路径会自动包事务 ——
+    /// 见 `crud::insert` 里 `InsertPlan::InsertThen` 分支的注释。
+    ///
+    /// 取 `RdbmsClient` 而不是 `SqlExecutor`：两步式回填要开事务，而
+    /// `SqlExecutor` 没有开事务的入口（`transaction()` 在 `RdbmsClient` 上）。
+    /// 代价：`Transaction` 本身不是 `RdbmsClient`，**不能传给 `insert`** ——
+    /// 要在事务里插数据，得用客户端（见 crate 文档的说明）。
+    fn insert<X>(
+        db: &X,
+        entity: &Self,
+    ) -> impl std::future::Future<Output = Result<i64, OrmError>> + Send
+    where
+        X: ecat_data::RdbmsClient + ?Sized,
+        Self: Sync,
+    {
+        crate::crud::insert::<Self, X>(db, entity)
+    }
+
+    /// 按主键取一行。找不到返回 `Ok(None)`。
+    ///
+    /// 走查询构建器 —— 列清单与软删除闸门与 `Query` 完全一致。
+    fn find_by_id<X, K>(
+        db: &X,
+        pk: K,
+    ) -> impl std::future::Future<Output = Result<Option<Self>, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        K: Into<serde_json::Value> + Send,
+        Self: Sync,
+    {
+        crate::crud::find_by_id::<Self, X, K>(db, pk)
+    }
+
+    /// 取该实体的**全部**行（不带任何过滤）。等价于 `Self::query().fetch(db)`。
+    ///
+    /// ⚠️ 大表上这就是**全表扫描**：没有 WHERE、没有 LIMIT。要分页取数请走
+    /// `Self::query().paginate(&db, page, per_page)`（Task 15 交付）。
+    fn find_all<X>(db: &X) -> impl std::future::Future<Output = Result<Vec<Self>, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        Self: Sync,
+    {
+        crate::crud::find_all::<Self, X>(db)
+    }
+
+    /// 按主键整行更新。影响 0 行时返回 [`OrmError::NotFound`]。
+    fn update<X>(
+        db: &X,
+        entity: &Self,
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        Self: Sync,
+    {
+        crate::crud::update::<Self, X>(db, entity)
+    }
+
+    /// 按主键删除。影响 0 行时返回 [`OrmError::NotFound`]。
+    fn delete_by_id<X, K>(
+        db: &X,
+        pk: K,
+    ) -> impl std::future::Future<Output = Result<u64, OrmError>> + Send
+    where
+        X: ecat_data::SqlExecutor + ?Sized,
+        K: Into<serde_json::Value> + Send,
+        Self: Sync,
+    {
+        crate::crud::delete_by_id::<Self, X, K>(db, pk)
+    }
+
+    /// 主键为「未设置」时插入，否则更新。返回主键。
+    ///
+    /// 「未设置」判定：主键字段的自增标志为真**且** `pk_value()` 等于 0。
+    /// 非自增主键（如 UUID 字符串）永远走 update —— 它的主键从来不是 0，
+    /// 用 `pk == 0` 判断会让手工分配整数主键的实体**每次都变成 insert**。
+    fn save<X>(
+        db: &X,
+        entity: &Self,
+    ) -> impl std::future::Future<Output = Result<i64, OrmError>> + Send
+    where
+        X: ecat_data::RdbmsClient + ?Sized,
+        Self: Sync,
+    {
+        crate::crud::save::<Self, X>(db, entity)
+    }
+
     /// 关联预加载的写回口。由派生宏按关联名分派到具体字段 ——
     /// `Entity` 泛型地访问不到 `posts` 字段，只有宏知道每个关联对应哪个字段、
     /// 目标类型是什么。
