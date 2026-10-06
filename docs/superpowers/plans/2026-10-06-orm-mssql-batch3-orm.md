@@ -5609,6 +5609,38 @@ git commit -m "feat(ecat-orm): 自动时间戳、软删除与乐观锁"
 
 ## Task 15: 批量分块与分页（`batch.rs` + `page.rs`）
 
+> ### ⚠️ 本任务必做：修掉 pk-only 的 upsert（Task 10 实施者报回的洞）
+>
+> **现象**：当实体的可插列**只有主键**时，方言层的 `upsert` 生成非法 SQL ——
+> 因为它的 SET 子句是 `cols.filter(|c| c != pk)` 得来的，此时为空：
+>
+> | 方言 | 生成结果 |
+> |---|---|
+> | PG | `... ON CONFLICT ("id") DO UPDATE SET ` ← **空 SET** |
+> | MySQL | `... ON DUPLICATE KEY UPDATE ` ← 同上 |
+> | MSSQL | `... WHEN MATCHED THEN UPDATE SET WHEN NOT MATCHED ...` ← 错位 |
+> | SQLite / Standard | 同 PG |
+>
+> **什么时候会遇到**：只有主键列的表（如「已读标记」表、纯关联表）。不常见但不罕见，
+> 且 `#[derive(Entity)]` 不阻止这种实体。
+>
+> **为什么计划没抓到**：三条 upsert 测试用的都是「主键 + 至少一个普通列」的形状，
+> `filter` 之后仍有内容。**这是「测试形状没覆盖边界」而非「断言写错」** —— 补边界用例即可。
+>
+> **修法**：SET 为空时改用该方言的「什么都不更新」形态 ——
+>
+> | 方言 | 空 SET 时应生成 |
+> |---|---|
+> | PG / SQLite / Standard | `ON CONFLICT (<pk>) DO NOTHING` |
+> | MySQL | `ON DUPLICATE KEY UPDATE <pk> = <pk>`（自赋值即无操作） |
+> | MSSQL | `WHEN MATCHED THEN DELETE`? **不要** —— 应改为仅 `WHEN NOT MATCHED THEN INSERT`，即纯插入语义 |
+>
+> **必须补的测试**（每个方言一条）：`upsert` 在 `cols == [pk]` 时产出的 SQL **不含空的 `SET `**，
+> 且是该方言的合法形态。断言要具体到形态（如 `sql.contains("DO NOTHING")`），
+> **不要只断言 `!sql.ends_with("SET ")`** —— 那是「不含某物」式断言，容易对别的坏形态恒真。
+>
+> **空验收自证**：临时把修好的分支改回原样，确认新测试 **FAILED**，再还原。
+
 **Files:**
 - Create: `ecat-orm/src/batch.rs`
 - Create: `ecat-orm/src/page.rs`
@@ -6374,6 +6406,56 @@ git commit -m "feat(ecat-orm): 关联预加载（IN 分块，杜绝 N+1）"
 ---
 
 ## Task 17: 迁移系统（`migrate/`）
+
+> ### ⚠️ 本任务必做之一：把 `table_exists_sql` 改名并改语义（Task 10 实施者报回的设计缺陷）
+>
+> **现状**：`DialectSpec::table_exists_sql(table)` 在 Standard/SQLite/PG/MySQL 上返回
+> `CREATE TABLE IF NOT EXISTS "x"`，在 **MSSQL 上返回空串**（因为 SQL Server 没有该语法）。
+>
+> **为什么是缺陷**：方法名承诺「一条语句」，MSSQL 返回的**不是语句**。调用方照名字用即出事：
+>
+> ```rust
+> // 天真写法 —— 在 MSSQL 上生成 " ([id] BIGINT IDENTITY(1,1) PRIMARY KEY)"
+> // 注意开头：**没有 CREATE TABLE 关键字**，是一段非法 SQL
+> let sql = format!("{} ({cols})", spec.table_exists_sql(table));
+> ```
+>
+> **而它抓不到**：本任务计划里的两条 MSSQL 断言
+>
+> - `assert!(ms.contains("[id] BIGINT IDENTITY(1,1) PRIMARY KEY"))` ✅ 照样绿
+> - `assert!(!sql.contains("IF NOT EXISTS"))` ✅ 照样绿（空串也不含它）
+>
+> **两条一起绿，而生成的 SQL 跑不了。** 这是「空验收」在**契约层**的变体：API 的名字
+> 与它的返回值语义不符，调用方与测试会一致地被误导。
+>
+> **修法**：改名 + 补一个能力查询，让「返回空串」这个形态**不可能被误用**。
+>
+> ```rust
+> /// 建表的**完整前缀**，始终是一条可用语句的开头：
+> /// - Standard / SQLite / PG / MySQL：`CREATE TABLE IF NOT EXISTS "x"`
+> /// - MSSQL：`CREATE TABLE [x]`（无 `IF NOT EXISTS`，但**仍是完整前缀**）
+> fn create_table_prefix(&self, table: &str) -> String;
+>
+> /// 建表前是否必须自行检查存在性（只有 MSSQL 为 `true`）。
+> /// 调用方据此决定要不要先查 `INFORMATION_SCHEMA.TABLES`。
+> fn needs_exists_check_before_create(&self) -> bool { false }
+> ```
+>
+> 改了之后，`format!("{} ({cols})", spec.create_table_prefix(table))` **在所有方言上都合法**。
+>
+> **波及文件**：`ecat-orm/src/dialect/{mod,standard,sqlite,postgres,mysql,mssql}.rs` ——
+> 机械改名 + MSSQL 的返回值从 `String::new()` 改成 `format!("CREATE TABLE {}", self.quote(table))`
+> + MSSQL 加 `needs_exists_check_before_create() -> true`。**不改任何其它语义。**
+>
+> **本任务必须补的断言**（防它再退化）：
+> ```rust
+> assert!(ms.starts_with("CREATE TABLE [users]"), "MSSQL 也必须给出完整前缀: {ms}");
+> assert!(lookup(Dialect::Mssql).needs_exists_check_before_create());
+> assert!(!lookup(Dialect::Postgres).needs_exists_check_before_create());
+> ```
+>
+> **空验收自证**：临时把 MSSQL 的 `create_table_prefix` 改回 `String::new()`，
+> 确认上面第一条 **FAILED**，再还原。
 
 **Files:**
 - Create: `ecat-orm/src/migrate/mod.rs`
