@@ -307,24 +307,22 @@ async fn write_recreates_table_after_create_ttl_expiry() {
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let base_url = spawn_mock(captured.clone(), 200, "", None).await;
     let mut client = ClickhouseClient::new(base_url, "default");
-    // 缩短 TTL：默认 60s 无法在测试里等待
-    client.create_ttl = std::time::Duration::from_millis(5);
+    // TTL = 0：table_needs_create 的 elapsed() >= 0 恒真 → 每次 write 都视为过期、
+    // 重新 CREATE。无需 sleep，也不受调度抖动影响。
+    // （TTL 内的缓存命中路径由 write_creates_table_once_then_inserts 用默认 60s TTL 覆盖。）
+    client.create_ttl = std::time::Duration::ZERO;
 
     let point = DataPoint::new("cpu").with_field("u", FieldValue::Float(0.5));
     client.write(std::slice::from_ref(&point)).await.unwrap();
-    // TTL 未过期：缓存命中，不再发 CREATE
     client.write(std::slice::from_ref(&point)).await.unwrap();
-    // 等 TTL 过期后再写：重新 CREATE + INSERT
-    std::thread::sleep(std::time::Duration::from_millis(30));
     client.write(std::slice::from_ref(&point)).await.unwrap();
 
     let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-    assert_eq!(reqs.len(), 5, "CREATE+INSERT, INSERT, CREATE+INSERT");
-    assert!(reqs[0].body.starts_with("CREATE TABLE IF NOT EXISTS `cpu`"));
-    assert!(reqs[1].body.starts_with("INSERT INTO `cpu`"));
-    assert!(reqs[2].body.starts_with("INSERT INTO `cpu`"));
-    assert!(reqs[3].body.starts_with("CREATE TABLE IF NOT EXISTS `cpu`"));
-    assert!(reqs[4].body.starts_with("INSERT INTO `cpu`"));
+    assert_eq!(reqs.len(), 6, "TTL 恒过期：每次 write 均为 CREATE+INSERT");
+    for pair in reqs.chunks(2) {
+        assert!(pair[0].body.starts_with("CREATE TABLE IF NOT EXISTS `cpu`"));
+        assert!(pair[1].body.starts_with("INSERT INTO `cpu`"));
+    }
 }
 
 #[tokio::test]
