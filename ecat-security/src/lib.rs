@@ -107,7 +107,8 @@ fn evaluate(results: &[DetectionResult]) -> Option<SecurityError> {
         // jwt_attack 的宽正则（ey..ey.. 匹配一切标准 JWT）会误伤合法 token：
         // 服务端鉴权由 JwtAuthLayer 验签把关（alg:none/伪造签名在验签层拒绝），
         // 此处仅记日志不拦截。
-        if r.attack_type != "jwt_attack" && matches!(r.severity, Severity::High | Severity::Critical)
+        if r.attack_type != "jwt_attack"
+            && matches!(r.severity, Severity::High | Severity::Critical)
         {
             blocked = true;
         }
