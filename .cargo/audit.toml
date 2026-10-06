@@ -3,8 +3,9 @@
 [advisories]
 ignore = [
     # rustls-webpki 0.102.8 —— CRL 吊销校验绕过 / name-constraint 绕过 / CRL 解析可达 panic。
-    # 经 async-nats / rumqttc 传递引入（0.102 线无修复版）；e-cat 客户端证书链校验
-    # 不启用 CRL 路径，实际暴露低。修复版 0.103.13，待上游 rustls 升级后跟进。
+    # 经 async-nats 0.38 / rumqttc 0.25 传递引入（0.102 线无修复版）；e-cat 客户端证书链校验
+    # 不启用 CRL 路径，实际暴露低。**要升级的是 async-nats / rumqttc 自身**，
+    # 与本仓的 rustls 无关（本仓 rustls 已于 2026-10-06 升至 0.23.45，该项仍为 0.102.8）。
     "RUSTSEC-2026-0049",
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
