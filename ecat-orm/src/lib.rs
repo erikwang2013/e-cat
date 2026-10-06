@@ -4,6 +4,7 @@
 mod entity;
 mod error;
 mod time;
+pub mod value;
 
 // `Entity` 同时是 trait（类型命名空间）与派生宏（宏命名空间）—— 两者可共存，
 // 与 serde 的 `Serialize` 同一模式。

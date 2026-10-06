@@ -10,9 +10,7 @@
 //!
 //! 两者都是 ISO 8601；RFC3339 是时间戳子集，纯日期不在其内。
 //!
-//! Task 5（`value.rs`）是这四个 helper 的首批消费者；在那之前本 crate 内无调用点，
-//! 故暂时豁免 `dead_code`。**Task 5 落地后请删掉下面这行。**
-#![allow(dead_code)]
+//! 四个 helper 的生产调用点在 `value.rs` 的 `ColumnValue` 实现里。
 
 use time::OffsetDateTime;
 use time::UtcOffset;

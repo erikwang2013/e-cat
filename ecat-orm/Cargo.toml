@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+base64 = "0.22"
 ecat-data = { workspace = true }
 ecat-orm-derive = { workspace = true }
 serde_json = { workspace = true }

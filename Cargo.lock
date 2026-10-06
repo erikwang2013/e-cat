@@ -1834,6 +1834,7 @@ dependencies = [
 name = "ecat-orm"
 version = "4.0.0"
 dependencies = [
+ "base64",
  "ecat-data",
  "ecat-data-sqlx",
  "ecat-orm-derive",
