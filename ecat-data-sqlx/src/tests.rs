@@ -330,6 +330,34 @@ async fn zero_timeout_disables_timeout() {
     db.query("SELECT 1").await.unwrap();
 }
 
+/// 查询超时必须真的开火，**客户端与事务两条路径都覆盖**：`run_with_timeout` 的
+/// 接线断了不会有别的东西变红 —— 慢查询会一直占着连接（见 `ecat-data/src/timeout.rs`）。
+/// 5M 行递归 CTE 远慢于 100ms 的超时；超时丢掉的语句由 sqlx 中断，用例只花超时那点时间。
+#[tokio::test]
+async fn query_timeout_fires_on_client_and_transaction() {
+    const SLOW: &str = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 5000000) SELECT count(*) FROM c";
+    let params = || PoolParams {
+        max_connections: 1,
+        query_timeout: Some(Duration::from_millis(100)),
+        ..PoolParams::default()
+    };
+
+    // 事务路径（事务 wrapper 的接线是本次改动新加的）
+    let db = SqlxClient::connect_with_params("sqlite::memory:", &params())
+        .await
+        .unwrap();
+    let tx = db.transaction().await.unwrap();
+    let err = tx.query(SLOW).await.expect_err("事务内查询必须超时");
+    assert!(matches!(err, RdbmsError::Timeout(_)), "got: {err:?}");
+
+    // 客户端路径。另起一条池：上面那条连接刚被超时打断，状态不作数。
+    let db = SqlxClient::connect_with_params("sqlite::memory:", &params())
+        .await
+        .unwrap();
+    let err = db.query(SLOW).await.expect_err("客户端查询必须超时");
+    assert!(matches!(err, RdbmsError::Timeout(_)), "got: {err:?}");
+}
+
 /// 预热必须真正建满 min_connections。
 #[tokio::test]
 async fn warm_up_creates_min_connections() {
