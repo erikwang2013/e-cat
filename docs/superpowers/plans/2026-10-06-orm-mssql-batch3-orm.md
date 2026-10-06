@@ -4232,6 +4232,52 @@ pub mod _compile_fail_guards {
 
 ## Task 12: SELECT / COUNT 生成（`query/sql.rs`）
 
+> ### ⚠️ 本任务必做之一：补 `JoinType` 与 `Query::join()`（第二处 spec 覆盖漏落）
+>
+> **与 `delete_where` 同类的漏落**：spec §5.4 的 API 清单里有
+> ```rust
+> User::query().join(JoinType::Left, "posts", "posts.user_id = users.id").fetch(&db).await?;
+> ```
+> 而本计划里 **`JoinType` 这个类型根本不存在**、`Query::join()` **零定义**。
+>
+> 更隐蔽的是：**`Query` 结构体已经有 `joins` 字段，本任务的 `build_select` 也已经会渲染它** ——
+> 于是 grep `join` 会命中 37 处，看起来「到处都有」。**但没有任何公开方法能填那个字段。**
+> 这正是 `delete_where` 藏住的方式：被引用不等于被实现。
+>
+> **落法**：
+>
+> ```rust
+> /// JOIN 类型。只做 `INNER` / `LEFT` —— 见 spec §10 非目标，
+> /// 右连接与外连接不在本批范围。
+> #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+> pub enum JoinType { Inner, Left }
+>
+> impl JoinType {
+>     pub fn as_sql(self) -> &'static str {
+>         match self { Self::Inner => "INNER JOIN", Self::Left => "LEFT JOIN" }
+>     }
+> }
+> ```
+>
+> 加在 `query/filter.rs`（与 `Op` / `Order` 同处），并在 `impl<E: Entity, S> Query<E, S>` 上加：
+>
+> ```rust
+> /// 加一个 JOIN。`table` 是**表名**，`on` 是原生 ON 条件。
+> ///
+> /// **两者都不经标识符白名单校验** —— 白名单只覆盖主实体自己的列
+> /// （见 Task 11 的「白名单的边界」）。`ON` 条件**必须由调用方保证可信**，
+> /// 与 `filter_raw` 同一信任边界。要按关联表的列过滤，也走 `filter_raw`。
+> pub fn join(mut self, kind: JoinType, table: &str, on: &str) -> Self
+> ```
+>
+> **本任务必须补的测试**：
+> - `JoinType::Inner` / `Left` 渲染成 `INNER JOIN` / `LEFT JOIN`
+> - `join` 后 `build_select` 产出的 SQL **含该 JOIN 子句**，且**位置在 FROM 之后、WHERE 之前**
+> - 两次 `join` 的**顺序与声明一致**（顺序错了不报错、只给错结果）
+> - **COUNT 查询也带 JOIN**（`total` 必须与分页查询的 WHERE/JOIN 同源，否则 `total` 与实际行数不符）
+>
+> **空验收自证**：临时让 `join` 不往 `joins` 里 push，确认上面第二条 **FAILED**，再还原。
+
 **Files:**
 - Modify: `ecat-orm/src/query/sql.rs`（Task 11 建的空文件）
 
