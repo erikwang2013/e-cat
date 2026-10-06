@@ -1,0 +1,27 @@
+[package]
+name = "ecat-data-mssql"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Microsoft SQL Server client for e-cat (tiberius-ng + deadpool)"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ecat-data = { version = "3.0.3", path = "../ecat-data" }
+ecat-tls = { version = "3.0.3", path = "../ecat-tls" }
+tiberius-ng = { workspace = true }
+deadpool = { workspace = true }
+tokio-util = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync", "time"] }
+time = { workspace = true }
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

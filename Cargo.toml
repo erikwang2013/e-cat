@@ -47,6 +47,7 @@ members = [
     "ecat-data-nebulagraph",
     "ecat-data-arangodb",
     "ecat-data-iotdb",
+    "ecat-data-mssql",
     "ecat-data-questdb",
     "ecat-data-tdengine",
     "ecat-data-mongodb",
@@ -98,6 +99,12 @@ thiserror = "2"
 futures-core = "0.3"
 sha2 = "0.10"
 time = { version = "0.3", features = ["formatting", "parsing"] }
+# SQL Server: default-features = false 关掉 native-tls + winauth（与 rustls 栈冲突，
+# winauth 还会引入 SSPI 依赖）；tds73 覆盖 SQL Server 2008+。
+tiberius-ng = { version = "0.13", default-features = false, features = ["rustls", "tds73", "time"] }
+deadpool = "0.13"
+# compat 特性提供 compat_write()，tiberius 的 Client::connect 要求 AsyncRead + AsyncWrite。
+tokio-util = { version = "0.7", features = ["compat"] }
 ecat-protos={ version = "3.0.3", path = "ecat-protos" }
 ecat-transport = { version = "3.0.3", path = "ecat-transport" }
 ecat-transport-http = { version = "3.0.3", path = "ecat-transport-http" }
