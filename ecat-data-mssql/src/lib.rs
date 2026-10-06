@@ -18,6 +18,8 @@ mod bind;
 mod cell;
 mod client;
 mod config;
+#[cfg(test)]
+mod live_tests;
 mod pool;
 #[cfg(test)]
 mod tests;

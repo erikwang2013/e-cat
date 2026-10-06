@@ -1,0 +1,17 @@
+# 本地联调用：三库一键起。不进 CI。
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Ecat_Test_2026!"
+      MSSQL_PID: Developer
+    ports: ["1433:1433"]
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_PASSWORD: postgres }
+    ports: ["5432:5432"]
+  mysql:
+    image: mysql:8.0
+    environment: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: bee_test }
+    ports: ["3306:3306"]
