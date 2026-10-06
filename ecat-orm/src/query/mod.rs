@@ -24,6 +24,7 @@ use serde_json::Value;
 use crate::entity::Entity;
 use crate::entity::EntityMeta;
 use crate::error::OrmError;
+use crate::relation::RelationSelector;
 
 pub use filter::Expr;
 pub use filter::JoinType;
@@ -56,6 +57,9 @@ pub struct Query<E, S> {
     limit: Option<u64>,
     offset: Option<u64>,
     with_trashed: bool,
+    /// 要预加载的关联名（[`Query::with`] 收集）。取到主体行之后逐条
+    /// 交给 [`crate::relation::load_relation`]，**每条关联只发一条 IN 查询**。
+    relations: Vec<String>,
     _marker: PhantomData<(fn() -> E, S)>,
 }
 
@@ -82,8 +86,27 @@ impl<E: Entity, S> Query<E, S> {
             limit: None,
             offset: None,
             with_trashed: false,
+            relations: Vec::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// 声明要预加载的关联。取到主体行之后**每条关联只发一条 `IN` 查询**
+    /// （键超过方言上限时按上限分块），不逐主体查询 —— 那正是 N+1。
+    ///
+    /// 收的是**枚举值的切片**，与 spec §5.4 的写法一致：
+    ///
+    /// ```ignore
+    /// User::query().with(&[UserRelation::Posts, UserRelation::Profile]).fetch(&db).await?;
+    /// ```
+    ///
+    /// 因此必须是泛型参数 `R`，**不是** `&[&dyn RelationSelector]` —— 后者要求
+    /// 调用方写成 `&[&UserRelation::Posts]`。`RelationSelector: Copy` 蕴含 `Sized`，
+    /// trait object 那条路本来也走不通。
+    pub fn with<R: RelationSelector>(mut self, relations: &[R]) -> Self {
+        self.relations
+            .extend(relations.iter().map(|r| r.name().to_string()));
+        self
     }
 
     /// 关掉软删除的自动过滤。见「裁决 B」—— 在**两个状态上**都可用：
@@ -215,6 +238,7 @@ impl<E: Entity, S> Query<E, S> {
             limit: self.limit,
             offset: self.offset,
             with_trashed: self.with_trashed,
+            relations: self.relations,
             _marker: PhantomData,
         }
     }
@@ -236,7 +260,13 @@ impl<E: Entity, S> Query<E, S> {
             .query_with(&built.sql, &built.params)
             .await
             .map_err(OrmError::Rdbms)?;
-        rows.iter().map(E::from_row).collect()
+        let mut items: Vec<E> = rows.iter().map(E::from_row).collect::<Result<_, _>>()?;
+        // 关联预加载：每条关联一条 IN 查询（超过方言参数上限才分块），
+        // **不逐主体查询** —— 那正是 N+1。`self.relations` 为空时一次都不进。
+        for name in &self.relations {
+            crate::relation::load_relation(db, &mut items, name).await?;
+        }
+        Ok(items)
     }
 
     /// 复制一份并换掉分页参数（`paginate` 用）。
@@ -252,6 +282,7 @@ impl<E: Entity, S> Query<E, S> {
             limit: Some(limit),
             offset: Some(offset),
             with_trashed: self.with_trashed,
+            relations: self.relations.clone(),
             _marker: PhantomData,
         }
     }
