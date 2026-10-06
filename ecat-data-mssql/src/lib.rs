@@ -1,10 +1,12 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
 mod config;
+mod pool;
 #[cfg(test)]
 mod tests;
 
 pub use config::{MssqlConfig, MssqlParams};
+pub use pool::MssqlManager;
 
 /// Microsoft SQL Server 后端。
 ///
