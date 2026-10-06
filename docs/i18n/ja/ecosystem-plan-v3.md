@@ -70,3 +70,36 @@
 | 時系列 | Apache IoTDB | `ecat-data-iotdb` | HTTP/REST（reqwest） |
 | 時系列 | QuestDB | `ecat-data-questdb` | HTTP/REST（reqwest） |
 | 時系列 | TDengine | `ecat-data-tdengine` | HTTP/REST（reqwest） |
+
+---
+
+## v4.0 計画（2026-10-05）— 完全な ORM と SQL Server
+
+> 状態：**進行中**。バッチ 1（`SqlExecutor` 分割 + ネイティブプール）は完了し、ブランチ
+> `feat/orm-mssql` にマージ済みです。ORM、SQL Server、プール強化は今後の実施項目です。
+> 各項目の現在の進捗は下表に記載しています。
+> 完全な設計は [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md) を参照。
+
+2 つの構造的ギャップを埋めます：
+
+1. **完全な ORM**：現在のデータ層は手書き SQL の RDBMS クライアントのみ（`Row` = 列名 + JSON 値）で、
+   エンティティマッピング・関連・マイグレーションはありません。v4.0 で `ecat-orm`
+   （エンティティマクロ / CRUD / クエリビルダー / 関連の一括読み込み / 結合クエリ / バルク /
+   ページング / マイグレーション）+ `ecat-orm-derive` を追加します。統一 `SqlExecutor` trait 上に
+   構築され、**すべての RDBMS バックエンドを自然にカバーします**。
+2. **SQL Server バックエンド**：sqlx 本体に MSSQL ドライバーがありません（0.7 以前に削除、書き直しは
+   未公開）。v4.0 で `ecat-data-mssql`（`tiberius-ng` 0.13 + `deadpool` 0.13）を追加します——
+   データバックエンドは**目標**として 15 個から **16 個**へ（現状は依然 15 個、SQL Server はまだ未収録）。
+
+関連する基盤変更：
+
+| 変更 | 説明 | 状態 |
+|---|---|---|
+| `ecat-data-sqlx` が `AnyPool` をやめネイティブプールへ | 時間型の制限を修正（CAST 回避が不要に）、ドライバー導入時の panic 面を除去、statement cache を有効化 | ✅ 完了（バッチ 1、`PgPool`/`MySqlPool`/`SqlitePool` の 3 系統ネイティブプール） |
+| `ecat-data` が `SqlExecutor` supertrait を分割 | トランザクション内で SQL を実行可能（現在の `Transaction` は commit/rollback のみ）。ORM と読み書き分離の基盤 | ✅ 完了（バッチ 1） |
+| コネクションプール強化 | クエリタイムアウト、`warm_up()` ウォームアップ、スマート recycle、サーキットブレーカー（`ecat-circuit-breaker` を再利用）、読み書き分離 `RdbmsRouting` | 🚧 一部：クエリタイムアウトと `warm_up()` は完了；サーキットブレーカーと読み書き分離はバッチ 4 待ち |
+| 可観測性 | プールメトリクスを `ecat-metrics` へ、プールのヘルスチェックを `ecat-health` へ、スロークエリを `ecat-tracing` へ（すべて opt-in feature） | ❌ 未着手（バッチ 4） |
+
+**破壊的変更**：trait 分割 + `SqlxClient::from_pool` のシグネチャ + `AnyPool` の削除——3 点はいずれも
+ブランチ `feat/orm-mssql` に反映済み（バッチ 1、未リリース）；リリース時に workspace バージョン
+3.0.3 → **4.0.0**。

@@ -75,7 +75,8 @@
 
 ## v4.0 规划（2026-10-05）— 完整 ORM 与 SQL Server
 
-> 状态：**设计中，尚未实现**。下表为规划项，不代表当前可用能力。
+> 状态：**进行中**。批次 1（`SqlExecutor` 拆分 + 原生池）已完成并合入分支
+> `feat/orm-mssql`；ORM、SQL Server 与池增强仍待实施。下表标注了各项当前进度。
 > 完整设计见 [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](superpowers/specs/2026-10-05-orm-and-mssql-design.md)。
 
 补齐两项结构性缺口：
@@ -86,16 +87,16 @@
    **天然覆盖全部 RDBMS 后端**。
 2. **SQL Server 后端**：sqlx 主库无 MSSQL 驱动（0.7 前移除，重写未发布），
    新增 `ecat-data-mssql`（`tiberius-ng` 0.13 + `deadpool` 0.13）——
-   数据后端从 15 个增至 **16 个**。
+   数据后端**目标**从 15 个增至 **16 个**（当前仍为 15 个，SQL Server 未落地）。
 
 连带的地基改动：
 
-| 改动 | 说明 |
-|---|---|
-| `ecat-data-sqlx` 弃用 `AnyPool` 改原生池 | 修复时间类型限制（不再需要 CAST 绕过）、去掉驱动安装 panic 面、启用 statement cache |
-| `ecat-data` 拆 `SqlExecutor` supertrait | 事务内可执行 SQL（当前 `Transaction` 只能 commit/rollback），为 ORM 与读写分离提供基础 |
-| 连接池增强 | 查询超时、`warm_up()` 预热、智能 recycle、熔断（复用 `ecat-circuit-breaker`）、读写分离 `RdbmsRouting` |
-| 可观测性 | 池指标接 `ecat-metrics`、池探活接 `ecat-health`、慢查询接 `ecat-tracing`（均为 opt-in feature） |
+| 改动 | 说明 | 状态 |
+|---|---|---|
+| `ecat-data-sqlx` 弃用 `AnyPool` 改原生池 | 修复时间类型限制（不再需要 CAST 绕过）、去掉驱动安装 panic 面、启用 statement cache | ✅ 已完成（批次 1，`PgPool`/`MySqlPool`/`SqlitePool` 三路原生池） |
+| `ecat-data` 拆 `SqlExecutor` supertrait | 事务内可执行 SQL（当前 `Transaction` 只能 commit/rollback），为 ORM 与读写分离提供基础 | ✅ 已完成（批次 1） |
+| 连接池增强 | 查询超时、`warm_up()` 预热、智能 recycle、熔断（复用 `ecat-circuit-breaker`）、读写分离 `RdbmsRouting` | 🚧 部分：查询超时与 `warm_up()` 已完成；熔断与读写分离待批次 4 |
+| 可观测性 | 池指标接 `ecat-metrics`、池探活接 `ecat-health`、慢查询接 `ecat-tracing`（均为 opt-in feature） | ❌ 未做（批次 4） |
 
-**破坏性变更**：trait 拆分 + `SqlxClient::from_pool` 签名 + 移除 `AnyPool` →
-workspace 版本 3.0.3 → **4.0.0**。
+**破坏性变更**：trait 拆分 + `SqlxClient::from_pool` 签名 + 移除 `AnyPool`——三项均已在分支
+`feat/orm-mssql` 上落地（批次 1，尚未发布）；发布时 workspace 版本 3.0.3 → **4.0.0**。

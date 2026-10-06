@@ -70,3 +70,36 @@
 | Time-series | Apache IoTDB | `ecat-data-iotdb` | HTTP/REST (reqwest) |
 | Time-series | QuestDB | `ecat-data-questdb` | HTTP/REST (reqwest) |
 | Time-series | TDengine | `ecat-data-tdengine` | HTTP/REST (reqwest) |
+
+---
+
+## Rencana v4.0 (2026-10-05) — ORM Lengkap dan SQL Server
+
+> Status: **sedang berjalan**. Batch 1 (pemisahan `SqlExecutor` + pool native) telah selesai dan
+> digabungkan ke branch `feat/orm-mssql`; ORM, SQL Server, dan peningkatan pool masih tertunda.
+> Kemajuan setiap item ditandai di bawah ini.
+> Desain lengkap: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
+
+Dua kesenjangan struktural masih harus ditutup:
+
+1. **ORM lengkap**: lapisan data saat ini hanya menyediakan klien RDBMS dengan SQL tulis tangan
+   (`Row` = nama kolom + nilai JSON) — tanpa pemetaan entitas, relasi, atau migrasi. v4.0 menambahkan
+   `ecat-orm` (makro entitas / CRUD / pembuat kueri / pramuat relasi / kueri join / massal / paginasi /
+   migrasi) + `ecat-orm-derive`. Dibangun di atas trait `SqlExecutor` yang terpadu, **secara alami
+   mencakup semua backend RDBMS**.
+2. **Backend SQL Server**: sqlx utama tidak memiliki driver MSSQL (dihapus sebelum 0.7, penulisan ulang
+   belum dirilis); v4.0 menambahkan `ecat-data-mssql` (`tiberius-ng` 0.13 + `deadpool` 0.13) —
+   backend data **target** dari 15 menjadi **16** (saat ini masih 15, SQL Server belum termasuk).
+
+Perubahan fondasi terkait:
+
+| Perubahan | Keterangan | Status |
+|---|---|---|
+| `ecat-data-sqlx` beralih dari `AnyPool` ke pool native | Memperbaiki batasan tipe waktu (tidak lagi perlu akal-akalan CAST), menghilangkan permukaan panic saat pemasangan driver, mengaktifkan statement cache | ✅ Selesai (batch 1, tiga pool native `PgPool`/`MySqlPool`/`SqlitePool`) |
+| `ecat-data` memisahkan supertrait `SqlExecutor` | SQL dapat dijalankan di dalam transaksi (saat ini `Transaction` hanya bisa commit/rollback); dasar untuk ORM dan pemisahan baca/tulis | ✅ Selesai (batch 1) |
+| Peningkatan connection pool | Timeout kueri, pemanasan `warm_up()`, recycle cerdas, pemutus sirkuit (memakai ulang `ecat-circuit-breaker`), pemisahan baca/tulis `RdbmsRouting` | 🚧 Sebagian: timeout kueri dan `warm_up()` selesai; pemutus sirkuit dan pemisahan baca/tulis menunggu batch 4 |
+| Observabilitas | Metrik pool ke `ecat-metrics`, pemeriksaan kesehatan pool ke `ecat-health`, kueri lambat ke `ecat-tracing` (semua opt-in feature) | ❌ Belum dikerjakan (batch 4) |
+
+**Perubahan yang merusak**: pemisahan trait + tanda tangan `SqlxClient::from_pool` + penghapusan
+`AnyPool` — ketiganya sudah diterapkan di branch `feat/orm-mssql` (batch 1, belum dirilis);
+saat rilis, versi workspace 3.0.3 → **4.0.0**.

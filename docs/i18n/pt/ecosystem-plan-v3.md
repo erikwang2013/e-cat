@@ -70,3 +70,36 @@
 | Séries temporais | Apache IoTDB | `ecat-data-iotdb` | HTTP/REST (reqwest) |
 | Séries temporais | QuestDB | `ecat-data-questdb` | HTTP/REST (reqwest) |
 | Séries temporais | TDengine | `ecat-data-tdengine` | HTTP/REST (reqwest) |
+
+---
+
+## Plano v4.0 (2026-10-05) — ORM completo e SQL Server
+
+> Status: **em andamento**. O lote 1 (divisão do `SqlExecutor` + pools nativos) está concluído e
+> mesclado na branch `feat/orm-mssql`; o ORM, o SQL Server e as melhorias de pool ainda estão
+> pendentes. O progresso atual de cada item está marcado abaixo.
+> Design completo: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
+
+Restam duas lacunas estruturais a fechar:
+
+1. **ORM completo**: a camada de dados hoje só oferece clientes RDBMS com SQL escrito à mão
+   (`Row` = nomes de coluna + valores JSON) — sem mapeamento de entidades, associações ou migrações.
+   O v4.0 adiciona `ecat-orm` (macros de entidade / CRUD / construtor de consultas / pré-carregamento
+   de associações / joins / lote / paginação / migrações) + `ecat-orm-derive`. Construído sobre o
+   trait unificado `SqlExecutor`, **cobre naturalmente todos os backends RDBMS**.
+2. **Backend SQL Server**: o sqlx principal não tem driver MSSQL (removido antes da 0.7, reescrita
+   não publicada); o v4.0 adiciona `ecat-data-mssql` (`tiberius-ng` 0.13 + `deadpool` 0.13) —
+   backends de dados **meta** de 15 para **16** (atualmente ainda 15, SQL Server ainda não incluído).
+
+Mudanças de fundação associadas:
+
+| Mudança | Descrição | Status |
+|---|---|---|
+| `ecat-data-sqlx` abandona o `AnyPool` por pools nativos | Corrige limitações de tipos temporais (não é mais necessário contornar com CAST), remove a superfície de panic na instalação do driver, habilita o statement cache | ✅ Concluído (lote 1, pools nativos `PgPool`/`MySqlPool`/`SqlitePool`) |
+| `ecat-data` extrai o supertrait `SqlExecutor` | SQL executável dentro de transações (hoje `Transaction` só faz commit/rollback); base para o ORM e a separação leitura/escrita | ✅ Concluído (lote 1) |
+| Melhorias do pool de conexões | Timeout de consulta, aquecimento `warm_up()`, recycle inteligente, circuit breaker (reutiliza `ecat-circuit-breaker`), separação leitura/escrita `RdbmsRouting` | 🚧 Parcial: timeout de consulta e `warm_up()` concluídos; circuit breaker e separação leitura/escrita pendentes (lote 4) |
+| Observabilidade | Métricas do pool para `ecat-metrics`, sondas de saúde do pool para `ecat-health`, consultas lentas para `ecat-tracing` (todas com feature opt-in) | ❌ Não iniciado (lote 4) |
+
+**Mudanças incompatíveis**: divisão do trait + assinatura de `SqlxClient::from_pool` + remoção do
+`AnyPool` — as três já aplicadas na branch `feat/orm-mssql` (lote 1, ainda não publicado);
+no lançamento, versão do workspace 3.0.3 → **4.0.0**.
