@@ -109,9 +109,17 @@ impl<E: Entity, S> Query<E, S> {
     }
 
     /// 关联表上的原生 WHERE 片段。**输入必须可信** —— 不校验、直接拼。
-    pub fn filter_raw(mut self, expr: &str) -> Result<Self, OrmError> {
-        self.filters.push(Expr::Raw(expr.into()));
-        Ok(self)
+    ///
+    /// **与 `filter` 一样把状态转成 [`Filtered`]**：类型状态的判据是
+    /// 「**已经有一个过滤条件**」，而本方法正是加了一个。若它不转，
+    /// 只用逃生口写条件的查询将**永远无法进入删改状态** ——
+    /// 用户明明给了条件，却只能去加一个 dummy `.filter(...)` 才能调
+    /// `delete_where`，那是没有安全收益的障碍。
+    ///
+    /// 逃生口的安全性由**调用方**负责（`filter_raw("1 = 1")` 确实会删全表，
+    /// 但那是调用方显式写的），不由类型状态负责。
+    pub fn filter_raw(self, expr: &str) -> Result<Query<E, Filtered>, OrmError> {
+        Ok(self.push_filter(Expr::Raw(expr.into())))
     }
 
     // ---- 以下仅供本 crate 的测试与 SQL 生成使用 ----
@@ -366,6 +374,20 @@ mod tests {
     fn filter_raw_bypasses_the_whitelist_by_design() {
         // 关联表的列走这里。文档必须写明「输入必须可信」。
         let q = U::query().filter_raw("posts.published = 1").unwrap();
+        assert_eq!(q.filter_count(), 1);
+    }
+
+    /// **`filter_raw` 必须把状态转成 `Filtered`** —— 类型状态的判据是
+    /// 「已经有一个过滤条件」，而它正是加了一个。
+    ///
+    /// 不转的后果：只用逃生口写条件的查询永远进不了删改状态，
+    /// 用户得再加一个 dummy `.filter(..)` 才能调 `delete_where`。
+    ///
+    /// 本测试用**类型标注**钉住返回状态：`filter_raw` 若退回 `Self`，
+    /// 这里会因为 `Query<U, Unfiltered>` 与 `Query<U, Filtered>` 不符而编译失败。
+    #[test]
+    fn filter_raw_transitions_to_filtered() {
+        let q: Query<U, Filtered> = U::query().filter_raw("posts.published = 1").unwrap();
         assert_eq!(q.filter_count(), 1);
     }
 
