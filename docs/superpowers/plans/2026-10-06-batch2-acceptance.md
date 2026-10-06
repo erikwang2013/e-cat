@@ -114,7 +114,7 @@ src/live_tests.rs  env 门控真库测试                                    442
 
 | # | 项 | 归属 |
 |---|---|---|
-| ① | `ecat-data` 35 条 `clippy::double_must_use` 误报（使 `-D warnings` 恒红） | 独立（批次 1 已记） |
+| ① | ~~`ecat-data` 35 条 `clippy::double_must_use` 误报（使 `-D warnings` 恒红）~~ **已闭合（2026-10-06）** | 独立（批次 1 已记；**更正见批次 1 验收文档 ① 的注**：实为 11 个 crate 共 52 条、且是**真阳性**不是误报，根因是 `async-trait` 0.1.91 注入 `#[must_use]`，升 0.1.92 根治） |
 | ② | `cargo fmt --check` 在 `ecat-security/src/lib.rs:107` 失败 | 独立（批次 1 已记） |
 | ③ | **`#tmp` 跨语句不可用**（与 sqlx 后端的行为差异） | 已写进 spec §6 |
 | ④ | URL 形态 → 真自签库**未端到端复跑**（镜像已删） | 缺的那段与已验的 ADO 路径共用同一组 setter |

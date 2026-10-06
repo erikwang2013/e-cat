@@ -6269,7 +6269,7 @@ wc -l ecat-orm/src/*.rs ecat-orm/src/**/*.rs ecat-orm-derive/src/*.rs | tail -3
 
 - [ ] `cargo test --workspace` 全绿，**测试数不低于批次前的 771**
 - [ ] `--doc` 也跑（`compile_fail` 断言在 doctest 里）
-- [ ] `cargo fmt --check` 与 `clippy -D warnings` 全绿（此前 35 条 `double_must_use` 与本仓唯一一处 fmt 差异已单独清理，**这两条现在应是真闸门**）
+- [ ] `cargo fmt --check` 与 `clippy -D warnings` 全绿（此前 **11 个 crate 共 52 条 `double_must_use`** 与本仓唯一一处 fmt 差异已单独清理 —— 前者根因是 `async-trait` 0.1.91 注入属性，升 0.1.92 根治，**这两条现在应是真闸门**）
 - [ ] `cargo audit --deny warnings` 通过
 - [ ] **每个源文件 < 500 行**（`wc -l` 超出就拆）
 - [ ] 文档与代码同批落地，未提前写「已实现」

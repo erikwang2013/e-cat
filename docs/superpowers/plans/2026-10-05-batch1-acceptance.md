@@ -98,7 +98,29 @@
 
 | # | 债务 | 归属 | 建议 |
 |---|---|---|---|
-| ① | `ecat-data` 35 条 `clippy::double_must_use` 误报，使 `-D warnings` 闸门恒红 | 独立 | 加一条带理由的 crate 级 `[lints.clippy] allow`，一次清掉 |
+| ① | ~~`ecat-data` 35 条 `clippy::double_must_use` 误报，使 `-D warnings` 闸门恒红~~ **已闭合（2026-10-06，见下）** | 独立 | ~~加一条带理由的 crate 级 `[lints.clippy] allow`，一次清掉~~ |
+
+> **① 的更正（2026-10-06，提交 `6408c7e`）** —— 本条原记的三处说法都不对，实测更正：
+>
+> | 原记 | 实测 |
+> |---|---|
+> | 只有 `ecat-data` | **11 个 crate 共 52 条**（`ecat-data` 35 + 其余 10 个 17） |
+> | 35 条 | **52 条**（`ecat-data` 的 35 是其中一部分，两法互校吻合） |
+> | 「误报」 | **是真阳性** —— clippy 判对了 |
+>
+> **成因**：全仓 `.rs` 里**没有任何字面 `#[must_use]`**（`grep -F '#[must_use'` → 0 命中）。
+> 这 52 条属性由 **`async-trait` 0.1.91 的 proc macro 注入**（`src/expand.rs:69`：
+> `method.attrs.push(parse_quote!(#[must_use]));`，只作用于 trait 定义，`impl` 块不注入）。
+> 被展开的方法返回 `Result` / `Pin<Box<dyn Future>>`，两者本身即 `#[must_use]`，
+> 注入的属性确属冗余 —— 上游同意，**0.1.92 的全部源码差异就是删掉这一行**（已逐文件 diff 核实：
+> 两版仅 `expand.rs` 与 `lib.rs` 不同）。
+>
+> **修法**：`cargo update -p async-trait --precise 0.1.92 --offline`，Cargo.lock 只动 2 行，零源码改动。
+> **未采用**原计划的 crate 级 `allow` —— 那会永久压制一条**正确**的 lint，且要给 11 个 crate 都加。
+> 不损失诊断：`Future` 自带 `#[must_use = "futures do nothing unless you .await or poll them"]`。
+>
+> **闸门现为真绿**：`cargo fmt --check` rc=0；`cargo clippy --workspace --all-targets -- -D warnings`
+> rc=0、0 warning（`ecat-data` 单独强制重新 lint 1m08s，非缓存命中）。
 | ② | `cargo fmt --check` 在 `ecat-security/src/lib.rs:107` 失败（base 即红） | 独立 | 跑一次 `cargo fmt -p ecat-security` |
 | ③ | `ecat-data/src/rdbms.rs` 499 行（距上限 1 行） | 批次 4 | 拆 `Transaction` 到 `src/transaction.rs` |
 | ④ | `ecat-data-sqlx/src/lib.rs` 453 行（已达标）；`tests.rs` 372 行 | — | 无需动作 |

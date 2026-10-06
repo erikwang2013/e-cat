@@ -2554,8 +2554,15 @@ cargo clippy --workspace --all-targets 2>&1 | grep -c "^warning: this function"
 >
 > 1. 裸 `grep -c "^error"` 即使加 `-- -D warnings` 也会**多算 1** —— 收尾行
 >    `` error: could not compile `ecat-data` (lib) due to 31 previous errors `` 同样匹配 `^error`。
-> 2. `grep -c "clippy::double_must_use"` **恒返回 1** —— 该字符串在整份输出里只出现一次
->    （clippy 仅对首个诊断打印 ``= note: `#[warn(clippy::double_must_use)]` ``）。
+> 2. ~~`grep -c "clippy::double_must_use"` **恒返回 1** —— 该字符串在整份输出里只出现一次
+>    （clippy 仅对首个诊断打印 ``= note: `#[warn(clippy::double_must_use)]` ``）。~~
+>
+>    **更正（2026-10-06）**：`grep -c` 数的是**行数**且只匹配 lint 名那一行，与
+>    **诊断条数**是两回事 —— 「恒返回 1」推不出「只有 1 条」。可靠数法是
+>    `cargo clippy --workspace --all-targets --message-format=json` 后按
+>    `(file,line,col,byte_start,rendered)` 去重（cargo 的 JSON 流**每条诊断发两次**，
+>    human renderer 会去重，所以 `grep '^warning'` 拿到的是去重后的 1×）。
+>    实测该法得 **52 条**，与独立静态计数互校吻合。
 >
 > 可靠口径是**诊断头行** `^warning: this function`。
 
