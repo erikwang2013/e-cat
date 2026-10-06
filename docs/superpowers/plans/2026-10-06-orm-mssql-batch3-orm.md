@@ -4205,6 +4205,31 @@ pub mod _compile_fail_guards {
 
 ---
 
+### 实施记录（2026-10-06，`0866aab` 订正 7 处）
+
+| # | 计划写法 | 后果 |
+|---|---|---|
+| 1 | `compile_fail` 引用 `delete_where` | 该方法**全计划零实现** → 两个状态下都编译不过 → 「**因为错误的原因通过**」，且双向探针**无物可挪**。已换成等价且本任务真实成立的性质（`Filtered` 不能由 `new()` 凭空构造）+ 正向对照 |
+| 2 | 测试里 `#[test] fn filter_transitions_to_filtered() {` **连写两遍** | 编译不过 |
+| 3 | 测试的 `impl Entity for U` 漏 `set_relation` | 编不过（Task 8 加进 trait 的必需项）|
+| 4 | `Query` 无 `Debug`，但测试用 `unwrap_err()` | Ok 侧要求 `Debug`，编不过。加 `#[derive(Debug)]` 后顺带消掉了 `joins`/`limit`/`offset` 的 `dead_code` |
+| 5 | filter.rs 测试 `use serde_json::json;` 未使用 | clippy `-D warnings` 红 |
+| 6 | `_compile_fail_guards` 混用 `///` 与 `//!` | `mixed_attributes_style` 红 |
+| 7 | 裁决 B 说「两个 `impl` 块」，Step 4 的代码却是**一个泛型块** | 实施者按代码走（效果等价：两状态都能调、返回同状态、未引入第三态）。**裁决 B 的措辞已作废，以代码为准** |
+
+**另：`filter_raw` 的返回状态已改** —— 原版返回 `Self`（保持 `Unfiltered`），与
+`Filtered` 的自述「已有至少一个过滤条件」矛盾，且会让「只用逃生口写条件的查询
+永远进不了删改状态」。已改为返回 `Query<E, Filtered>`。**逃生口的安全性由调用方
+负责**（`filter_raw("1 = 1")` 确实会删全表，但那是调用方显式写的），不由类型状态负责。
+
+> **这一批的实施记录里，第 1 条最值得记**：它暴露了一个**新的空验收变体** ——
+> `compile_fail` 断言的方法**根本不存在**时，它在任何状态下都编译不过，
+> 于是「必然通过」，而正向对照（只调 `filter`）**拦不住这一点**。
+> 判据仍然是硬规则之三那句：把被断言的东西删掉/它本来就不存在时，这条断言还通过吗？
+> **`compile_fail` 的参照物必须实际存在**，否则它测的是「这个方法名不存在」。
+
+---
+
 ## Task 12: SELECT / COUNT 生成（`query/sql.rs`）
 
 **Files:**
