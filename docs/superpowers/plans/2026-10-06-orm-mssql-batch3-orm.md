@@ -920,6 +920,8 @@ cd /home/wwwroot/e-cat && cargo test -p ecat-orm 2>&1 | tail -15; echo "rc=${PIP
 
 期望：13 passed（Task 2/3 的 6 个 + 本任务 7 个）。
 
+> **实际为 18** —— 事后 `0351c17` 又给 entity.rs 补了 5 个覆盖测试。见下方 Task 5 的说明。
+
 - [ ] **Step 6: 提交**
 
 ```bash
@@ -1041,7 +1043,8 @@ mod tests {
     #[test]
     fn non_finite_floats_become_strings() {
         assert_eq!(f64::NAN.to_json(), json!("NaN"));
-        assert_eq!(f64::INFINITY.to_json(), json!("inf"));
+        assert_eq!(f64::INFINITY.to_json(), json!("Infinity"));
+        assert_eq!(f64::NEG_INFINITY.to_json(), json!("-Infinity"));
         assert_eq!(1.5_f64.to_json(), json!(1.5));
     }
 }
@@ -1082,6 +1085,13 @@ pub trait ColumnValue: Sized {
     /// 对应的存储类型，供迁移 DDL 使用。
     const COL_TYPE: ColType;
 
+    /// 该类型能否承载 NULL。默认 `false`；`Option<T>` 覆写为 `true`。
+    ///
+    /// `from_row_col` 用它区分「NULL 进了非可空字段」（报 `UnexpectedNull`）
+    /// 与「NULL 进了可空字段」（`Ok(None)`）。**给 `Option` 以外的可空包装
+    /// 类型实现本 trait 时，必须记得覆写它**，否则 NULL 会被误报。
+    const NULLABLE: bool = false;
+
     fn to_json(&self) -> Value;
 
     /// `v` 保证不是 `Value::Null`（调用方已拦掉）。
@@ -1090,6 +1100,7 @@ pub trait ColumnValue: Sized {
 
 impl<T: ColumnValue> ColumnValue for Option<T> {
     const COL_TYPE: ColType = T::COL_TYPE;
+    const NULLABLE: bool = true;
 
     fn to_json(&self) -> Value {
         match self {
@@ -1115,6 +1126,11 @@ impl<T: ColumnValue> ColumnValue for Option<T> {
 pub fn from_row_col<T: ColumnValue>(row: &Row, column: &'static str) -> Result<T, OrmError> {
     match row.get(column) {
         None => Err(OrmError::UnknownColumn(column.into())),
+        // 这一行是必需的：`T::from_json` 的契约是「v 保证不是 Null」，
+        // 非 Option 类型对它调用只会得到 TypeMismatch —— 那样
+        // `OrmError::UnexpectedNull` 就**永远报不出来**（死变体），
+        // 而 `Entity::from_row` 的文档明明承诺非 Option 字段遇 NULL 报它。
+        Some(v) if v.is_null() && !T::NULLABLE => Err(OrmError::UnexpectedNull { column }),
         Some(v) => T::from_json(column, v),
     }
 }
@@ -1159,20 +1175,25 @@ impl ColumnValue for f64 {
         } else if self.is_nan() {
             Value::String("NaN".into())
         } else if *self > 0.0 {
-            Value::String("inf".into())
+            // 拼写跟驱动对齐（两个驱动的 float_to_json 写的都是 `Infinity`，
+            // 见 `ecat-data-sqlx/src/cell.rs:15-17`）。它们已随 4.0.0 发布
+            // 不能改，所以 ORM 跟随 —— 否则同一份数据在库里两种拼写。
+            Value::String("Infinity".into())
         } else {
-            Value::String("-inf".into())
+            Value::String("-Infinity".into())
         }
     }
 
     fn from_json(column: &'static str, v: &Value) -> Result<Self, OrmError> {
-        // 与 to_json 对称：字符串形态的 NaN/±inf 要能转回来。
+        // 与 to_json 对称：字符串形态的 NaN/±Inf 要能转回来。
+        // 额外接受 Rust 自身的 `inf` / `-inf`（`f64::to_string()` 的形态）——
+        // 别处工具或旧数据可能写的是它。
         match v {
             Value::Number(n) => n.as_f64().ok_or_else(|| mismatch(column, "f64")),
             Value::String(s) => match s.as_str() {
                 "NaN" => Ok(f64::NAN),
-                "inf" => Ok(f64::INFINITY),
-                "-inf" => Ok(f64::NEG_INFINITY),
+                "Infinity" | "inf" => Ok(f64::INFINITY),
+                "-Infinity" | "-inf" => Ok(f64::NEG_INFINITY),
                 _ => Err(mismatch(column, "f64")),
             },
             _ => Err(mismatch(column, "f64")),
@@ -1273,7 +1294,11 @@ impl ColumnValue for Value {
 cd /home/wwwroot/e-cat && cargo test -p ecat-orm 2>&1 | tail -15; echo "rc=${PIPESTATUS[0]}"
 ```
 
-期望：23 passed（此前 13 + 本任务 10）。
+期望：**31 passed**（动工前的基线 + 本任务 10 + 实施者补的回归）。
+
+> **实施记录**：原文写「23 passed（此前 13 + 本任务 10）」——基线数字在 Task 5 动工前就已失效。
+> 实际账目：18（Task1–4，含 `0351c17` 给 entity.rs 补的 5 个）+ 10（本任务）+ 1（`e2136dc` i32 越界回归）
+> + 1（`driver_spelled_infinities_are_accepted`）+ 1（`73da3cb` 的 roundtrip）= **31**。
 
 - [ ] **Step 5: 提交**
 
@@ -1354,7 +1379,9 @@ pub use entity::Entity;
 cd /home/wwwroot/e-cat && cargo test -p ecat-orm 2>&1 | tail -15; echo "rc=${PIPESTATUS[0]}"
 ```
 
-期望：23 passed（Task 5 结束时的数字，本任务不新增测试）。
+期望：**31 passed**（Task 5 结束时的数字，本任务不新增测试）。
+
+> 测试数是累加的 —— 每个任务开工前先跑一遍拿**真实基线**，别用计划里写的历史数字当期望。
 
 - [ ] **Step 3: 提交**
 
