@@ -450,7 +450,10 @@ fn f32_uses_shortest_round_trip() {
 
 #[test]
 fn numeric_errors_loudly_with_column_and_type() {
-    let err = cell_to_json(&ColumnData::Numeric(None), "amount").unwrap_err();
+    // 注意是 Some(_)：None 是「没有值」→ NULL，不是「表示形态未定」。
+    // 初版计划这里写的是 Numeric(None)，与映射表里「任意变体的 None → Value::Null」
+    // 自相矛盾 —— 由 Task 4 的实施者发现并订正。
+    let err = cell_to_json(&ColumnData::Numeric(Some(dec)), "amount").unwrap_err();
     let m = err.to_string();
     assert!(m.contains("amount"), "got: {m}");
 }
