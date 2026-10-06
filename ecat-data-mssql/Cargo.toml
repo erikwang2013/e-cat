@@ -10,8 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-data = { version = "4.0.0", path = "../ecat-data" }
-ecat-tls = { version = "4.0.0", path = "../ecat-tls" }
+ecat-data = { version = "4.1.0", path = "../ecat-data" }
+ecat-tls = { version = "4.1.0", path = "../ecat-tls" }
 tiberius-ng = { workspace = true }
 # `rt_tokio_1`：deadpool 默认**不开**任何运行时 feature，而池上设了
 # wait/create/recycle 超时后 `PoolBuilder::build()` 会直接报 `NoRuntimeSpecified`

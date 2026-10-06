@@ -1,5 +1,58 @@
 # Changelog
 
+## [4.1.0] — 2026-10-06
+
+### Added
+
+- **新 crate `ecat-orm` + `ecat-orm-derive`（完整 ORM）**。建立在 4.0.0 拆出的
+  `SqlExecutor` 之上 —— 所有数据操作取 `&impl SqlExecutor`，因此**客户端与 `Transaction` 通吃**。
+  - `#[derive(Entity)]`：表名/列/主键/标志位、`from_row`/`to_values`、关联与 `XxxRelation` 枚举、`set_relation` 写回口
+  - **方言层** `DialectSpec`：SQLite / PostgreSQL / MySQL / SQL Server / ANSI 五套**纯函数** SQL 生成
+  - **查询构建器**：类型状态 `Unfiltered → Filtered`（**无过滤条件无法删改**，编译期保证）+ **标识符白名单**（未声明的列名不拼进 SQL）
+  - CRUD（`insert` / `find_by_id` / `find_all` / `update` / `delete_by_id` / `hard_delete_by_id` / `save`）
+  - **批量分块**：按各方言参数上限（SQLite 999 / SQL Server 2100 / 其余 65535）切分
+  - 分页（`Page<T>` / `paginate` / `paginate_without_count`）
+  - **关联预加载**：一次 `IN` 查询取回全部关联，**杜绝 N+1**（三种方向：`has_many` / `has_one` / `belongs_to`）
+  - 自动行为：`created_at` / `updated_at` 填充、**软删除**、**乐观锁**（`version` 冲突报 `OptimisticLockConflict`）
+  - **迁移系统**：`Migrator`（`add` / `status` / `run` / `down`）+ 实体工厂 `create_table::<E>()` + 版本表 `_ecat_migrations`
+- `ecat-data`：`SqlExecutor::execute_then_query`（**有默认实现**，向后兼容）——
+  在同一条连接上原子地跑两条语句。`Transaction` 覆写为「直接在自己身上跑」，
+  `SqlxClient` 覆写为「开事务跑完提交」。**这是「事务内 insert」能成立的前提**
+  （MySQL 的 `LAST_INSERT_ID()` 是连接作用域的）。
+
+### Changed
+
+- `ecat-data`：`DialectSpec::table_exists_sql` 改名 **`create_table_prefix`** 并改语义 ——
+  旧名承诺「一条语句」，但在 SQL Server 上返回**空串**，调用方照名字用会生成没有
+  `CREATE TABLE` 关键字的非法 SQL。新名**始终返回完整前缀**（MSSQL 为 `CREATE TABLE [x]`），
+  另加 `needs_exists_check_before_create()` 表达「建表前需先查存在性」。
+- `ecat-data`：`DialectSpec::limit_clause` 的 `limit` 参数改 `Option<u64>` ——
+  旧版用 `u64::MAX` 表示「未设置」，`offset()` 不带 `limit()` 时会生成
+  `LIMIT 18446744073709551615 OFFSET 20`，**超出 BIGINT、真库拒收**。
+- `ecat-data` / `ecat-data-sqlx`：`find_by_id` / `find_all` 改走统一的查询构建器路径
+  （列清单、方言引号、占位符编号、**软删除闸门**全在一处，不另写第二条 SQL 生成路径）。
+
+### Known limitations
+
+- **`sqlite::memory:` 不支持跨连接事务场景**：池只有一条被事务占住的连接，事务内第二条
+  语句会等到超时。需要多连接时用文件路径（`sqlite:<path>?mode=rwc`）。
+- **`join` 的列清单不带表前缀**：被连表与主体有同名列时真库报 `ambiguous column name`。
+- **批量 `update_many` 的乐观锁冲突无法定位到行**：只能靠「返回行数 < 传入行数」察觉，
+  需要定位时用逐行 `update`。
+- `join` 的表名与 ON 条件**不做白名单校验**（`join(table, on)` 收的是字符串，
+  字符串里没有类型信息）；与 `filter_raw` 同一信任边界，文档已注明。
+
+### Tests
+
+- `ecat-orm` 的 SQLite 全链路集成测试：实体定义 → 迁移建表 → CRUD → 关联预加载 →
+  分页 → 事务提交/回滚 → 软删除 → 乐观锁冲突，外加**时间列无 CAST 往返**
+  （断言在**绑定参数**上 —— SQLite 读路径会重新格式化偏移量文本，读回路断言是空的）。
+- 发布前 `cargo test --workspace`：**1076 passed / 0 failed**（4.0.0 时为 771）。
+  `--doc` 有 **4 条 doctest 实际执行**（2 条 `compile_fail` + 2 条正向对照）——
+  编译期断言**必须放在 `src/` 的非 `#[cfg(test)]` 位置**：写在 `tests/*.rs` 里
+  rustdoc 不收，写在 `#[cfg(test)] mod` 里 `--doc` 编译时不开 `cfg(test)`，两处都不会执行。
+
+
 ## [4.0.0] — 2026-10-06
 
 ### ⚠️ 破坏性变更
