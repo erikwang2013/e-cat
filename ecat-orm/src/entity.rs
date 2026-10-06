@@ -184,4 +184,118 @@ mod tests {
         let pk = META.column(META.pk).expect("pk column must exist");
         assert!(pk.pk);
     }
+
+    /// INSERT 时自增主键由数据库生成，**不能**出现在列清单里。
+    /// 补测理由：本方法此前零覆盖，而它决定「哪些列会进 INSERT」——
+    /// 写错不会报错，只会写出多余或缺失的列。
+    #[test]
+    fn insertable_columns_skip_auto_increment_pk() {
+        let names: Vec<_> = META.insertable_columns().map(|c| c.name).collect();
+        assert_eq!(names, vec!["name"], "自增主键 id 不该出现在 INSERT 里");
+    }
+
+    /// **非自增主键必须出现在 INSERT 里** —— 手工分配的整数主键、UUID 字符串
+    /// 都由调用方给值，漏掉就插不进去。
+    ///
+    /// 判据是 `!(pk && auto_increment)` 而不是 `!pk`：这一条把两者的区别钉死。
+    #[test]
+    fn insertable_columns_keep_a_non_auto_increment_pk() {
+        static COLS: [ColumnMeta; 2] = [
+            ColumnMeta {
+                name: "id",
+                ty: ColType::Text,
+                nullable: false,
+                pk: true,
+                auto_increment: false,
+            },
+            ColumnMeta {
+                name: "name",
+                ty: ColType::Text,
+                nullable: false,
+                pk: false,
+                auto_increment: false,
+            },
+        ];
+        static META: EntityMeta = EntityMeta {
+            table: "k",
+            pk: "id",
+            columns: &COLS,
+            relations: &[],
+            flags: EntityFlags::NONE,
+        };
+        let names: Vec<_> = META.insertable_columns().map(|c| c.name).collect();
+        assert_eq!(names, vec!["id", "name"], "非自增主键必须保留");
+    }
+
+    /// 顺序必须与 `columns` 声明顺序一致 —— 派生宏按字段顺序生成，
+    /// crud 按同一顺序收集参数；顺序不一致会让参数与列错位（静默错值）。
+    #[test]
+    fn column_iterators_preserve_declaration_order() {
+        static COLS: [ColumnMeta; 3] = [
+            ColumnMeta {
+                name: "a",
+                ty: ColType::I64,
+                nullable: false,
+                pk: true,
+                auto_increment: true,
+            },
+            ColumnMeta {
+                name: "b",
+                ty: ColType::I64,
+                nullable: false,
+                pk: false,
+                auto_increment: false,
+            },
+            ColumnMeta {
+                name: "c",
+                ty: ColType::I64,
+                nullable: false,
+                pk: false,
+                auto_increment: false,
+            },
+        ];
+        static META: EntityMeta = EntityMeta {
+            table: "t",
+            pk: "a",
+            columns: &COLS,
+            relations: &[],
+            flags: EntityFlags::NONE,
+        };
+        let ins: Vec<_> = META.insertable_columns().map(|c| c.name).collect();
+        let upd: Vec<_> = META.updatable_columns().map(|c| c.name).collect();
+        assert_eq!(ins, vec!["b", "c"], "自增主键 a 不进 INSERT，其余按声明序");
+        assert_eq!(upd, vec!["b", "c"], "主键 a 不进 UPDATE，其余按声明序");
+    }
+
+    /// UPDATE 永远跳过主键 —— 包括非自增主键（主键是定位条件，不是被更新的列）。
+    #[test]
+    fn updatable_columns_always_skip_the_pk() {
+        let names: Vec<_> = META.updatable_columns().map(|c| c.name).collect();
+        assert_eq!(names, vec!["name"]);
+    }
+
+    /// 关联查找的命中与未命中。
+    #[test]
+    fn relation_lookup_hits_and_misses() {
+        static RELS: [RelationMeta; 1] = [RelationMeta {
+            name: "posts",
+            kind: RelationKind::HasMany,
+            target_table: "posts",
+            foreign_key: "user_id",
+            local_key: "id",
+        }];
+        static META: EntityMeta = EntityMeta {
+            table: "users",
+            pk: "id",
+            columns: &[],
+            relations: &RELS,
+            flags: EntityFlags::NONE,
+        };
+        let r = META
+            .relation("posts")
+            .expect("declared relation must be found");
+        assert_eq!(r.kind, RelationKind::HasMany);
+        assert_eq!(r.foreign_key, "user_id");
+        assert!(META.relation("nope").is_none());
+    }
 }
