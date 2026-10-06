@@ -1797,6 +1797,7 @@ dependencies = [
  "bytes",
  "ecat-mq",
  "futures-core",
+ "rustls",
  "rustls-native-certs 0.7.3",
  "rustls-pemfile",
  "serde",

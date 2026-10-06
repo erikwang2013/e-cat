@@ -7,7 +7,22 @@ use ecat_mq::{MessageQueue, MessageStream, MqError};
 use futures_core::Stream;
 use serde::Deserialize;
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::task::{Context, Poll};
+
+/// 安装默认 rustls CryptoProvider（ring）。rustls 的 ClientConfig::builder()
+/// 要求进程级 provider 唯一确定——workspace 特性合并后 aws-lc-rs（tiberius）与
+/// ring（reqwest）同时启用，自动选择会 panic。async-nats 内部也走 builder()
+/// （如 tls:// URL 且未显式提供 tls_client_config），故在入口处先安装；
+/// 与 ecat-tls / ecat-transport-* / ecat-mq-mqtt 一致（首装生效）。
+fn ensure_crypto_provider() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        let _ = rustls::crypto::CryptoProvider::install_default(
+            rustls::crypto::ring::default_provider(),
+        );
+    });
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NatsConfig {
@@ -32,6 +47,8 @@ pub struct NatsMq {
 
 impl NatsMq {
     pub async fn connect(url: &str) -> Result<Self, MqError> {
+        // tls:// URL 会走 async-nats 内部的 ClientConfig::builder()，同样需要 provider。
+        ensure_crypto_provider();
         let client = async_nats::connect(url)
             .await
             .map_err(|e| MqError::Other(format!("nats connect: {e}")))?;
@@ -88,6 +105,7 @@ fn build_connect_options(cfg: &NatsConfig) -> Result<async_nats::ConnectOptions,
         }
     }
 
+    ensure_crypto_provider();
     let builder = rustls::ClientConfig::builder().with_root_certificates(roots);
     let tls = match (&cfg.tls_cert_file, &cfg.tls_key_file) {
         (Some(cert), Some(key)) => {

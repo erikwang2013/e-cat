@@ -20,6 +20,9 @@ async-nats = "0.38"
 # TLS 组装用：版本与 async-nats 内部依赖一致，均已锁定
 rustls-native-certs = "0.7"
 rustls-pemfile = "2"
+# 显式声明 ring 特性：确保 rustls::crypto::ring 在任何特性合并组合下都存在
+# （aws-lc-rs 由 tiberius 经 tokio-rustls 引入，两者并存时自动选 provider 会 panic）
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
