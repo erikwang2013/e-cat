@@ -96,7 +96,17 @@ User::query().filter("name", Op::Like, "%e%").fetch(&db).await?;
 
 一个不返回 `Result` 的函数**无法**返回 `OrmError::UnknownColumn`。
 
-**裁决：`filter` / `order_by` / `group_by` 一律返回 `Result`**，示例改为：
+**裁决：`filter` / `order_by` 一律返回 `Result`**，示例改为：
+
+> **订正（2026-10-06，覆盖审计）**：原文写的是「`filter` / `order_by` / **`group_by`** 一律返回 `Result`」，
+> 但 **`group_by` 是个 phantom** —— 它在 spec 全文**只出现一次**（spec:535 的 §5.5(a) 括注，
+> 作为「收 `&str` 标识符的 API」的举例），而 **§5.4 的公开 API 清单里没有它**、
+> **§5.2 的 `query/sql.rs` 职责里也没有它**。本计划唯一的 `group_by` 命中是
+> `group_by_key`（关联预加载的辅助函数，无关）。
+>
+> **裁决：不做 `group_by`。** 它从未被列为交付物，只是括注里的顺手举例。
+> 若将来要加，那是独立一期（涉及 GROUP BY 的 SELECT 形状、聚合函数、HAVING —— 都不是本批范围）。
+> 本节的定式只约束**真实存在**的两个方法。
 
 ```rust
 User::query().filter("name", Op::Like, "%e%")?.fetch(&db).await?;
@@ -2736,6 +2746,33 @@ SQL 生成方写成 `SELECT {prefix}{cols} FROM {table} …{suffix}`。
 
 ---
 
+## 裁决 D：`join` 的表名与 ON 条件**不做校验**（deviation from spec §5.5(a)）
+
+spec:539-540 要求：
+
+> `join(table, on)` 的表名与 ON 条件同理：**表名对照 `EntityMeta.table` 与已声明关联校验**，
+> `on` 条件**仅接受编译期字面量**（文档注明信任边界）。
+
+**裁决：不实现这两条校验。** 理由不是「麻烦」，是**它与 spec 自己的 API 形状冲突**：
+
+| spec 的要求 | 为什么做不到 |
+|---|---|
+| 表名对照 `EntityMeta.table` 与已声明关联校验 | `join` 收的是 `&str`（spec:512 的示例就是 `"posts"`）。校验「已声明关联」需要**被关联实体的元数据**，而字符串里没有类型信息 —— 要拿到它就得改签名收 `&E: Entity`，那与 spec 自己给的 API 形状不符 |
+| `on` 条件仅接受**编译期字面量** | `on: &str` 在运行期接受任何字符串。要强制「只接受字面量」得靠**宏**，而 spec 给的是普通方法调用 |
+
+**所以 spec §5.5(a) 的 join 那半句，用 spec §5.4 的 API 形状表达不出来。** 这是 spec 内部的又一处不自洽（前有缺口 A、B、C）。
+
+**本计划的处置**：
+1. `join(table, on)` **不校验**，与 `filter_raw` 同一**信任边界**，rustdoc 必须写明「**输入必须可信**」。
+2. **要按关联表的列过滤或排序，走 `filter_raw`** —— 白名单只覆盖主实体自己的列（Task 11 的「白名单的边界」）。
+3. 这一条**登记为正式偏离**，不是漏写 —— 审计指出初版只在补丁里反着写了一句、没立裁决段，实施者会当成漏写。
+
+> **为什么登记而不是默默不做**：缺口 A/B/C 都立了裁决段，实施者读到 spec:539-540 时会拿它对照计划。
+> 没有裁决段，他要么以为计划漏了（去加一个做不成的校验），要么以为 spec 作废（可能顺手把别的也忽略）。
+> **写明「这条 spec 要求在本批不实现，理由如下」，是唯一不会误导的形态。**
+
+---
+
 ### 实施记录（2026-10-06，`3ba8b11` 订正 5 处计划错误）
 
 Task 8 的实施者报回 9 条，其中 5 条是计划片段本身有错。都是实测复现的：
@@ -4312,6 +4349,34 @@ pub mod _compile_fail_guards {
 > - 两次 `join` 的**顺序与声明一致**（顺序错了不报错、只给错结果）
 > - **COUNT 查询也带 JOIN**（`total` 必须与分页查询的 WHERE/JOIN 同源，否则 `total` 与实际行数不符）
 >
+> #### ⚠️ 补丁订正（2026-10-06，覆盖审计 R1）：**光加 `join()` 不够，会静默给错结果**
+>
+> 本节初版只说「加 `JoinType` 与 `Query::join()`，往 `joins` 里 push」，
+> **没说要改字段类型、也没说要改渲染**。而现状是：
+>
+> - `Query.joins` 是 **`Vec<(String, String)>`** —— **没有连接类型这个维度**
+> - `build_select` 渲染的是 **`" JOIN {} ON {on}"`** —— **不带 `INNER`/`LEFT`**
+>
+> 照初版字面实现，`join(JoinType::Left, …)` 会产出裸 `JOIN`（= `INNER`）——
+> **不报错、只给错结果**，正是本项目一路在防的那一类。
+>
+> **所以本节要求的三处改动必须一起做**：
+>
+> | # | 文件 | 改动 |
+> |---|---|---|
+> | 1 | `query/filter.rs` | 加 `JoinType` 枚举 |
+> | 2 | `query/mod.rs` | `joins` 字段类型 `Vec<(String, String)>` → **`Vec<(JoinType, String, String)>`** |
+> | 3 | `query/sql.rs` | `build_select` 的渲染改用 `kind.as_sql()`：`format!(" {} {} ON {on}", kind.as_sql(), spec.quote(table))` |
+>
+> **还要同步的地方**（漏一处就编不过或静默丢类型）：
+> - `Query` 的**结构体字面量**（`push_filter` / `clone_with_limit` / `from_meta` 里各有一处）——
+>   字段类型变了，这几处要一起改
+> - **本任务 Files 段要更新**：初版只写 `Modify: query/sql.rs`，实际还要改
+>   `query/filter.rs`（加枚举）与 `query/mod.rs`（加方法 + 改字段）
+>
+> **改完必须自证**：把改动 3 的 `kind.as_sql()` 换回硬编码的 `"JOIN"`，
+> 确认「`Left` 渲染成 `LEFT JOIN`」那条测试 **FAILED**，再还原。
+>
 > **空验收自证**：临时让 `join` 不往 `joins` 里 push，确认上面第二条 **FAILED**，再还原。
 
 **Files:**
@@ -4755,6 +4820,28 @@ git commit -m "feat(ecat-orm): SELECT/COUNT 生成（SQL 与参数同步产出�
 ---
 
 ## Task 13: CRUD（`crud.rs`）
+
+> ### 本任务补一项：`find_all`（覆盖审计报回）
+>
+> spec:441 的 `crud.rs` 职责行点名了它：`insert / find_by_id / find_all / update / delete / save` ——
+> 而本计划零定义。**注意它与 `delete_where` / `update_many` 不同**：那两处是 spec **多处**要求
+> （职责行 + §5.4 API 清单 + §5.5b 分块约束），`find_all` **只在职责行出现一次**，
+> §5.4 的 API 清单里没有它。
+>
+> **裁决：补上，作为一行便利别名。**
+> ```rust
+> /// 取该实体的全部行（不带任何过滤）。等价于 `Self::query().fetch(db)`。
+> ///
+> /// 大表上它会**全表扫描**——rustdoc 要写明这一点，并指向
+> /// `query().paginate(..)` 作为分页取数的正路。
+> fn find_all<X>(db: &X) -> impl Future<Output = Result<Vec<Self>, OrmError>> + Send
+> where X: ecat_data::SqlExecutor + ?Sized, Self: Sync;
+> ```
+> 实现就是 `Self::query().fetch(db)` —— **不要为它另写一条 SQL 生成路径**。
+>
+> **为什么补而不是订正 spec**：它是 spec 点名的 API，成本三行；而「按名字取全表」是常见需求，
+> 写成 `find_all` 比 `Self::query().fetch()` 短且自解释。**顺带**：`query().fetch()` 是 Task 15
+> 才交付的，本任务落 `find_all` 会让 Task 13 的测试多一个不依赖 Task 15 的入口。
 
 **Files:**
 - Create: `ecat-orm/src/crud.rs`
@@ -5716,6 +5803,43 @@ git commit -m "feat(ecat-orm): 自动时间戳、软删除与乐观锁"
 
 ## Task 15: 批量分块与分页（`batch.rs` + `page.rs`）
 
+> ### ⚠️ 本任务必做之零：补 `update_many`（第三处 spec 覆盖漏落）
+>
+> **它与 `delete_where` 出自 spec 的同一行** —— spec:442
+> `src/batch.rs  insert_many / update_many / delete_where / upsert`，
+> spec:551 还要求它按参数上限分块。
+>
+> **而下面那节 `delete_where` 的补丁，把 spec:442 那一行整行抄进了理由表，
+> 却只补了它的一半** —— `update_many` 依然是零定义（全文 2 处命中全是引用：
+> 文件结构注释 + 抄来的那行 spec）。
+>
+> **落法**：
+> ```rust
+> /// 按主键批量更新。**按实体数组长度分块**，返回受影响行数合计。
+> ///
+> /// 每行的参数数 = 可更新列数 + 1（SET 的参数 + WHERE 的主键参数），
+> /// 分块依据是它 —— 别只按可更新列数算，会漏掉主键那一个。
+> pub(crate) async fn update_many<E, X>(db: &X, entities: &[E]) -> Result<u64, OrmError>
+> where E: Entity, X: SqlExecutor + ?Sized;
+> ```
+>
+> 与 `insert_many` 同样返回 **u64 而不是 id 列表**（理由同 spec:504-506）。
+> 自动行为（`updated_at` 刷新、`version` 递增）**逐行套用 Task 14 的规则** ——
+> 但注意：**乐观锁的「影响 0 行」在多行批量里不能逐行报 `OptimisticLockConflict`**
+> （批量只返回一个总数）。本任务按 `update` 的规则生成 SQL，冲突表现为
+> 「返回行数 < 输入行数」，**由调用方判断**，rustdoc 要写明这一点。
+>
+> **必须补的测试**：
+> - 超过参数上限时**分成多条 UPDATE**，受影响行数累加（假 executor 记调用次数）
+> - `version` 列在批量里也递增（与单行 `update` 同款 SQL 形状）
+> - **空输入不发语句**返回 0（`insert_many` 已有此约定，对齐）
+>
+> **空验收自证**：临时去掉分块，确认第一条 **FAILED**，再还原。
+>
+> **另（覆盖审计 §8 项）**：`insert_many` 的分块边界测试缺 **65535 那一档的「超一行」用例** ——
+> 现有测试覆盖了 2100（MSSQL）与 999（SQLite）的超限，但 Postgres/MySQL 的 65535 只有
+> 「上限值断言」而没有「超一行会切成两块」的用例。**本任务补上**。
+
 > ### ⚠️ 本任务必做之一：补 `delete_where`（Task 11 实施者报回的 **spec 覆盖缺口**）
 >
 > **这是计划漏落，不是 spec 没要。** spec 有三处明确要求它：
@@ -6559,7 +6683,7 @@ impl<E: Entity, S> Query<E, S> {
 
 `Query` 结构体加字段 `relations: Vec<String>`（Task 11 的字段列表与 `clone_with_limit` 都要同步加）。
 
-- [ ] **Step 3: 跑测试 + 提交**
+- [ ] **Step 4: 跑测试 + 提交**
 
 ```bash
 cd /home/wwwroot/e-cat
@@ -6639,6 +6763,59 @@ git commit -m "feat(ecat-orm): 关联预加载（IN 分块，杜绝 N+1）"
 >
 > **空验收自证**：临时把 MSSQL 的 `create_table_prefix` 改回 `String::new()`，
 > 确认上面第一条 **FAILED**，再还原。
+
+> ### ⚠️ 本任务必做之二：补三处覆盖漏落 / 弱派工（覆盖审计报回）
+>
+> #### (1) `create_table::<E>()` / `drop_table::<E>()` 工厂 —— ❌ 漏落
+>
+> spec:698-699 的用户侧示例按现计划**写不出来**：
+> ```rust
+> let m = Migrator::new(&db)
+>     .add("001_users", create_table::<User>())
+>     .add("002_posts", create_table::<Post>());
+> ```
+> `create_table_sql(&META, Dialect)` 只到「META → SQL 字符串」，缺**「实体 → `Migration`（含版本号）」的桥**；
+> 而 `"001_users"` → 版本号 `1` 的解析**全计划零处提及**。
+>
+> **落法**（`migrate/ddl.rs`）：
+> ```rust
+> /// 从实体元数据造一条「建表」迁移。
+> ///
+> /// **方言在 `run()` 时才知道**，所以这里只记实体与名字，SQL 延后到执行时按
+> /// 连接的 `dialect()` 生成 —— 否则迁移与连接串绑死，换库就要重写迁移列表。
+> pub fn create_table<E: Entity>() -> MigrationBuilder;
+> pub fn drop_table<E: Entity>() -> MigrationBuilder;
+>
+> /// `"001_users"` → `(1, "001_users")`。
+> ///
+> /// 版本号取名字里**首个下划线之前的数字前缀**。解析失败时**报错**而不是
+> /// 静默用 0：版本号是迁移顺序的唯一依据，猜错会让迁移乱序执行。
+> pub(crate) fn parse_version(name: &str) -> Result<i64, OrmError>;
+> ```
+>
+> **必须补的测试**：`parse_version("001_users") == 1`、`("002_posts") == 2`、
+> 无数字前缀（`"users"`）与空串**报错不猜**、前导零不影响数值（`"010_x" == 10`）。
+>
+> #### (2) `Migrator::down()` —— ❌ 漏落
+>
+> spec:712-713 要求它；计划自己的文件结构注释（`migrate/mod.rs` 那行）也列了 `down`，
+> 但 Task 17 只测了 `Migration::reverse`，**`down()` 零定义零测试**。
+>
+> **落法**：`Migrator::down(&self, version: i64)` —— 从版本表读该版本是否已应用，
+> 已应用则取它的 `reverse_sql`（未提供则 `MigrationIrreversible`）执行，然后**从版本表删除该行**，
+> 与 `run()` 的「记录版本」互逆。**必须补测试**：未应用的版本调 `down` 报错；
+> 已应用的执行反向 SQL 并删版本行；`reverse_sql` 为 `None` 时 `MigrationIrreversible`。
+>
+> #### (3) `Migrator` 本体与版本表读写 —— ⚠️ 弱派工（只有语义描述，无签名无测试）
+>
+> `new` / `add` / `status` / `run` 四个方法**从未给出签名**；`_ecat_migrations` 的
+> **读写函数零定义**（只有列与类型映射）；测试只有纯函数 `classify` 那三条。
+>
+> **本任务必须补齐**（每条都要有测试）：
+> - `status()` —— 读版本表，与已注册迁移对比，返回 `classify` 的结果。测试：空表 → 全部 pending；表里有 1,2 → 1,2 applied
+> - `run()` —— 按版本号顺序执行未应用项，**单个失败即中止**（不吞错）。测试：三个迁移、第二个失败 → 第三个**未被执行**、返回值是错
+> - 版本表读写 —— `ensure_version_table()`（建表，按方言映射类型）+ 读写版本行。测试：往返一致
+> - **版本表建表也必须用 `create_table_prefix`**（与 (1) 同一改名后的 API）
 
 **Files:**
 - Create: `ecat-orm/src/migrate/mod.rs`
@@ -6790,7 +6967,11 @@ mod tests {
 
 **(a) `ddl.rs` 的类型映射**直接复用 `DialectSpec::col_type` / `autoincrement_ddl` —— **不要再写一份映射表**。非空列附 `NOT NULL`；主键列附 `PRIMARY KEY`；自增主键用 `autoincrement_ddl`（它已含类型）。
 
-**(b) MSSQL 的建表存在性检查**：`DialectSpec::table_exists_sql` 在 MSSQL 上返回的串不含 `IF NOT EXISTS`（Task 10 已定）。调用方（`Migrator::run`）必须**先**发
+**(b) MSSQL 的建表存在性检查**：**用本任务必做之一改名后的 API** —— `DialectSpec::create_table_prefix` 在 MSSQL 上返回 `CREATE TABLE [x]`（**不含** `IF NOT EXISTS`，但**是完整前缀**，不再返回空串），并加 `needs_exists_check_before_create() -> true`。调用方（`Migrator::run`）据此**先**发
+
+> **订正（2026-10-06，覆盖审计）**：本节原文用的是**旧名 `table_exists_sql` 与旧语义**（「返回的串不含 `IF NOT EXISTS`」），
+> 与本任务开头「必做之一」的改名要求**直接冲突** —— 照本节写就绕过了改名。
+> 已改为改名后的 API。**实施者以「必做之一」为准。**
 `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @P1`，查到就跳过建表。
 **表名要参数化**，不要拼进 SQL。
 
