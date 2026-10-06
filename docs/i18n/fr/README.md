@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > Tous les Config de backend prennent en charge le champ optionnel `tls` (`TlsClientConfig`) pour configurer l'authentification par certificat client TLS. Voir [Tutoriel de configuration des bases de données](database-config-tutorial.md).
 
+## ORM (ecat-orm)
+
+`ecat-orm` est l'ORM maison (macro dérivée d'entité + constructeur de requêtes typé + migrations) bâti
+sur le `SqlExecutor` d'`ecat-data` : **la même API fonctionne avec un client et avec une `Transaction`**.
+`User::insert(&db, &user)` et `User::insert(&tx, &user)` sont le même appel — passer `&tx` exécute les
+requêtes dans la transaction de l'appelant, sans en ouvrir ni en valider une. Une même définition d'entité
+vaut pour SQLite / PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) et SQL Server (`ecat-data-mssql`), le SQL
+étant généré par la couche dialecte.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// Migrations : création des tables + SQL inverse (le dialecte est résolu à run() depuis la connexion)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD : fonctionne avec &db et avec &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // verrou optimiste : WHERE version = ancienne valeur, conflit -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // suppression logique : UPDATE pose deleted_at, la ligne reste en table
+
+// Requête + pagination + préchargement : une requête IN par relation, pas de N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| Capacité | Point d'entrée |
+|------|------|
+| Entité | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| Constructeur de requêtes | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)` ; le filtre de suppression logique s'enlève avec `with_trashed()` |
+| Découpage en lots | `insert_many` / `update_many` se découpent automatiquement selon la limite de paramètres par requête du dialecte |
+| Pagination | `paginate` (COUNT + récupération de page) / `paginate_without_count` (sans COUNT) ; les pages commencent à 1 |
+| Préchargement | `with(&[UserRelation::Posts])` — 3 sujets et leurs relations coûtent 2 SELECT, pas 4 |
+| Migrations | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()` ; la table de versions est maintenue automatiquement |
+
+La grammaire complète des attributs, la sémantique d'erreur de chaque méthode et les différences entre
+dialectes se trouvent dans la section ORM de la [référence API](api.md).
+
 ## Structure du projet
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # Backend SQL Server (tiberius-ng)
+├── ecat-orm/                   # ORM : macro d'entité, constructeur de requêtes, migrations
+├── ecat-orm-derive/            # Macro dérivée #[derive(Entity)]
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端

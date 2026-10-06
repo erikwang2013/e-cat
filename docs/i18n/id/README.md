@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > Semua Config backend mendukung kolom opsional `tls` (`TlsClientConfig`) untuk mengonfigurasi autentikasi sertifikat klien TLS. Lihat [Tutorial Konfigurasi Database](database-config-tutorial.md).
 
+## ORM (ecat-orm)
+
+`ecat-orm` adalah ORM internal proyek ini (makro entitas + pembangun kueri aman tipe + migrasi) yang
+dibangun di atas `SqlExecutor` milik `ecat-data`, sehingga **API yang sama bekerja dengan klien maupun
+dengan `Transaction`**: `User::insert(&db, &user)` dan `User::insert(&tx, &user)` adalah panggilan yang
+sama — mengoper `&tx` menjalankan pernyataan di dalam transaksi pemanggil, tanpa membuka atau
+meng-commit apa pun. Satu definisi entitas berlaku untuk SQLite / PostgreSQL / MySQL / TiDB
+(`ecat-data-sqlx`) dan SQL Server (`ecat-data-mssql`), dengan SQL dihasilkan oleh lapisan dialek.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// Migrasi: membuat tabel + SQL balik (dialek ditentukan saat run() dari koneksi)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: bekerja dengan &db maupun &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // kunci optimistik: WHERE version = nilai lama, konflik -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // hapus lunak: UPDATE mengisi deleted_at, baris tetap ada di tabel
+
+// Kueri + penomoran halaman + pramuat: satu kueri IN per relasi, tanpa N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| Kemampuan | Titik masuk |
+|------|------|
+| Entitas | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| Pembangun kueri | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; syarat hapus-lunak dapat dimatikan dengan `with_trashed()` |
+| Pemotongan batch | `insert_many` / `update_many` memotong otomatis menurut batas parameter per pernyataan milik dialek |
+| Penomoran halaman | `paginate` (COUNT + pengambilan halaman) / `paginate_without_count` (tanpa COUNT); halaman dimulai dari 1 |
+| Pramuat relasi | `with(&[UserRelation::Posts])` — 3 subjek beserta relasinya berbiaya 2 SELECT, bukan 4 |
+| Migrasi | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; tabel versi dikelola otomatis |
+
+Tata bahasa atribut selengkapnya, semantik galat tiap metode, dan perbedaan antar dialek ada di bagian
+ORM pada [referensi API](api.md).
+
 ## Struktur Proyek
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # Backend SQL Server (tiberius-ng)
+├── ecat-orm/                   # ORM: makro entitas, pembangun kueri, migrasi
+├── ecat-orm-derive/            # Makro derive #[derive(Entity)]
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端

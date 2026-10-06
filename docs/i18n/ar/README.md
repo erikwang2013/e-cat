@@ -214,6 +214,71 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > تدعم جميع Configs الخلفية حقل `tls` اختياريًا (`TlsClientConfig`) لتكوين مصادقة شهادة عميل TLS. انظر [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md).
 
+## ORM ‏(ecat-orm)
+
+`ecat-orm` هو ORM الخاص بالمشروع (ماكرو الكيانات + بانِي استعلامات آمن الأنواع + الترحيلات) المبني على
+`SqlExecutor` من `ecat-data`، لذا **تعمل الواجهة نفسها مع العميل ومع `Transaction`**:
+`User::insert(&db, &user)` و`User::insert(&tx, &user)` نداء واحد — وتمرير `&tx` ينفّذ العبارات داخل معاملة
+المستدعي دون فتح معاملة جديدة ودون الالتزام بها. ويعمل تعريف الكيان نفسه على SQLite / PostgreSQL /
+MySQL / TiDB ‏(`ecat-data-sqlx`) و SQL Server ‏(`ecat-data-mssql`)، مع توليد SQL في طبقة اللهجات.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// الترحيلات: إنشاء الجداول + SQL عكسي (تُحدَّد اللهجة عند run() من الاتصال)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: يعمل مع &db ومع &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // قفل متفائل: WHERE version = القيمة القديمة، والتعارض يعطي OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // حذف منطقي: UPDATE يضبط deleted_at، ويبقى الصف في الجدول
+
+// استعلام + تصفح + تحميل مسبق: استعلام IN واحد لكل علاقة، بلا N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| الإمكانية | نقطة الدخول |
+|------|------|
+| تعريف الكيان | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| بانِي الاستعلامات | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`؛ ويمكن تعطيل شرط الحذف المنطقي بـ `with_trashed()` |
+| تقسيم الدفعات | يقسم `insert_many` / `update_many` تلقائيًا حسب حدّ المعاملات لكل عبارة في اللهجة |
+| التصفح | `paginate` ‏(COUNT + جلب الصفحة) / `paginate_without_count` ‏(دون COUNT)؛ وترقيم الصفحات يبدأ من 1 |
+| التحميل المسبق | `with(&[UserRelation::Posts])` — ثلاثة كيانات أساسية مع علاقاتها تكلّف استعلامي SELECT لا أربعة |
+| الترحيلات | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`؛ ويُدار جدول الإصدارات تلقائيًا |
+
+القواعد الكاملة للسمات، ودلالات الأخطاء لكل دالة، والفروق بين اللهجات في قسم ORM من
+[مرجع API](api.md).
+
 ## بنية المشروع
 
 ```
@@ -255,6 +320,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # خلفية بحث Elasticsearch
 ├── ecat-data-clickhouse/       # خلفية OLAP ClickHouse
 ├── ecat-data-sqlx/             # خلفية RDBMS (SQLite/PG/MySQL/TiDB)
+├── ecat-data-mssql/            # خلفية SQL Server (tiberius-ng)
+├── ecat-orm/                   # ORM: ماكرو الكيانات، بانِي الاستعلامات، الترحيلات
+├── ecat-orm-derive/            # ماكرو الاشتقاق #[derive(Entity)]
 ├── ecat-data-memcached/        # خلفية التخزين المؤقت Memcached (تنفيذ في الذاكرة)
 ├── ecat-data-neo4j/            # خلفية الرسوم البيانية Neo4j
 ├── ecat-data-nebulagraph/      # خلفية الرسوم البيانية NebulaGraph

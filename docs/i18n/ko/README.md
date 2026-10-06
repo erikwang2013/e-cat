@@ -214,6 +214,70 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > 모든 백엔드 Config는 선택적 `tls` 필드(`TlsClientConfig`)를 지원하며, TLS 클라이언트 인증서 인증을 구성할 수 있습니다. 자세한 내용은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md)을 참조하세요.
 
+## ORM (ecat-orm)
+
+`ecat-orm`은 자체 ORM(엔티티 파생 매크로 + 타입 안전한 쿼리 빌더 + 마이그레이션)이며 `ecat-data`의
+`SqlExecutor`를 토대로 하므로 **클라이언트든 `Transaction`이든 같은 API**를 씁니다:
+`User::insert(&db, &user)`와 `User::insert(&tx, &user)`는 같은 호출이고, `&tx`를 넘기면 문장이 호출자의
+트랜잭션 안에서 실행되며 새로 열지도 커밋하지도 않습니다. 같은 엔티티 정의가 SQLite / PostgreSQL /
+MySQL / TiDB(`ecat-data-sqlx`)와 SQL Server(`ecat-data-mssql`)에서 통용되고, SQL은 방언 계층이 생성합니다.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// 마이그레이션: 테이블 생성 + 역방향 SQL (방언은 run() 시점에 연결에서 해석)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: &db와 &tx 모두 동일
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // 낙관적 잠금: WHERE version = 이전 값, 충돌 시 OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // 소프트 삭제: UPDATE로 deleted_at 설정, 행은 테이블에 남음
+
+// 쿼리 + 페이징 + 프리로드: 연관마다 IN 쿼리 1개, N+1 없음
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| 기능 | 진입점 |
+|------|------|
+| 엔티티 정의 | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| 쿼리 빌더 | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; 소프트 삭제 게이트는 `with_trashed()`로 해제 |
+| 청크 쓰기 | `insert_many` / `update_many`가 방언의 문장당 파라미터 상한으로 자동 분할 |
+| 페이징 | `paginate`(COUNT + 페이지 조회) / `paginate_without_count`(COUNT 생략); 페이지 번호는 1부터 |
+| 연관 프리로드 | `with(&[UserRelation::Posts])` — 주체 3개와 그 연관에 SELECT 2개, 4개가 아닙니다 |
+| 마이그레이션 | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; 버전 테이블 자동 관리 |
+
+속성 문법 전체, 각 메서드의 오류 의미론, 방언별 차이는 [API 레퍼런스](api.md)의 ORM 절을 참고하세요.
+
 ## 프로젝트 구조
 
 ```
@@ -255,6 +319,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 검색 백엔드
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 백엔드
 ├── ecat-data-sqlx/             # RDBMS 백엔드 (SQLite/PG/MySQL/TiDB)
+├── ecat-data-mssql/            # SQL Server 백엔드 (tiberius-ng)
+├── ecat-orm/                   # ORM: 엔티티 매크로, 쿼리 빌더, 마이그레이션
+├── ecat-orm-derive/            # #[derive(Entity)] 파생 매크로
 ├── ecat-data-memcached/        # Memcached 캐시 백엔드 (메모리 구현)
 ├── ecat-data-neo4j/            # Neo4j 그래프 백엔드
 ├── ecat-data-nebulagraph/      # NebulaGraph 그래프 백엔드

@@ -214,6 +214,70 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > 所有后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证。详见 [数据库配置教程](docs/database-config-tutorial.md)。
 
+## ORM（ecat-orm）
+
+`ecat-orm` 是自研 ORM（实体派生宏 + 类型安全的查询构建器 + 迁移），底层复用 `ecat-data` 的
+`SqlExecutor`，因此**客户端与事务通吃**：`User::insert(&db, &user)` 与 `User::insert(&tx, &user)`
+是同一个 API —— 传 `&tx` 时语句直接跑在调用方的事务里，不另开也不代提交。同一套实体定义在
+SQLite / PostgreSQL / MySQL / TiDB（`ecat-data-sqlx`）与 SQL Server（`ecat-data-mssql`）上通用，
+SQL 由方言层生成。
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// 迁移：建表 + 反向 SQL（方言到 run() 时才按连接解析）
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD：&db 与 &tx 通吃
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // 乐观锁：WHERE version = 旧值，冲突报 OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // 软删除：UPDATE 置 deleted_at，行还在表里
+
+// 查询 + 分页 + 预加载：每个关联一条 IN 查询，杜绝 N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| 能力 | 入口 |
+|------|------|
+| 实体定义 | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| 查询构建器 | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`；软删除闸门可用 `with_trashed()` 关掉 |
+| 分块写 | `insert_many` / `update_many` 按方言的单语句参数上限自动分块 |
+| 分页 | `paginate`（COUNT + 取页）/ `paginate_without_count`（省掉 COUNT）；页码从 1 开始 |
+| 关联预加载 | `with(&[UserRelation::Posts])` —— 取 3 个主体及其关联共 2 条 SELECT，不是 4 条 |
+| 迁移 | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`；版本表自动维护 |
+
+完整的属性文法、各方法的错误语义与方言差异见 [API 参考](docs/api.md) 的 ORM 段。
+
 ## 项目结构
 
 ```
@@ -255,6 +319,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # SQL Server 后端（tiberius-ng）
+├── ecat-orm/                   # ORM：实体宏、查询构建器、迁移
+├── ecat-orm-derive/            # #[derive(Entity)] 派生宏
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端

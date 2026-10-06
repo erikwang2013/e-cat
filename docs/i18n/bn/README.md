@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > সব ব্যাকএন্ড Config ঐচ্ছিক `tls` ফিল্ড (`TlsClientConfig`) সমর্থন করে, TLS ক্লায়েন্ট সার্টিফিকেট অথেনটিকেশন কনফিগ করতে। বিস্তারিত দেখুন [ডেটাবেস কনফিগ টিউটোরিয়াল](database-config-tutorial.md)।
 
+## ORM (ecat-orm)
+
+`ecat-orm` এই প্রকল্পের নিজস্ব ORM (এন্টিটি ম্যাক্রো + টাইপ-নিরাপদ কোয়েরি বিল্ডার + মাইগ্রেশন), যা
+`ecat-data`-র `SqlExecutor`-এর উপর গড়া, তাই **একই API ক্লায়েন্টের সাথেও এবং `Transaction`-এর সাথেও কাজ
+করে**: `User::insert(&db, &user)` আর `User::insert(&tx, &user)` একই কল — `&tx` দিলে স্টেটমেন্টগুলো
+কলারের ট্রানজ্যাকশনের ভেতরে চলে, নতুন কিছু খোলে না, কিছু কমিটও করে না। একই এন্টিটি সংজ্ঞা SQLite /
+PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) এবং SQL Server (`ecat-data-mssql`)-এ চলে, SQL তৈরি করে
+ডায়ালেক্ট লেয়ার।
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// মাইগ্রেশন: টেবিল তৈরি + উল্টো SQL (ডায়ালেক্ট run()-এর সময় কানেকশন থেকে নির্ধারিত হয়)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: &db এবং &tx দুটোর সাথেই চলে
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // অপটিমিস্টিক লক: WHERE version = পুরোনো মান, সংঘর্ষ -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // সফট ডিলিট: UPDATE deleted_at ভরে, সারি টেবিলেই থাকে
+
+// কোয়েরি + পেজিং + প্রিলোডিং: প্রতি রিলেশনে একটি IN কোয়েরি, N+1 নেই
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| সক্ষমতা | প্রবেশবিন্দু |
+|------|------|
+| এন্টিটি | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| কোয়েরি বিল্ডার | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; সফট-ডিলিট শর্ত `with_trashed()` দিয়ে বন্ধ করা যায় |
+| চাঙ্কিং | `insert_many` / `update_many` ডায়ালেক্টের প্রতি-স্টেটমেন্ট প্যারামিটার সীমা অনুযায়ী নিজে থেকেই চাঙ্ক হয় |
+| পেজিং | `paginate` (COUNT + পেজ আনয়ন) / `paginate_without_count` (COUNT ছাড়া); পেজ 1 থেকে শুরু |
+| প্রিলোডিং | `with(&[UserRelation::Posts])` — রিলেশনসহ 3টি মূল এন্টিটিতে 2টি SELECT লাগে, 4টি নয় |
+| মাইগ্রেশন | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; ভার্সন টেবিল নিজে থেকেই রক্ষিত হয় |
+
+পুরো অ্যাট্রিবিউট ব্যাকরণ, প্রতিটি মেথডের ত্রুটি-অর্থ এবং ডায়ালেক্ট-পার্থক্য
+[API রেফারেন্স](api.md)-এর ORM অংশে আছে।
+
 ## প্রকল্প কাঠামো
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch সার্চ ব্যাকএন্ড
 ├── ecat-data-clickhouse/       # ClickHouse OLAP ব্যাকএন্ড
 ├── ecat-data-sqlx/             # RDBMS ব্যাকএন্ড (SQLite/PG/MySQL/TiDB)
+├── ecat-data-mssql/            # SQL Server ব্যাকএন্ড (tiberius-ng)
+├── ecat-orm/                   # ORM: এন্টিটি ম্যাক্রো, কোয়েরি বিল্ডার, মাইগ্রেশন
+├── ecat-orm-derive/            # #[derive(Entity)] ডিরাইভ ম্যাক্রো
 ├── ecat-data-memcached/        # Memcached ক্যাশ ব্যাকএন্ড (মেমরি-ভিত্তিক)
 ├── ecat-data-neo4j/            # Neo4j গ্রাফ ব্যাকএন্ড
 ├── ecat-data-nebulagraph/      # NebulaGraph গ্রাফ ব্যাকএন্ড

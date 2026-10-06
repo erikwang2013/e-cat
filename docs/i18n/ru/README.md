@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > Все Config бэкендов поддерживают опциональное поле `tls` (`TlsClientConfig`) для настройки TLS-аутентификации клиентским сертификатом. Подробнее см. [Руководство по настройке баз данных](database-config-tutorial.md).
 
+## ORM (ecat-orm)
+
+`ecat-orm` — собственный ORM (макрос сущностей + типобезопасный построитель запросов + миграции) на базе
+`SqlExecutor` из `ecat-data`, поэтому **один и тот же API работает и с клиентом, и с `Transaction`**:
+`User::insert(&db, &user)` и `User::insert(&tx, &user)` — это один и тот же вызов; при передаче `&tx`
+операторы выполняются внутри транзакции вызывающего, ничего не открывая и не фиксируя. Одно определение
+сущности годится для SQLite / PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) и SQL Server (`ecat-data-mssql`),
+SQL генерирует слой диалектов.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// Миграции: создание таблиц + обратный SQL (диалект определяется в run() по соединению)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: работает и с &db, и с &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // оптимистичная блокировка: WHERE version = старое значение, конфликт -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // мягкое удаление: UPDATE проставляет deleted_at, строка остаётся в таблице
+
+// Запрос + постраничный вывод + предзагрузка: по одному запросу IN на связь, без N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| Возможность | Точка входа |
+|------|------|
+| Сущность | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| Построитель запросов | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; условие мягкого удаления отключается через `with_trashed()` |
+| Блочная запись | `insert_many` / `update_many` автоматически разбиваются по пределу параметров на оператор у диалекта |
+| Постраничный вывод | `paginate` (COUNT + выборка страницы) / `paginate_without_count` (без COUNT); страницы нумеруются с 1 |
+| Предзагрузка связей | `with(&[UserRelation::Posts])` — 3 субъекта со связями стоят 2 SELECT, а не 4 |
+| Миграции | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; таблица версий ведётся автоматически |
+
+Полная грамматика атрибутов, семантика ошибок каждого метода и различия диалектов — в разделе ORM
+[справочника API](api.md).
+
 ## Структура проекта
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # Бэкенд SQL Server (tiberius-ng)
+├── ecat-orm/                   # ORM: макрос сущностей, построитель запросов, миграции
+├── ecat-orm-derive/            # Макрос-производный #[derive(Entity)]
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端

@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > सभी बैकएंड Config वैकल्पिक `tls` फ़ील्ड (`TlsClientConfig`) का समर्थन करते हैं, जो TLS क्लाइंट प्रमाणपत्र प्रमाणीकरण कॉन्फ़िगर करने के लिए है। विवरण के लिए देखें [डेटाबेस कॉन्फ़िगरेशन ट्यूटोरियल](database-config-tutorial.md)。
 
+## ORM (ecat-orm)
+
+`ecat-orm` इस प्रोजेक्ट का अपना ORM है (एंटिटी मैक्रो + टाइप-सुरक्षित क्वेरी बिल्डर + माइग्रेशन), जो
+`ecat-data` के `SqlExecutor` पर बना है, इसलिए **यही API क्लाइंट के साथ और `Transaction` के साथ भी काम
+करता है**: `User::insert(&db, &user)` और `User::insert(&tx, &user)` एक ही कॉल हैं — `&tx` देने पर स्टेटमेंट
+कॉलर के ट्रांज़ैक्शन के भीतर चलते हैं, न कोई नया खुलता है न कोई कमिट होता है। एक ही एंटिटी परिभाषा
+SQLite / PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) और SQL Server (`ecat-data-mssql`) पर चलती है, SQL
+डायलेक्ट लेयर बनाती है।
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// माइग्रेशन: टेबल बनाना + उल्टा SQL (डायलेक्ट run() के समय कनेक्शन से तय होता है)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: &db और &tx दोनों के साथ काम करता है
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // ऑप्टिमिस्टिक लॉक: WHERE version = पुराना मान, टकराव -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // सॉफ़्ट डिलीट: UPDATE deleted_at भरता है, पंक्ति टेबल में रहती है
+
+// क्वेरी + पेजिंग + प्रीलोडिंग: प्रति रिलेशन एक IN क्वेरी, कोई N+1 नहीं
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| क्षमता | प्रवेश-बिंदु |
+|------|------|
+| एंटिटी | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| क्वेरी बिल्डर | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; सॉफ़्ट-डिलीट शर्त `with_trashed()` से बंद होती है |
+| चंकिंग | `insert_many` / `update_many` डायलेक्ट की प्रति-स्टेटमेंट पैरामीटर सीमा से अपने-आप चंक होते हैं |
+| पेजिंग | `paginate` (COUNT + पेज फ़ेच) / `paginate_without_count` (COUNT के बिना); पेज 1 से शुरू |
+| प्रीलोडिंग | `with(&[UserRelation::Posts])` — रिलेशन सहित 3 मुख्य एंटिटी पर 2 SELECT लगते हैं, 4 नहीं |
+| माइग्रेशन | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; वर्शन टेबल अपने-आप संभली जाती है |
+
+पूरा एट्रिब्यूट व्याकरण, हर मेथड की त्रुटि-अर्थवत्ता और डायलेक्ट-अंतर
+[API संदर्भ](api.md) के ORM भाग में हैं।
+
 ## प्रोजेक्ट संरचना
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch खोज बैकएंड
 ├── ecat-data-clickhouse/       # ClickHouse OLAP बैकएंड
 ├── ecat-data-sqlx/             # RDBMS बैकएंड (SQLite/PG/MySQL/TiDB)
+├── ecat-data-mssql/            # SQL Server बैकएंड (tiberius-ng)
+├── ecat-orm/                   # ORM: एंटिटी मैक्रो, क्वेरी बिल्डर, माइग्रेशन
+├── ecat-orm-derive/            # #[derive(Entity)] डिराइव मैक्रो
 ├── ecat-data-memcached/        # Memcached कैश बैकएंड (मेमोरी कार्यान्वयन)
 ├── ecat-data-neo4j/            # Neo4j ग्राफ बैकएंड
 ├── ecat-data-nebulagraph/      # NebulaGraph ग्राफ बैकएंड

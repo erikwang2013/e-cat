@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > Todos los backends Config admiten un campo opcional `tls` (`TlsClientConfig`) para configurar la autenticación con certificados de cliente TLS. Consulta el [Tutorial de configuración de base de datos](database-config-tutorial.md).
 
+## ORM (ecat-orm)
+
+`ecat-orm` es el ORM propio (macro derivada de entidad + constructor de consultas tipado + migraciones)
+construido sobre el `SqlExecutor` de `ecat-data`, así que **la misma API sirve con un cliente y con una
+`Transaction`**: `User::insert(&db, &user)` y `User::insert(&tx, &user)` son la misma llamada — pasar `&tx`
+ejecuta las sentencias dentro de la transacción del llamante, sin abrir ni confirmar ninguna. Una misma
+definición de entidad vale para SQLite / PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) y SQL Server
+(`ecat-data-mssql`), con el SQL generado por la capa de dialecto.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// Migraciones: crear tablas + SQL inverso (el dialecto se resuelve en run() desde la conexión)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: funciona con &db y con &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // bloqueo optimista: WHERE version = valor anterior, conflicto -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // borrado lógico: UPDATE fija deleted_at, la fila sigue en la tabla
+
+// Consulta + paginación + precarga: una consulta IN por relación, sin N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| Capacidad | Punto de entrada |
+|------|------|
+| Entidad | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| Constructor de consultas | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; el filtro de borrado lógico se desactiva con `with_trashed()` |
+| Troceado | `insert_many` / `update_many` se trocean automáticamente según el límite de parámetros por sentencia del dialecto |
+| Paginación | `paginate` (COUNT + obtención de página) / `paginate_without_count` (sin COUNT); las páginas empiezan en 1 |
+| Precarga | `with(&[UserRelation::Posts])` — 3 sujetos y sus relaciones cuestan 2 SELECT, no 4 |
+| Migraciones | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; la tabla de versiones se mantiene sola |
+
+La gramática completa de atributos, la semántica de error de cada método y las diferencias entre dialectos
+están en la sección ORM de la [referencia de API](api.md).
+
 ## Estructura del proyecto
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # Backend de SQL Server (tiberius-ng)
+├── ecat-orm/                   # ORM: macro de entidad, constructor de consultas, migraciones
+├── ecat-orm-derive/            # Macro derivada #[derive(Entity)]
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端

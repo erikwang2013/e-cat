@@ -214,6 +214,72 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > Alle Backend-Configs unterstützen das optionale Feld `tls` (`TlsClientConfig`) zur Konfiguration der TLS-Client-Zertifikatsauthentifizierung. Details siehe [Tutorial zur Datenbankkonfiguration](database-config-tutorial.md).
 
+## ORM (ecat-orm)
+
+`ecat-orm` ist das hauseigene ORM (Entity-Derive-Makro + typsicherer Query-Builder + Migrationen) auf
+Basis des `SqlExecutor` aus `ecat-data`, deshalb funktioniert **dieselbe API mit einem Client und mit
+einer `Transaction`**: `User::insert(&db, &user)` und `User::insert(&tx, &user)` sind derselbe Aufruf —
+mit `&tx` laufen die Statements innerhalb der Transaktion des Aufrufers, ohne eine zu öffnen oder zu
+committen. Eine Entity-Definition gilt für SQLite / PostgreSQL / MySQL / TiDB (`ecat-data-sqlx`) und
+SQL Server (`ecat-data-mssql`), das SQL erzeugt die Dialektschicht.
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// Migrationen: Tabellen anlegen + Reverse-SQL (Dialekt wird bei run() aus der Verbindung bestimmt)
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD: funktioniert mit &db und mit &tx
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // Optimistic Lock: WHERE version = alter Wert, Konflikt -> OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // Soft Delete: UPDATE setzt deleted_at, die Zeile bleibt in der Tabelle
+
+// Query + Pagination + Preloading: eine IN-Abfrage pro Relation, kein N+1
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| Fähigkeit | Einstieg |
+|------|------|
+| Entity | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| Query-Builder | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`; das Soft-Delete-Gate lässt sich mit `with_trashed()` abschalten |
+| Chunking | `insert_many` / `update_many` chunkieren automatisch nach dem Parameterlimit pro Statement des Dialekts |
+| Pagination | `paginate` (COUNT + Seitenabruf) / `paginate_without_count` (ohne COUNT); Seiten sind 1-basiert |
+| Relation-Preloading | `with(&[UserRelation::Posts])` — 3 Subjekte plus ihre Relationen kosten 2 SELECTs, nicht 4 |
+| Migrationen | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`; die Versionstabelle wird automatisch gepflegt |
+
+Die vollständige Attributgrammatik, die Fehlersemantik jeder Methode und die Dialektunterschiede stehen
+im ORM-Abschnitt der [API-Referenz](api.md).
+
 ## Projektstruktur
 
 ```
@@ -255,6 +321,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch-Such-Backend
 ├── ecat-data-clickhouse/       # ClickHouse-OLAP-Backend
 ├── ecat-data-sqlx/             # RDBMS-Backend (SQLite/PG/MySQL/TiDB)
+├── ecat-data-mssql/            # SQL-Server-Backend (tiberius-ng)
+├── ecat-orm/                   # ORM: Entity-Makro, Query-Builder, Migrationen
+├── ecat-orm-derive/            # #[derive(Entity)]-Derive-Makro
 ├── ecat-data-memcached/        # Memcached-Cache-Backend (Speicherimplementierung)
 ├── ecat-data-neo4j/            # Neo4j-Graph-Backend
 ├── ecat-data-nebulagraph/      # NebulaGraph-Graph-Backend

@@ -214,6 +214,71 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 
 > すべてのバックエンド Config はオプションの `tls` フィールド（`TlsClientConfig`）をサポートし、TLS クライアント証明書認証を設定できます。詳細は [データベース設定チュートリアル](database-config-tutorial.md) を参照してください。
 
+## ORM（ecat-orm）
+
+`ecat-orm` は自前の ORM（エンティティ派生マクロ + 型安全なクエリビルダー + マイグレーション）で、
+`ecat-data` の `SqlExecutor` を土台にしているため**クライアントでも `Transaction` でも同じ API** が
+使えます：`User::insert(&db, &user)` と `User::insert(&tx, &user)` は同じ呼び出しで、`&tx` を渡すと
+文は呼び出し側のトランザクション内で実行され、新たに開始もコミットもしません。同じエンティティ定義が
+SQLite / PostgreSQL / MySQL / TiDB（`ecat-data-sqlx`）と SQL Server（`ecat-data-mssql`）で通用し、
+SQL は方言レイヤーが生成します。
+
+```rust
+use ecat_orm::migrate::drop_table_sql;
+use ecat_orm::query::{Op, Order};
+use ecat_orm::{Entity, Migrator, create_table};
+use time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = "users")]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option<OffsetDateTime>,
+    #[entity(soft_delete)]
+    pub deleted_at: Option<OffsetDateTime>,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = "Post", foreign_key = "user_id")]
+    pub posts: Vec<Post>,
+}
+
+// マイグレーション：テーブル作成 + 逆 SQL（方言は run() 時に接続から解決）
+Migrator::new(&db)
+    .add("001_users", create_table::<User>().with_reverse(|d| drop_table_sql(User::META, d)))
+    .run()
+    .await?;
+
+// CRUD：&db でも &tx でも同じ
+let id = User::insert(&db, &user).await?;
+let mut got = User::find_by_id(&db, id).await?.unwrap();
+got.name = "alice-v2".into();
+User::update(&db, &got).await?;       // 楽観ロック：WHERE version = 旧値、衝突時は OptimisticLockConflict
+User::delete_by_id(&db, id).await?;   // ソフト削除：UPDATE で deleted_at を設定、行はテーブルに残る
+
+// クエリ + ページング + プリロード：関連ごとに IN クエリ 1 本、N+1 なし
+let page = User::query()
+    .filter("name", Op::Like, "ali%")?
+    .order_by("id", Order::Desc)?
+    .with(&[UserRelation::Posts])
+    .paginate(&db, 1, 20)
+    .await?;
+```
+
+| 機能 | 入口 |
+|------|------|
+| エンティティ定義 | `#[derive(Entity)]` + `#[entity(table / pk / column / auto_increment / created_at / updated_at / soft_delete / version / has_many / has_one / belongs_to)]` |
+| CRUD | `insert` / `insert_many` / `save` / `update` / `update_many` / `upsert` / `find_by_id` / `find_all` / `delete_by_id` / `hard_delete_by_id` |
+| クエリビルダー | `query().filter(..).order_by(..).limit(..).offset(..).join(..).fetch(..)`；ソフト削除ゲートは `with_trashed()` で解除 |
+| 一括チャンク | `insert_many` / `update_many` が方言の 1 文あたりパラメータ上限で自動分割 |
+| ページング | `paginate`（COUNT + 取得）/ `paginate_without_count`（COUNT を省略）。ページ番号は 1 始まり |
+| 関連のプリロード | `with(&[UserRelation::Posts])` — 主体 3 件とその関連で SELECT は 2 本、4 本ではない |
+| マイグレーション | `Migrator::{status, run, down}` + `create_table::<E>()` / `drop_table_sql()`；バージョン表は自動管理 |
+
+属性文法の全体、各メソッドのエラー意味論、方言ごとの差異は [API リファレンス](api.md) の ORM の節を参照してください。
+
 ## プロジェクト構造
 
 ```
@@ -255,6 +320,9 @@ e-cat/
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
 ├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-mssql/            # SQL Server バックエンド（tiberius-ng）
+├── ecat-orm/                   # ORM：エンティティマクロ、クエリビルダー、マイグレーション
+├── ecat-orm-derive/            # #[derive(Entity)] 派生マクロ
 ├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
 ├── ecat-data-neo4j/            # Neo4j 图后端
 ├── ecat-data-nebulagraph/      # NebulaGraph 图后端
