@@ -75,6 +75,27 @@ impl Order {
     }
 }
 
+/// JOIN 类型。只做 `INNER` / `LEFT` —— 见 spec §10 非目标，
+/// 右连接与外连接不在本批范围。
+///
+/// **为什么是个枚举而不是一个 `&str`**：裸 `JOIN` 等价于 `INNER JOIN`，
+/// 所以「左连接少写了 `LEFT`」不报错、只给错结果。类型化了才有人替我们把关。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinType {
+    Inner,
+    Left,
+}
+
+impl JoinType {
+    /// 完整的连接关键字（含 `JOIN`），供渲染时直接用。
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Self::Inner => "INNER JOIN",
+            Self::Left => "LEFT JOIN",
+        }
+    }
+}
+
 /// WHERE 子句的一项。
 ///
 /// **`Raw` 是逃生口**：关联表的列不在本实体的 `EntityMeta.columns` 里，

@@ -5,6 +5,10 @@
 
 pub mod filter;
 mod sql;
+// `sql.rs` 的测试单独成文件：两者合在一起会顶过「每个源文件 < 500 行」的硬规则。
+// 它需要 `mod sql` 是 `query` 的私有子模块 —— 测试要够得着 `pub(crate)` 的生成函数。
+#[cfg(test)]
+mod sql_tests;
 
 use std::marker::PhantomData;
 
@@ -15,6 +19,7 @@ use crate::entity::EntityMeta;
 use crate::error::OrmError;
 
 pub use filter::Expr;
+pub use filter::JoinType;
 pub use filter::Op;
 pub use filter::Order;
 pub use filter::OrderBy;
@@ -38,7 +43,9 @@ pub struct Query<E, S> {
     meta: &'static EntityMeta,
     filters: Vec<Expr>,
     orders: Vec<OrderBy>,
-    joins: Vec<(String, String)>,
+    /// `(连接类型, 表名, ON 条件)` —— 连接类型是**必须的**一维：
+    /// 少了它，`LEFT JOIN` 会被渲染成裸 `JOIN`（= `INNER`），不报错、只给错结果。
+    joins: Vec<(JoinType, String, String)>,
     limit: Option<u64>,
     offset: Option<u64>,
     with_trashed: bool,
@@ -105,6 +112,18 @@ impl<E: Entity, S> Query<E, S> {
 
     pub fn offset(mut self, n: u64) -> Self {
         self.offset = Some(n);
+        self
+    }
+
+    /// 加一个 JOIN。`table` 是**表名**，`on` 是原生 ON 条件。
+    ///
+    /// **两者都不经标识符白名单校验** —— 白名单只覆盖主实体自己的列
+    /// （见 [`Query`] 的「标识符白名单」段）。`ON` 条件**必须由调用方保证可信**，
+    /// 与 [`Query::filter_raw`] 同一信任边界。要按关联表的列过滤，也走 `filter_raw`。
+    ///
+    /// 按声明顺序渲染到 `FROM` 之后、`WHERE` 之前。
+    pub fn join(mut self, kind: JoinType, table: &str, on: &str) -> Self {
+        self.joins.push((kind, table.into(), on.into()));
         self
     }
 
