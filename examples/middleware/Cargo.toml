@@ -7,10 +7,10 @@ description = "Middleware chain example (metrics, tracing, logging) for the e-ca
 publish = false
 
 [dependencies]
-ecat = { version = "3.0.3", path = "../../ecat" }
-ecat-transport-http = { version = "3.0.3", path = "../../ecat-transport-http" }
-ecat-metrics = { version = "3.0.3", path = "../../ecat-metrics" }
-ecat-middleware = { version = "3.0.3", path = "../../ecat-middleware" }
+ecat = { version = "4.0.0", path = "../../ecat" }
+ecat-transport-http = { version = "4.0.0", path = "../../ecat-transport-http" }
+ecat-metrics = { version = "4.0.0", path = "../../ecat-metrics" }
+ecat-middleware = { version = "4.0.0", path = "../../ecat-middleware" }
 serde.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tower.workspace = true

@@ -1,5 +1,76 @@
 # Changelog
 
+## [4.0.0] — 2026-10-06
+
+### ⚠️ 破坏性变更
+
+- **`ecat-data`：`RdbmsClient` 拆出 `SqlExecutor` supertrait**。执行与方言能力
+  （`execute` / `query` / `execute_with` / `query_with` / `query_write` / `dialect`）
+  移入 `SqlExecutor`，`RdbmsClient` 只剩 `transaction()`。直接实现过 `RdbmsClient`
+  的下游会编译失败。仓库内 4 个实现者（`SqlxClient` / `ClickhouseClient` /
+  `QuestdbClient` / 测试桩）已同步适配。
+- **`ecat-data`：`TransactionInner` 签名扩张**，`Transaction` 现在实现 `SqlExecutor`
+  —— **事务内可执行 SQL**（此前只能 `commit` / `rollback`）。
+  空事务（`Transaction::new()`）执行 SQL 现在**报错**而非静默返回 0 行影响。
+- **`ecat-data-sqlx`：`from_pool(AnyPool, Dialect)` → `from_pool(Pool)`**，
+  并**弃用 `AnyPool`，改用 PG / MySQL / SQLite 三路原生池**。
+- **`ecat-data-sqlx`：`SqlxConfig.tls` 设了就报错**（此前被 serde 接受但代码从不读，
+  是静默无效的配置项）；TLS 请走 URL 参数（如 `?sslmode=require`）。
+
+### Added
+
+- **新数据后端 `ecat-data-mssql`（SQL Server）** —— 数据后端从 15 个增至 **16 个**。
+  基于 `tiberius-ng` 0.13 + `deadpool` 0.13，实现完整 `SqlExecutor` +
+  `RdbmsClient`。支持 URL 形态（`mssql://user:pass@host:1433/db`，含
+  `encrypt` / `trustservercertificate` 查询参数）与 ADO 形态
+  （`Server=host,1433;Database=db;User Id=...`）两种连接串。
+- `ecat-data`：`Dialect` 枚举与 `Dialect::from_url`（大小写与首尾空白/控制字符均容忍）。
+- `ecat-data`：查询超时助手 `run_with_timeout`，以及进程级超时计数
+  `QUERY_TIMEOUTS` / 事务泄漏计数 `TRANSACTIONS_LEAKED`。
+- `ecat-data-sqlx`：**连接池参数**（`max_connections` / `min_connections` /
+  `acquire_timeout_secs` / `idle_timeout_secs` / `max_lifetime_secs` /
+  `query_timeout_secs` / `test_before_acquire`）与 `session_init`
+  （会话初始化，默认按方言把库侧时区设为 UTC）、`warm_up()` 预热。
+- `docker-compose.dev.yml`：本地联调三库一键起（SQL Server 2022 / PostgreSQL 16 / MySQL 8.0），
+  不进 CI。
+
+### Fixed
+
+- `ecat-data-sqlx`：**类型映射的 5 个静默错值**（均由真库 A/B 实测发现）——
+  MySQL `UNSIGNED` 整数此前在 `Bool`/`Null` 之间跳（`BIGINT UNSIGNED` 正是最常见的自增主键）、
+  PG `smallint` 返回 `Null`、`bool` 分支抢走整数、NULL 无闸门（sqlite 下 NULL 会静默变 `false`）、
+  `OffsetDateTime` 的 `Display` 被误当作 RFC3339。未支持类型（`numeric` / `uuid` / `jsonb` 等）
+  现在**响亮报错**（带列名与类型名）而非静默返回 null。
+- `ecat-data-sqlx`：`DATE` 输出**纯 `YYYY-MM-DD`**，不伪造源数据里不存在的时刻与时区。
+- `ecat-data-sqlx`：池默认值单一来源（`pool()` 与 `PoolParams::default()` 此前会静默分叉）；
+  `connect()` 与 `from_config()` 的方言默认会话初始化此前不一致。
+- `ecat-data-mssql`：`idle_timeout_secs` 是**空配置**（deadpool 不提供空闲回收），已删除；
+  `MssqlConfig` 加了 `deny_unknown_fields`（拼错的键名此前被静默忽略）。
+- `ecat-data` / `ecat-data-sqlx` / `ecat-data-mssql`：事务方法补上查询超时
+  （此前事务内挂死的查询会永久占住连接）。
+- `ecat-mq-nats`：**显式安装 rustls crypto provider**。此前依赖「`ring` 与 `aws-lc-rs`
+  两个特性恰好启用一个」这一脆弱不变量 —— 任何引入第二个 provider 的依赖都会让它 panic
+  （且只在 `cargo test --workspace` 的特性合并下暴露）。全仓其余 4 处早已显式安装，
+  此处是唯一遗漏。
+- `ecat-data-clickhouse`：建表缓存的 TTL 测试去掉时间依赖（5ms 余量导致 ~0.67% 概率假失败）。
+
+### Security
+
+- 升级 `h2` 0.4.15 → **0.4.19**（RUSTSEC-2026-0258）、`rustls` 0.23.43 → **0.23.45**
+  （RUSTSEC-2026-0285，5.3 medium）、`chacha20` 0.10.1 → **0.10.2**（此前版本已 yanked），
+  连带 `rustls-webpki` 0.103.13 → 0.103.15。`cargo audit --deny warnings` 闸门转绿。
+
+### Tests
+
+- `ecat-data-sqlx` / `ecat-data-mssql`：env 门控真库集成测试
+  （`ECAT_TEST_PG_URL` / `ECAT_TEST_MYSQL_URL` / `ECAT_TEST_MSSQL_URL`；
+  `ECAT_REQUIRE_LIVE_DB=1` 让 CI 里「跳过即失败」）。三者与 SQLite 一起覆盖四类后端。
+- 真库用例做过**三向验证**：真 URL 通过 / 死端口必须失败（证明真在连库）/ 未设 URL 且
+  `REQUIRE` 时 panic 并点名缺失键。
+- 发布前 `cargo test --workspace`：**771 passed / 0 failed / 0 panic**（115 个测试二进制，
+  67 个套件）。跨 crate 特性合并是必需的一层 —— 本版 `ecat-mq-nats` 的 rustls provider
+  panic 只在这一层暴露，单 crate 跑 60 次全过。
+
 ## [3.0.3] — 2026-08-27
 
 ### Added

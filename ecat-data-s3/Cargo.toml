@@ -10,9 +10,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-data = { version = "3.0.3", path = "../ecat-data" }
-ecat-errors = { version = "3.0.3", path = "../ecat-errors" }
-ecat-tls = { version = "3.0.3", path = "../ecat-tls" }
+ecat-data = { version = "4.0.0", path = "../ecat-data" }
+ecat-errors = { version = "4.0.0", path = "../ecat-errors" }
+ecat-tls = { version = "4.0.0", path = "../ecat-tls" }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
