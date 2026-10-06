@@ -1,11 +1,19 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! `MssqlConfig` 的单元测试（不连库）。
+//! 不连库的单元测试：`MssqlConfig` 解析、`Bind` 分派、客户端的池构造。
 //!
-//! 独立成文件是因为 `config.rs` 有 500 行上限（与 `ecat-data-sqlx/src/tests.rs`
+//! 独立成文件是因为各源文件有 500 行上限（与 `ecat-data-sqlx/src/tests.rs`
 //! 同一个理由）；模块本身仍是 `#[cfg(test)] mod tests`，与内联无异。
+//!
+//! 真库用例是另一个文件的事（env 门控），这里**只碰网络里必然失败的那部分**：
+//! 建池、参数分派、以及「连不上」的错误映射。
 
+use crate::MssqlClient;
 use crate::MssqlConfig;
+use crate::bind::Bind;
+use ecat_data::{Dialect, RdbmsError, SqlExecutor};
+use serde_json::{Value, json};
 use std::time::Duration;
+use tiberius::{ColumnData, ToSql};
 
 #[test]
 fn url_form_parses_into_fields() {
@@ -157,6 +165,137 @@ fn ipv6_literal_host_keeps_brackets() {
     assert_eq!(c.host, "[::1]");
     assert_eq!(c.port, 1433);
     assert_eq!(c.build_config().unwrap().get_addr(), "[::1]:1433");
+}
+
+/// `Bind` 按 JSON 形态分派：字符串/整数/浮点/布尔/NULL 各归各的变体。
+///
+/// 整数**优先** `i64`：`serde_json` 的 `Number` 同时装得下 `i64` 与 `u64`，
+/// 顺序写反了会把 `7` 变成 `7.0`（与 sqlx 路径的 `as_i64` 先行一致）。
+#[test]
+fn bind_dispatches_each_json_shape() {
+    assert_eq!(Bind::from_json(&json!("s")), Bind::Str("s".into()));
+    assert_eq!(Bind::from_json(&json!(7)), Bind::I64(7));
+    assert_eq!(Bind::from_json(&json!(-7)), Bind::I64(-7));
+    assert_eq!(Bind::from_json(&json!(1.5)), Bind::F64(1.5));
+    assert_eq!(Bind::from_json(&json!(true)), Bind::Bool(true));
+    assert_eq!(Bind::from_json(&Value::Null), Bind::Null);
+}
+
+/// `u64` 超出 `i64::MAX` → 走 `f64`（有精度损失，与 sqlx 路径同一取舍）。
+/// 钉住它是因为「整数一律 i64」的直觉在这里会溢出。
+#[test]
+fn bind_huge_unsigned_number_falls_back_to_f64() {
+    assert!(matches!(Bind::from_json(&json!(u64::MAX)), Bind::F64(_)));
+}
+
+/// 数组/对象没有 SQL 标量对应 → JSON 文本（sqlx 路径的 `_` 分支同款）。
+#[test]
+fn bind_array_and_object_become_json_text() {
+    assert_eq!(Bind::from_json(&json!([1, 2])), Bind::Str("[1,2]".into()));
+    assert_eq!(
+        Bind::from_json(&json!({"a": 1})),
+        Bind::Str(r#"{"a":1}"#.into())
+    );
+}
+
+/// NULL 的表示：JSON null 不带类型，而 TDS 参数是强类型的，必须挑一个 ——
+/// 挑的是 `nvarchar` 的 NULL（`ColumnData::String(None)`），与 sqlx 路径的
+/// `q.bind(None::<String>)` 同一选择，两者在服务端看到的是带类型的 NULL。
+///
+/// 钉住它是因为这个选择**没有编译期约束**：换成 `ColumnData::I32(None)` 也能编过，
+/// 但 NULL 的隐式转换目标就变了。
+#[test]
+fn bind_null_is_a_typed_null_not_a_missing_parameter() {
+    match Bind::Null.to_sql() {
+        ColumnData::String(None) => {}
+        other => panic!("NULL 应为 nvarchar 的 NULL，got: {other:?}"),
+    }
+    // 有值的几个都带上自己的值，不能被上面那条的空类型顶掉。
+    assert!(matches!(Bind::I64(3).to_sql(), ColumnData::I64(Some(3))));
+    assert!(matches!(
+        Bind::Bool(true).to_sql(),
+        ColumnData::Bit(Some(true))
+    ));
+    assert!(matches!(
+        Bind::Str("x".into()).to_sql(),
+        ColumnData::String(Some(_))
+    ));
+}
+
+/// 先占端口再释放 —— 得到一个必然没人监听的地址（不依赖外部环境）。
+fn dead_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    port
+}
+
+fn client_config(extra: &str) -> MssqlConfig {
+    serde_json::from_str(&format!(
+        r#"{{"url": "mssql://sa:pw@127.0.0.1:{}/app"{extra}}}"#,
+        dead_port()
+    ))
+    .unwrap()
+}
+
+/// 建池是**惰性**的：`from_config` 不连库，`max_connections` 落到池的 `max_size`
+/// 上，还没建过任何连接。
+///
+/// 这条同时把三个超时的配置钉住了 —— 设了超时又没给运行时的池会在 `build()` 里
+/// 直接报 `NoRuntimeSpecified`，`from_config` 会变成 `Err`。
+#[tokio::test]
+async fn from_config_builds_a_lazy_pool_with_configured_size() {
+    let client = MssqlClient::from_config(client_config(r#", "max_connections": 3"#))
+        .await
+        .unwrap();
+
+    let status = client.pool_status();
+    assert_eq!(status.max_size, 3);
+    assert_eq!(status.size, 0, "建池不该立刻建连");
+    assert_eq!(client.dialect(), Dialect::Mssql);
+}
+
+/// `min_connections: 0`（默认）时 `warm_up` 一条都不取 —— 连接串指向死端口也
+/// 照样返回 `Ok`，证明它没有碰网络。
+#[tokio::test]
+async fn warm_up_takes_nothing_when_min_connections_is_zero() {
+    let client = MssqlClient::from_config(client_config("")).await.unwrap();
+    client.warm_up().await.unwrap();
+    assert_eq!(client.pool_status().size, 0);
+}
+
+/// `min_connections > 0` 时 `warm_up` 真的去建连：连不上就是
+/// [`RdbmsError::Connection`]，不能静默当成功（那会让启动期以为池子就绪了）。
+#[tokio::test]
+async fn warm_up_surfaces_connect_failure_as_connection_error() {
+    let client = MssqlClient::from_config(client_config(r#", "min_connections": 1"#))
+        .await
+        .unwrap();
+
+    // 超时只是保险：端口没人监听时 connect 立刻被拒。
+    let err = tokio::time::timeout(Duration::from_secs(10), client.warm_up())
+        .await
+        .expect("不该挂住")
+        .expect_err("端口没人监听，warm_up 必须失败");
+    assert!(
+        matches!(err, RdbmsError::Connection(_)),
+        "应为 RdbmsError::Connection，got: {err:?}"
+    );
+}
+
+/// 取不到连接 ≠ SQL 出错：查询路径上的连接失败也归 `Connection`。
+#[tokio::test]
+async fn query_maps_connect_failure_to_connection_error() {
+    let client = MssqlClient::from_config(client_config("")).await.unwrap();
+
+    let err = tokio::time::timeout(Duration::from_secs(10), client.query("SELECT 1"))
+        .await
+        .expect("不该挂住")
+        .expect_err("端口没人监听，查询必须失败");
+    assert!(
+        matches!(err, RdbmsError::Connection(_)),
+        "应为 RdbmsError::Connection，got: {err:?}"
+    );
 }
 
 /// ADO 里用 `{}` 包住含 `;` 的值时本 crate 的扫描器读不准 —— 必须**不回答**

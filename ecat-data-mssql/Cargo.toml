@@ -13,7 +13,10 @@ categories.workspace = true
 ecat-data = { version = "3.0.3", path = "../ecat-data" }
 ecat-tls = { version = "3.0.3", path = "../ecat-tls" }
 tiberius-ng = { workspace = true }
-deadpool = { workspace = true }
+# `rt_tokio_1`：deadpool 默认**不开**任何运行时 feature，而池上设了
+# wait/create/recycle 超时后 `PoolBuilder::build()` 会直接报 `NoRuntimeSpecified`
+# （`deadpool-0.13.1/src/managed/builder.rs:90-98`），三个超时都靠这个 feature 生效。
+deadpool = { workspace = true, features = ["rt_tokio_1"] }
 tokio-util = { workspace = true }
 tokio = { workspace = true, features = ["net", "sync", "time"] }
 time = { workspace = true }
