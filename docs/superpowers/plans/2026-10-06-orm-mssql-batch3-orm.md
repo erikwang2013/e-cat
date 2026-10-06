@@ -4232,6 +4232,42 @@ pub mod _compile_fail_guards {
 
 ## Task 12: SELECT / COUNT 生成（`query/sql.rs`）
 
+> ### ⚠️ 本任务必做之二：把 WHERE 渲染抽成 `pub(crate) fn render_where`（供 Task 15 复用）
+>
+> **为什么**：Task 15 的 `delete_where` / `hard_delete_where` 需要渲染 WHERE。
+> 若它自己再写一份，**两份渲染器必然漂移** —— 而 WHERE 渲染是**安全边界**
+> （标识符白名单、参数编号都在里面），漂移的后果是 `$1`/`@P1` 静默错值或白名单失效。
+>
+> **要求**：把 `build_select` 里「收集 filters → 校验/引用标识符 → 生成占位符并同步收集参数」
+> 这段抽成独立函数，`build_select` 与 `build_delete` 都调它：
+>
+> ```rust
+> /// 渲染 WHERE 子句，**同时**产出参数。两者必须同源同序（见本任务核心难点）。
+> ///
+> /// 返回 `None` 表示没有任何条件（调用方据此决定要不要写 `WHERE`）。
+> /// **软删除闸门也在这里面**（按 `Query::with_trashed` 决定加不加 `<sd> IS NULL`），
+> /// 这样删除路径与查询路径的软删除行为**不可能不一致**。
+> pub(crate) fn render_where<S>(
+>     meta: &'static EntityMeta,
+>     filters: &[Expr],
+>     with_trashed: bool,
+>     spec: &dyn DialectSpec,
+>     ph: &mut Placeholders,
+>     params: &mut Vec<Value>,
+> ) -> Option<String>
+> ```
+>
+> **顺序效应**：`ph` 与 `params` 以 `&mut` 传入而不是在函数内新建 —— 因为调用方
+> （`build_select`）在此之前可能已经占用了参数位。**若函数内新建，编号会从头开始，
+> 与调用方已生成的部分撞号。**
+>
+> **必须补的测试**：
+> - `build_select` 与（Task 15 落地后的）`build_delete` 对**同一组 filters** 产出的
+>   WHERE 片段与参数**逐字节相同**（用同一 `meta` + 同一 filters 调 `render_where` 两次比对）
+> - 空 filters 且无软删除时返回 `None`；有软删除闸门时返回 `Some("<sd> IS NULL")` 且**不占参数位**
+> - 参数编号在「调用方已占位」的前提下**接着排**（传一个已用掉 2 个位的 `Placeholders` 进去，
+>   断言第一个新占位符是 `$3` / `@P3`）
+
 > ### ⚠️ 本任务必做之一：补 `JoinType` 与 `Query::join()`（第二处 spec 覆盖漏落）
 >
 > **与 `delete_where` 同类的漏落**：spec §5.4 的 API 清单里有
@@ -5716,8 +5752,16 @@ git commit -m "feat(ecat-orm): 自动时间戳、软删除与乐观锁"
 > }
 > ```
 >
-> **WHERE 渲染复用 Task 12 的 `render_where`**（若 Task 12 已把它做成 `pub(crate)`）——
-> **不要重写一份**。两份 WHERE 渲染必然漂移，而那是安全边界（白名单在里面）。
+> **WHERE 渲染必须复用 Task 12 抽取出的 `render_where`** —— 本任务**不重写**。
+> 两份 WHERE 渲染必然漂移，而那是安全边界（白名单在里面）。
+>
+> > **⚠️ 订正（2026-10-06）**：本节初版写的是「复用 Task 12 的 `render_where`（若 Task 12
+> > 已把它做成 `pub(crate)`）」—— **`render_where` 当时在计划里根本不存在**（全计划只此一处
+> > 提及，就是这句）。Task 12 的实现是 `build_select` 把 WHERE **内联渲染**。
+> > 也就是说：**我在修补「引用不存在的方法」这个错误时，引用了另一个不存在的方法。**
+> >
+> > 已改为在 **Task 12 里明确要求抽取** `pub(crate) fn render_where(...)`（见该任务
+> > 「必做之二」），本任务才有东西可复用。顺序上 Task 12 先于 Task 15，可行。
 >
 > **必须补的测试**：
 > - 硬删除路径：无 `soft_delete` 的实体 → SQL 以 `DELETE FROM` 开头
@@ -6483,7 +6527,20 @@ where
 ```rust
 impl<E: Entity, S> Query<E, S> {
     /// 声明要预加载的关联。
-    pub fn with(mut self, relations: &[&dyn RelationSelector]) -> Self {
+    ///
+    /// **签名必须让 spec §5.4 的写法直接可用**：
+    /// ```ignore
+    /// User::query().with(&[UserRelation::Posts, UserRelation::Profile]).fetch(&db).await?;
+    /// ```
+    /// 那里传的是**枚举值的切片**（`&[UserRelation; N]`）。
+    /// 所以用泛型参数 `R`，**不是** `&[&dyn RelationSelector]` —— 后者要求
+    /// 调用方写成 `&[&UserRelation::Posts]`，与 spec 示例不兼容。
+    ///
+    /// > **订正（2026-10-06，覆盖审计 R3）**：初版签名是 `&[&dyn RelationSelector]`，
+    /// > 照它实现的 API **无法接受 spec 里的写法**。已改为泛型。
+    /// > 泛型也顺带避免了 trait object —— `RelationSelector: Copy` 蕴含 `Sized`，
+    /// > 本来就 dyn 不了。
+    pub fn with<R: RelationSelector>(mut self, relations: &[R]) -> Self {
         self.relations.extend(relations.iter().map(|r| r.name().to_string()));
         self
     }
