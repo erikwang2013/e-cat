@@ -155,7 +155,7 @@ Ecat中文名：一只猫
 | 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 |
 | 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
 > **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | 后端 | Config | 字段 | 示例值 |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, 池参数（`max_connections` / `query_timeout_secs` / `session_init` 等，详见[数据库配置教程](docs/database-config-tutorial.md)） | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

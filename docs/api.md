@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## 数据后端接口
 
-所有数据后端（`ecat-data-*`）通过统一 trait（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）抽象；REST 类后端（Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3）基于 `base_url` 访问对应 HTTP 接口。连接配置见 [数据库配置教程](database-config-tutorial.md)。
+所有数据后端（`ecat-data-*`）通过统一 trait（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）抽象；REST 类后端（Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3）基于 `base_url` 访问对应 HTTP 接口。连接配置见 [数据库配置教程](database-config-tutorial.md)。

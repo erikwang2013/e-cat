@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## डेटा बैकएंड इंटरफ़ेस
 
-सभी डेटा बैकएंड (`ecat-data-*`) एकीकृत traits (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) के माध्यम से एब्स्ट्रैक्ट किए गए हैं; REST प्रकार के बैकएंड (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) `base_url` के आधार पर संबंधित HTTP इंटरफ़ेस तक पहुँचते हैं। कनेक्शन कॉन्फ़िगरेशन के लिए देखें [डेटाबेस कॉन्फ़िगरेशन ट्यूटोरियल](database-config-tutorial.md)।
+सभी डेटा बैकएंड (`ecat-data-*`) एकीकृत traits (`RdbmsClient` ट्रांज़ैक्शन के लिए, `SqlExecutor` निष्पादन और डायलेक्ट के लिए / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) के माध्यम से एब्स्ट्रैक्ट किए गए हैं; REST प्रकार के बैकएंड (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) `base_url` के आधार पर संबंधित HTTP इंटरफ़ेस तक पहुँचते हैं। कनेक्शन कॉन्फ़िगरेशन के लिए देखें [डेटाबेस कॉन्फ़िगरेशन ट्यूटोरियल](database-config-tutorial.md)।

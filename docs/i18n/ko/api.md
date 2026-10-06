@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## 데이터 백엔드 인터페이스
 
-모든 데이터 백엔드(`ecat-data-*`)는 통일된 trait(`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)으로 추상화됩니다; REST 계열 백엔드(Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3)는 `base_url` 기반으로 해당 HTTP 인터페이스에 접근합니다. 연결 설정은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md)을 참조하세요.
+모든 데이터 백엔드(`ecat-data-*`)는 통일된 trait(`RdbmsClient`는 트랜잭션, `SqlExecutor`는 실행과 방언 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)으로 추상화됩니다; REST 계열 백엔드(Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3)는 `base_url` 기반으로 해당 HTTP 인터페이스에 접근합니다. 연결 설정은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md)을 참조하세요.

@@ -69,4 +69,4 @@ Respons error dienkode oleh middleware menjadi JSON (atau Protobuf), membawa cod
 
 ## Antarmuka Backend Data
 
-Semua backend data (`ecat-data-*`) diabstraksikan melalui trait terpadu (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); backend bergaya REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) mengakses antarmuka HTTP terkait berdasarkan `base_url`. Konfigurasi koneksi lihat [Tutorial Konfigurasi Database](database-config-tutorial.md).
+Semua backend data (`ecat-data-*`) diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); backend bergaya REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) mengakses antarmuka HTTP terkait berdasarkan `base_url`. Konfigurasi koneksi lihat [Tutorial Konfigurasi Database](database-config-tutorial.md).

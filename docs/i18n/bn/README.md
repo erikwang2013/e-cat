@@ -155,7 +155,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার |
 | অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
+> সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
 
 > **কনস্ট্রাক্টর নামকরণ কনভেনশন**：মেসেজ কিউ crates (`ecat-mq-*`) এর প্রধান কনস্ট্রাক্টর একই `connect` (যেমন `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), সাথে `from_config` কনফিগ থেকে লোড করার জন্য; ডেটা ব্যাকএন্ড crates (`ecat-data-*`) এর বেশিরভাগ প্রধান কনস্ট্রাক্টর `new`, ব্যতিক্রম: `ecat-data-redis` / `ecat-data-sqlx` `connect` অনুসরণ করে, `ecat-data-mongodb` / `ecat-data-s3` শুধুমাত্র `from_config` প্রদান করে। এটি বিদ্যমান কনভেনশন, বাধ্যতামূলকভাবে একীভূত নয় (ব্রেকিং পরিবর্তন এড়াতে); 3.0 উইন্ডোতে একীকরণ মূল্যায়ন করা যেতে পারে।
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | ব্যাকএন্ড | Config | ফিল্ড | উদাহরণ মান |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, পুল প্যারামিটার (`max_connections` / `query_timeout_secs` / `session_init` ইত্যাদি, বিস্তারিত দেখুন [ডেটাবেস কনফিগ টিউটোরিয়াল](database-config-tutorial.md)) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

@@ -155,7 +155,7 @@ API-first подход к разработке, плагинная архите�
 | Документы | MongoDB | `ecat-data-mongodb` | ✅ Нативный драйвер |
 | Объекты | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> Все бэкенды данных абстрагированы через единый trait (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); подключайте нужный contrib crate по необходимости. Каждый бэкенд предоставляет структуру `XxxConfig` (`#[derive(Deserialize)]`) для загрузки параметров подключения из JSON/YAML-конфигурации.
+> Все бэкенды данных абстрагированы через единый trait (`RdbmsClient` для транзакций, `SqlExecutor` для выполнения и диалекта / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); подключайте нужный contrib crate по необходимости. Каждый бэкенд предоставляет структуру `XxxConfig` (`#[derive(Deserialize)]`) для загрузки параметров подключения из JSON/YAML-конфигурации.
 
 > **Соглашение об именовании конструкторов**: у crate-ов сообщений (`ecat-mq-*`) главный конструктор — `connect` (например, `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), плюс `from_config` для загрузки из конфигурации; у бэкендов данных (`ecat-data-*`) большинство главных конструкторов — `new`, исключения: `ecat-data-redis` / `ecat-data-sqlx` используют `connect`, `ecat-data-mongodb` / `ecat-data-s3` предоставляют только `from_config`. Это сложившееся соглашение, принудительно не унифицируется (во избежание ломающих изменений); в окне 3.0 может быть оценена унификация.
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | Бэкенд | Config | Поля | Пример значения |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, параметры пула (`max_connections` / `query_timeout_secs` / `session_init` и др., см. [Руководство по настройке баз данных](database-config-tutorial.md)) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## データバックエンドインターフェース
 
-すべてのデータバックエンド（`ecat-data-*`）は統一 trait（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）で抽象化されています；REST 系バックエンド（Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3）は `base_url` ベースで対応する HTTP インターフェースにアクセスします。接続設定は [データベース設定チュートリアル](database-config-tutorial.md) を参照してください。
+すべてのデータバックエンド（`ecat-data-*`）は統一 trait（`RdbmsClient` はトランザクション、`SqlExecutor` は実行とダイアレクト / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）で抽象化されています；REST 系バックエンド（Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3）は `base_url` ベースで対応する HTTP インターフェースにアクセスします。接続設定は [データベース設定チュートリアル](database-config-tutorial.md) を参照してください。

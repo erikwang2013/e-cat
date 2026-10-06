@@ -155,7 +155,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native |
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
+> Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
 
 > **Konvensi penamaan konstruktor**: konstruktor utama crate message queue (`ecat-mq-*`) terpadu sebagai `connect` (mis. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), juga menyediakan `from_config` untuk memuat dari konfigurasi; sebagian besar konstruktor utama crate backend data (`ecat-data-*`) adalah `new`, dengan pengecualian: `ecat-data-redis` / `ecat-data-sqlx` tetap menggunakan `connect`, `ecat-data-mongodb` / `ecat-data-s3` hanya menyediakan `from_config`. Ini adalah konvensi yang sudah ada, tidak dipaksakan untuk diseragamkan (menghindari perubahan yang merusak); dapat dievaluasi untuk diseragamkan di jendela 3.0.
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | Backend | Config | Kolom | Contoh nilai |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, parameter pool (`max_connections` / `query_timeout_secs` / `session_init` dll., lihat [Tutorial Konfigurasi Database](database-config-tutorial.md)) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

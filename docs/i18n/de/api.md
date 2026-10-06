@@ -69,4 +69,4 @@ Fehler-Responses werden über die Middleware als JSON (oder Protobuf) codiert un
 
 ## Daten-Backend-Schnittstellen
 
-Alle Daten-Backends (`ecat-data-*`) sind über einheitliche Traits abstrahiert (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-artige Backends (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) greifen über `base_url` auf die jeweiligen HTTP-Schnittstellen zu. Verbindungskonfiguration siehe [Tutorial zur Datenbankkonfiguration](database-config-tutorial.md).
+Alle Daten-Backends (`ecat-data-*`) sind über einheitliche Traits abstrahiert (`RdbmsClient` für Transaktionen, `SqlExecutor` für Ausführung und Dialekt / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-artige Backends (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) greifen über `base_url` auf die jeweiligen HTTP-Schnittstellen zu. Verbindungskonfiguration siehe [Tutorial zur Datenbankkonfiguration](database-config-tutorial.md).

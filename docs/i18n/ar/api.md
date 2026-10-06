@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## واجهات خلفيات البيانات
 
-جميع خلفيات البيانات (`ecat-data-*`) مُجرّدة عبر traits موحّدة (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ تصل خلفيات نمط REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) إلى واجهات HTTP المقابلة عبر `base_url`. راجع [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md) لإعدادات الاتصال.
+جميع خلفيات البيانات (`ecat-data-*`) مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ تصل خلفيات نمط REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) إلى واجهات HTTP المقابلة عبر `base_url`. راجع [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md) لإعدادات الاتصال.

@@ -155,7 +155,7 @@
 | المستندات | MongoDB | `ecat-data-mongodb` | ✅ مشغّل أصلي |
 | التخزين الكائني | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
+> جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
 
 > **اصطلاح تسمية البنّاءين**: crates قوائم الرسائل (`ecat-mq-*`) تستخدم `connect` كبنّاء أساسي موحد (مثل `KafkaMq::connect(brokers)` و`MqttMq::connect(url)`)، وتوفر أيضًا `from_config` للتحميل من الإعدادات؛ معظم crates خلفيات البيانات (`ecat-data-*`) تستخدم `new` كبنّاء أساسي، مع استثناءات: `ecat-data-redis` / `ecat-data-sqlx` تحافظان على `connect`، و`ecat-data-mongodb` / `ecat-data-s3` توفران `from_config` فقط. هذا اصطلاح قائم ولا يُفرض توحيده (لتجنب التغييرات الكاسرة)؛ يمكن تقييم التوحيد في نافذة 3.0.
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | الخلفية | Config | الحقول | أمثلة على القيم |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, معلمات المجمّع (`max_connections` / `query_timeout_secs` / `session_init` إلخ، انظر [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md)) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

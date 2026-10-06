@@ -155,7 +155,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 | 문서 | MongoDB | `ecat-data-mongodb` | ✅ 네이티브 드라이버 |
 | 객체 스토리지 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> 모든 데이터 백엔드는 통일된 trait 추상화(`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)를 통해 제공되며, 필요에 따라 해당 contrib crate를 가져와 사용합니다. 각 백엔드는 `XxxConfig` 구조체(`#[derive(Deserialize)]`)를 제공하여 JSON/YAML 설정 파일에서 연결 정보를 로드할 수 있습니다.
+> 모든 데이터 백엔드는 통일된 trait 추상화(`RdbmsClient`는 트랜잭션, `SqlExecutor`는 실행과 방언 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)를 통해 제공되며, 필요에 따라 해당 contrib crate를 가져와 사용합니다. 각 백엔드는 `XxxConfig` 구조체(`#[derive(Deserialize)]`)를 제공하여 JSON/YAML 설정 파일에서 연결 정보를 로드할 수 있습니다.
 
 > **생성자 명명 규칙**: 메시지 큐 crate(`ecat-mq-*`)의 주 생성자는 통일적으로 `connect`(`KafkaMq::connect(brokers)`, `MqttMq::connect(url)` 등)이며, 별도로 `from_config`로 설정에서 로드할 수 있습니다; 데이터 백엔드 crate(`ecat-data-*`)는 대부분 `new`가 주 생성자이며, 예외: `ecat-data-redis` / `ecat-data-sqlx`는 `connect`를 유지하고, `ecat-data-mongodb` / `ecat-data-s3`는 `from_config`만 제공합니다. 이는 기존 규약이며 강제로 통일하지 않습니다(파괴적 변경 방지); 3.0 창구에서 통일을 평가할 수 있습니다.
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | 백엔드 | Config | 필드 | 예시 값 |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, 풀 파라미터(`max_connections` / `query_timeout_secs` / `session_init` 등, 자세한 내용은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md) 참조) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

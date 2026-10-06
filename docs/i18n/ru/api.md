@@ -69,4 +69,4 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 ## Интерфейсы бэкендов данных
 
-Все бэкенды данных (`ecat-data-*`) абстрагированы через единые trait-ы (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-подобные бэкенды (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) обращаются к соответствующим HTTP-интерфейсам через `base_url`. Настройка подключения — в [Руководстве по настройке баз данных](database-config-tutorial.md).
+Все бэкенды данных (`ecat-data-*`) абстрагированы через единые trait-ы (`RdbmsClient` для транзакций, `SqlExecutor` для выполнения и диалекта / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-подобные бэкенды (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) обращаются к соответствующим HTTP-интерфейсам через `base_url`. Настройка подключения — в [Руководстве по настройке баз данных](database-config-tutorial.md).

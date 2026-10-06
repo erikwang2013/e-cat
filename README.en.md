@@ -150,7 +150,7 @@ Client Request
 | Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver |
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> All backends share unified trait abstractions (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+> All backends share unified trait abstractions (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
 
 > **Constructor naming convention**: message-queue crates (`ecat-mq-*`) use `connect` as the primary constructor (`KafkaMq::connect(brokers)`, `MqttMq::connect(url)`, …) and additionally offer `from_config`; data-backend crates (`ecat-data-*`) mostly use `new`, except `ecat-data-redis` / `ecat-data-sqlx` (which use `connect`) and `ecat-data-mongodb` / `ecat-data-s3` (which only offer `from_config`). This is an existing convention, not enforced — unification would be breaking and is deferred; it may be revisited in the 3.0 window.
 
@@ -185,7 +185,7 @@ let rows = db.query("SELECT * FROM users").await?;
 | Backend | Config Struct | Fields |
 |---------|--------------|--------|
 | Redis | `RedisConfig` | `url`, `password`? |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, pool options (`max_connections` / `query_timeout_secs` / `session_init` etc., see [Database Config Tutorial](docs/database-config-tutorial.md)) |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? |

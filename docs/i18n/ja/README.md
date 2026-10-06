@@ -155,7 +155,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | ドキュメント | MongoDB | `ecat-data-mongodb` | ✅ ネイティブドライバ |
 | オブジェクトストレージ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> すべてのデータバックエンドは統一 trait 抽象（`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）を通じて利用でき、必要に応じて対応する contrib crate を導入します。各バックエンドは `XxxConfig` 構造体（`#[derive(Deserialize)]`）を提供し、JSON/YAML 設定ファイルから接続情報をロードできます。
+> すべてのデータバックエンドは統一 trait 抽象（`RdbmsClient` はトランザクション、`SqlExecutor` は実行とダイアレクト / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）を通じて利用でき、必要に応じて対応する contrib crate を導入します。各バックエンドは `XxxConfig` 構造体（`#[derive(Deserialize)]`）を提供し、JSON/YAML 設定ファイルから接続情報をロードできます。
 
 > **コンストラクタ命名規約**：メッセージキュー crate（`ecat-mq-*`）の主コンストラクタは統一して `connect`（例：`KafkaMq::connect(brokers)`、`MqttMq::connect(url)`）、その他に設定からロードする `from_config` を提供；データバックエンド crate（`ecat-data-*`）の主コンストラクタは大半が `new`。例外：`ecat-data-redis` / `ecat-data-sqlx` は `connect` を踏襲、`ecat-data-mongodb` / `ecat-data-s3` は `from_config` のみ提供。これは既存の規約であり、強制はしません（破壊的変更を避けるため）；3.0 の窓口で統一を評価可能です。
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | バックエンド | Config | フィールド | サンプル値 |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, プールパラメータ（`max_connections` / `query_timeout_secs` / `session_init` など、詳細は [データベース設定チュートリアル](database-config-tutorial.md) を参照） | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

@@ -69,4 +69,4 @@ Error responses are encoded as JSON (or Protobuf) by middleware, carrying code /
 
 ## Data Backend Interfaces
 
-All data backends (`ecat-data-*`) are abstracted through unified traits (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-style backends (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) access their corresponding HTTP interfaces via `base_url`. Connection configuration: see [Database Configuration Tutorial](database-config-tutorial.md).
+All data backends (`ecat-data-*`) are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); REST-style backends (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) access their corresponding HTTP interfaces via `base_url`. Connection configuration: see [Database Configuration Tutorial](database-config-tutorial.md).

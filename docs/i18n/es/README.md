@@ -155,7 +155,7 @@ Ofrece una experiencia de desarrollo API-first, una arquitectura de componentes 
 | Documentos | MongoDB | `ecat-data-mongodb` | ✅ Driver nativo |
 | Almacenamiento de objetos | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
 
-> Todos los backends de datos se abstraen mediante un trait unificado (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); se incorpora el crate contrib correspondiente según necesidad. Cada backend ofrece una estructura `XxxConfig` (`#[derive(Deserialize)]`) que admite cargar la información de conexión desde archivos de configuración JSON/YAML.
+> Todos los backends de datos se abstraen mediante un trait unificado (`RdbmsClient` para transacciones, `SqlExecutor` para ejecución y dialecto / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); se incorpora el crate contrib correspondiente según necesidad. Cada backend ofrece una estructura `XxxConfig` (`#[derive(Deserialize)]`) que admite cargar la información de conexión desde archivos de configuración JSON/YAML.
 
 > **Convención de nombres de constructores**: los crates de colas de mensajes (`ecat-mq-*`) usan `connect` como constructor principal (p. ej. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), además de `from_config` para cargar desde configuración; en los crates de backends de datos (`ecat-data-*`), el constructor principal de la mayoría es `new`, con excepciones: `ecat-data-redis` / `ecat-data-sqlx` mantienen `connect`, y `ecat-data-mongodb` / `ecat-data-s3` solo ofrecen `from_config`. Esta es una convención existente que no se fuerza a unificar (para evitar cambios disruptivos); la ventana 3.0 puede evaluar la unificación.
 
@@ -196,7 +196,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | Backend | Config | Campos | Ejemplo de valor |
 |------|--------|------|--------|
 | Redis | `RedisConfig` | `url`, `password`? | `redis://localhost:6379` |
-| RDBMS | `SqlxConfig` | `url`, `username`?, `password`? | `postgres://localhost/db` |
+| RDBMS | `SqlxConfig` | `url`, `username`?, `password`?, parámetros de pool (`max_connections` / `query_timeout_secs` / `session_init` etc., consulta el [Tutorial de configuración de base de datos](database-config-tutorial.md)) | `postgres://localhost/db` |
 | ClickHouse | `ClickhouseConfig` | `base_url`, `database`, `username`?, `password`? | `http://localhost:8123`, `default` |
 | QuestDB | `QuestdbConfig` | `base_url`, `username`?, `password`? | `http://localhost:9000` |
 | Elasticsearch | `ElasticsearchConfig` | `base_url`, `username`?, `password`? | `http://localhost:9200` |

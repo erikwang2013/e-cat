@@ -69,4 +69,4 @@ A resposta de erro é codificada como JSON (ou Protobuf) pelo middleware, carreg
 
 ## Interfaces de backend de dados
 
-Todos os backends de dados (`ecat-data-*`) são abstraídos por traits unificados (`RdbmsClient` / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); backends do tipo REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) acessam as interfaces HTTP correspondentes via `base_url`. Consulte o [Tutorial de configuração de banco de dados](database-config-tutorial.md) para a configuração de conexão.
+Todos os backends de dados (`ecat-data-*`) são abstraídos por traits unificados (`RdbmsClient` para transações, `SqlExecutor` para execução e dialeto / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); backends do tipo REST (Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3) acessam as interfaces HTTP correspondentes via `base_url`. Consulte o [Tutorial de configuração de banco de dados](database-config-tutorial.md) para a configuração de conexão.
