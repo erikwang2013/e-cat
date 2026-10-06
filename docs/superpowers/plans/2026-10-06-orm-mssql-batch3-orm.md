@@ -1138,7 +1138,7 @@ macro_rules! int_col {
             }
             fn from_json(column: &'static str, v: &Value) -> Result<Self, OrmError> {
                 // i32 也接受 Number 里的 i64（SQLite 只存 i64），越界才报错 ——
-                // 直接 as 截断会把 70000 静默变成 4464。
+                // 直接 as 截断会把越界值静默变成回绕后的值（如 2_147_483_648 → -2147483648）。
                 v.as_i64()
                     .and_then(|n| <$t>::try_from(n).ok())
                     .ok_or_else(|| mismatch(column, $expected))
@@ -1284,7 +1284,13 @@ git commit -m "feat(ecat-orm): 值转换层（含 Option 泛型实现，避免�
 
 ### ⚠️ Task 5 必读：三个容易写错的地方
 
-1. **`i32` 不能 `as i32` 强转。** SQLite 只有 i64，PG `integer` 也是 i64 上行。`70000 as i32` 是 `4464` —— 静默错值。必须 `try_from` 后报错。
+1. **`i32` 不能 `as i32` 强转。** SQLite 只有 i64，PG `integer` 也是 i64 上行。
+   越界的值被 `as` 静默回绕：`2_147_483_648 as i32` 是 **`-2147483648`** —— 静默错值。
+   必须 `try_from` 后报错。
+
+   > **实施记录（2026-10-06，`e2136dc` 订正）**：本项原文举的例子是「`70000 as i32` 是 `4464`」——
+   > **错的**：`70000` 在 `i32` 范围内（上限 `2_147_483_647`），根本不越界，`70000 as i32` 就是 `70000`。
+   > 实施者算出真正的边界值并补了回归测试。**结论（用 `try_from`）是对的，示例是错的。**
 
 2. **`f64` 的 NaN/±Inf 装不进 `serde_json::Number`。** `Number::from_f64(NaN)` 返回 `None`，傻瓜写法 `.unwrap_or(Value::Null)` 会把 NaN **静默变成 NULL**（写进库就是丢失）。批次 1 在 `ecat-data-sqlx/src/cell.rs:9-12` 已经定过这条约定：转字符串。本任务与它对齐，并且 `from_json` 要能转回来。
 
