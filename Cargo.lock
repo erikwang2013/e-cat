@@ -1387,6 +1387,7 @@ name = "ecat-data"
 version = "4.1.0"
 dependencies = [
  "async-trait",
+ "ecat-circuit-breaker",
  "ecat-errors",
  "serde",
  "serde_json",

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod breaker;
 mod cache;
 mod dialect;
 mod document;
@@ -9,6 +10,7 @@ mod storage;
 mod timeout;
 mod tsdb;
 
+pub use breaker::CircuitBreakerExecutor;
 pub use cache::Cache;
 pub use dialect::Dialect;
 pub use document::DocumentClient;
