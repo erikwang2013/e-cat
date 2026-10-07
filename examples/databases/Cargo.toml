@@ -7,7 +7,7 @@ description = "Data access example for the e-cat framework (inline JSON config)"
 publish = false
 
 [dependencies]
-ecat-data = { version = "4.1.0", path = "../../ecat-data" }
+ecat-data = { version = "5.0.0", path = "../../ecat-data" }
 ecat-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true

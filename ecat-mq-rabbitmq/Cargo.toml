@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-mq = { version = "4.1.0", path = "../ecat-mq" }
+ecat-mq = { version = "5.0.0", path = "../ecat-mq" }
 bytes.workspace = true
 async-trait.workspace = true
 serde.workspace = true

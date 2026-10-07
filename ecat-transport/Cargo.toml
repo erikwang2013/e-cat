@@ -10,8 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-metadata = { version = "4.1.0", path = "../ecat-metadata" }
-ecat-encoding = { version = "4.1.0", path = "../ecat-encoding" }
+ecat-metadata = { version = "5.0.0", path = "../ecat-metadata" }
+ecat-encoding = { version = "5.0.0", path = "../ecat-encoding" }
 ecat-errors.workspace = true
 tower.workspace = true
 async-trait.workspace = true

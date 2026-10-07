@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md)
 
-**Ecat** is a Rust microservices framework (v4.1.0 · 56 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v5.0.0 · 56 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -537,7 +537,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 4.1.0), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
+Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 5.0.0), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
 
 ### Why prost (not protobuf-rs)
 

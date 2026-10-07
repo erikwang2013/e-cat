@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-transport = { version = "4.1.0", path = "../ecat-transport" }
+ecat-transport = { version = "5.0.0", path = "../ecat-transport" }
 tonic = { workspace = true, features = ["tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 tokio = { workspace = true, features = ["sync"] }

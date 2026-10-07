@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-registry = { version = "4.1.0", path = "../ecat-registry" }
+ecat-registry = { version = "5.0.0", path = "../ecat-registry" }
 tokio = { workspace = true, features = ["rt", "time"] }
 async-trait.workspace = true
 serde.workspace = true
