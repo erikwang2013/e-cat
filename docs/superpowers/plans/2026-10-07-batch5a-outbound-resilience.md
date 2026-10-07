@@ -1924,12 +1924,12 @@ cargo test -p ecat-metrics 2>&1 | grep -E '^test |^test result'
 
 ```rust
 use crate::pool::Pool;
-use ecat_data::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED};
+use ecat_data::{BackendKind, TRANSACTIONS_LEAKED, timeout_counter};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 取连接的累计超时次数（[`count_pool_timeout`] 递增）。
 ///
-/// 不复用 [`TIMEOUTS`]（`BackendKind::Rdbms` 槽）：那个数的是**查询**超时（连接已经拿到手），这里数的是
+/// 不复用 [`timeout_counter`]`(BackendKind::Rdbms)` 那个槽：那个数的是**查询**超时（连接已经拿到手），这里数的是
 /// **等连接**超时 —— 前者查慢查询、后者查池容量，混成一个指标会同时丢掉两条线索。
 static POOL_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
 
@@ -1961,7 +1961,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool) {
         Box::new(count_pool_timeout),
         // 三个 counter 都是**进程级**的，与具体池无关 —— 每个 backend 各出一份
         // 同样的值（spec:726 的既定接法，不是缺陷）。
-        Box::new(|| TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed)),
+        Box::new(|| timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed)),
         Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
     );
 }
@@ -1982,7 +1982,7 @@ cargo test -p ecat-data-sqlx --features metrics 2>&1 | grep -E '^test |^test res
 ```rust
 use crate::pool::MssqlManager;
 use deadpool::managed::Pool;
-use ecat_data::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED};
+use ecat_data::{BackendKind, TRANSACTIONS_LEAKED, timeout_counter};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ...（这里放回原有的 POOL_TIMEOUTS 静态量、count_pool_timeout、idle_active，一字不改）
@@ -2004,7 +2004,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool<MssqlManager>) {
         // idle + active > size 的假样本。
         Box::new(move || idle_active(&pool.status())),
         Box::new(count_pool_timeout),
-        Box::new(|| TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed)),
+        Box::new(|| timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed)),
         Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
     );
 }
