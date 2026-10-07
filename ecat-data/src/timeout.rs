@@ -111,6 +111,10 @@ mod tests {
         assert_eq!(r.unwrap(), 1);
     }
 
+    /// **前提：同二进制里只有本用例写 `Rdbms` 槽。** 精确断言（`== before + 1`）
+    /// 依赖它 —— 别处若有用例写 `Rdbms`，它的 `+1` 会插进 `before` 与断言之间
+    /// （libtest 并行跑用例）。新增写 `Rdbms` 的用例时：改成方向断言（`> before`），
+    /// 或与本案串行。
     #[tokio::test]
     async fn slow_future_times_out_and_counts() {
         let before = count(BackendKind::Rdbms);
@@ -146,6 +150,10 @@ mod tests {
     /// 同样在等 10ms 后推进 `Rdbms` 槽，两条用例被 libtest 并发调度时窗口重叠，
     /// 拿 `Rdbms` 当观测槽是竞态（实测 12/15 次误红）。`Storage` 无其它写者，
     /// 断言才确定；若实现把超时计到别的槽，这一条仍会红。
+    ///
+    /// **约束：证人槽必须是同二进制内没有任何其它用例会写的槽**，否则同一个竞态
+    /// 复发（写它的用例会把 `+1` 插进 `witness_before` 与断言之间）。加用例前
+    /// `grep -rn 'BackendKind::Storage'` 确认无人写它；要写就先换证人槽。
     #[tokio::test]
     async fn timeout_counters_are_per_backend_kind() {
         let witness_before = count(BackendKind::Storage);
