@@ -282,13 +282,43 @@ impl<S: SqlExecutor> SqlExecutor for CircuitBreakerExecutor<S> {
 
 - [ ] **Step 4: 闸门 + 提交**
 
-### ⚠️ Task 2 必读：`RdbmsClient` 要不要也实现？
+### ⚠️ Task 2 必读：`RdbmsClient` **必须**也实现（**订正 2026-10-07**）
 
-`CircuitBreakerExecutor<S>` 实现 `SqlExecutor` 是必须的。**`RdbmsClient`（`transaction()`）本任务不实现** —— 理由：`transaction()` 返回 `Transaction`，而 `Transaction` 内部持 `Box<dyn TransactionInner>`；把熔断套在事务上需要在 `TransactionInner` 层面再包一层，**代价大于收益**（与 spec:252-256 拒绝「超时做成包装器」同一条理由）。
+> **本节初版写的是「本任务不实现 `RdbmsClient`」—— 错的，已于 `954289b` 后被实施者发现并订正。**
+>
+> 初版的推理混淆了两件**完全不同**的事：
+>
+> | | 复杂度 | 要不要做 |
+> |---|---|---|
+> | **把熔断套到事务上** | 要在 `TransactionInner` 层面再包一层，代价大于收益 | ❌ 不做 |
+> | **把 `transaction()` 委托给内层** | **六行** | ✅ **必须做** |
+>
+> 而 spec:225-233 的组合方式要求后者：
+>
+> ```rust
+> let primary  = CircuitBreakerExecutor::new(sqlx_primary, cfg.clone());
+> let replicas = ...map(|c| CircuitBreakerExecutor::new(c, cfg.clone())).collect();
+> let db = RdbmsRouting::new(primary, replicas);
+> ```
+>
+> `RdbmsRouting` 的字段是 `Arc<dyn RdbmsClient>` —— **端点要装进去，所以 `CircuitBreakerExecutor` 必须实现 `RdbmsClient`**，哪怕只是委托。
 
-**这不影响 `RdbmsRouting`** —— routing 持有的是 `Arc<dyn RdbmsClient>`，而它的 `transaction()` **永远走 primary 且不经熔断**（事务失败会由 SQL 层报错，不需要熔断器介入）。
+```rust
+#[async_trait]
+impl<S: RdbmsClient> RdbmsClient for CircuitBreakerExecutor<S> {
+    /// 事务**不经熔断**，直接委托内层。
+    ///
+    /// 与 `RdbmsRouting::transaction()` 的语义一致 —— 它永远走 primary，
+    /// 失败由 SQL 层报错，不需要熔断器介入。
+    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+        self.inner.transaction().await
+    }
+}
+```
 
-若实施时发现 `RdbmsRouting` 确实需要 `CircuitBreakerExecutor` 实现 `RdbmsClient`，**停下来报给我** —— 那说明设计有缺口，不要自行发明。
+**必须补的测试**：内层是假 `RdbmsClient`，调 `transaction()` 断言 ①内层 `transaction` 计数 = 1 ②**熔断器未被触碰**（`state()` 未因这次调用改变）。**这是「委托 ≠ 熔断」的把守** —— 没有它，有人把 `transaction()` 改成走 `breaker.call` 也不会被发现。
+
+> **教训**：这一节初版把「不做复杂的那件事」写成了「两件事都不做」。**否定一个方案时，要写清否定的是它的哪一部分** —— 否则读者（包括三个月后的我）会以为整个方向都不该做。
 
 ---
 
