@@ -40,7 +40,14 @@ pub mod config {
     pub use ecat_config_remote as remote;
 }
 
-#[cfg(feature = "redis")]
+#[cfg(feature = "orm")]
+pub use ecat_orm as orm;
+
+#[cfg(any(feature = "redis", feature = "mssql"))]
 pub mod data {
+    #[cfg(feature = "redis")]
     pub use ecat_data_redis as redis;
+
+    #[cfg(feature = "mssql")]
+    pub use ecat_data_mssql as mssql;
 }

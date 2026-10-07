@@ -23,6 +23,8 @@ circuit-breaker = ["dep:ecat-circuit-breaker"]
 consul = ["dep:ecat-registry-consul"]
 remote = ["dep:ecat-config-remote"]
 redis = ["dep:ecat-data-redis"]
+orm = ["dep:ecat-orm"]
+mssql = ["dep:ecat-data-mssql"]
 
 [dependencies]
 ecat-transport = { workspace = true }
@@ -40,6 +42,9 @@ ecat-circuit-breaker = { workspace = true, optional = true }
 ecat-registry-consul = { workspace = true, optional = true }
 ecat-config-remote = { workspace = true, optional = true }
 ecat-data-redis = { workspace = true, optional = true }
+ecat-orm = { workspace = true, optional = true }
+# ecat-data-mssql 不在 workspace.dependencies 表里，直写 path 依赖。
+ecat-data-mssql = { version = "4.1.0", path = "../ecat-data-mssql", optional = true }
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true
 async-trait.workspace = true
