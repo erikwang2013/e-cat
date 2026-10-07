@@ -266,6 +266,10 @@ pub enum RdbmsError {
     Config(String),
     #[error("timeout: {0}")]
     Timeout(String),
+    /// 读写分离路由：副本全部不可用，且未开启降级读主
+    /// （[`crate::RdbmsRouting`]）。
+    #[error("no available replica")]
+    NoAvailableReplica,
 }
 
 // 测试独立成文件：本文件紧贴 500 行上限（项目硬规则），内联测试会顶过。

@@ -34,7 +34,8 @@ impl<S> CircuitBreakerExecutor<S> {
 
 /// 熔断器错误的映射：后端自身的错误**原样透出** —— 熔断只决定「调不调用」，
 /// 不改写后端报错。熔断打开/探测耗尽时后端根本没被调用，报「连接不可用」。
-fn map_breaker_error(e: BreakerError<RdbmsError>) -> RdbmsError {
+/// （`RdbmsRouting` 的端点复用同一套映射，故 `pub(crate)`。）
+pub(crate) fn map_breaker_error(e: BreakerError<RdbmsError>) -> RdbmsError {
     match e {
         BreakerError::Inner(inner) => inner,
         other => RdbmsError::Connection(other.to_string()),
