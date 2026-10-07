@@ -2,7 +2,7 @@
 
 > **Update (2026-08-07, v2.3.3)**: Die verbleibende Lücke #1 „mTLS-Anbindung an transport" ist abgeschlossen — `HttpServer::tls` / `GrpcServer::tls` wirken real über tokio-rustls / tonic rustls (unterstützt CA-Validierung und erzwungene Clientzertifikate); die Lücken #2 (Redis-Rate-Limit), #3 (GitLab CI) wurden bereits mit v2.3.0 abgeschlossen. Damit sind alle im Plan gelisteten Lücken umgesetzt.
 
-> **Update (2026-10-07, v4.2.0)**: Der v4.0-Plan ist vollständig umgesetzt — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, die Pool-Erweiterungen (`CircuitBreakerExecutor` / `RdbmsRouting`) sowie die drei Observability-Features (`metrics` / `health` / `tracing`) sind implementiert.
+> **Update (2026-10-07, v5.0.0)**: Der v4.0-Plan ist vollständig umgesetzt — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, die Pool-Erweiterungen (`CircuitBreakerExecutor` / `RdbmsRouting`) sowie die drei Observability-Features (`metrics` / `health` / `tracing`) sind implementiert.
 
 **Version:** 2.4.2  
 **Datum:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0-Planung (2026-10-05) — vollständiges ORM und SQL Server
 
-> Status: **abgeschlossen** (v4.2.0). ORM, SQL Server, Pool-Erweiterungen und Beobachtbarkeit sind umgesetzt — siehe Tabelle unten.
+> Status: **abgeschlossen** (v5.0.0). ORM, SQL Server, Pool-Erweiterungen und Beobachtbarkeit sind umgesetzt — siehe Tabelle unten.
 > Vollständiges Design: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Zwei strukturelle Lücken sind noch zu schließen:

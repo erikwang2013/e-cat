@@ -2,7 +2,7 @@
 
 > **Pembaruan (2026-08-07, v2.3.3)**: Sisa kesenjangan #1 "mTLS terhubung ke transport" telah selesai — `HttpServer::tls` / `GrpcServer::tls` benar-benar berfungsi berbasis tokio-rustls / tonic rustls (mendukung verifikasi CA dan pemaksaan sertifikat klien); kesenjangan #2 (rate limit Redis), #3 (CI GitLab) sebelumnya telah selesai bersama v2.3.0. Semua kesenjangan yang tercantum dalam perencanaan hingga saat ini telah diwujudkan.
 
-> **Pembaruan (2026-10-07, v4.2.0)**: rencana v4.0 sudah seluruhnya selesai — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, peningkatan pool (`CircuitBreakerExecutor` / `RdbmsRouting`), dan tiga feature observabilitas (`metrics` / `health` / `tracing`) semuanya sudah diterapkan.
+> **Pembaruan (2026-10-07, v5.0.0)**: rencana v4.0 sudah seluruhnya selesai — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, peningkatan pool (`CircuitBreakerExecutor` / `RdbmsRouting`), dan tiga feature observabilitas (`metrics` / `health` / `tracing`) semuanya sudah diterapkan.
 
 **Versi:** 2.4.2  
 **Tanggal:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## Rencana v4.0 (2026-10-05) — ORM Lengkap dan SQL Server
 
-> Status: **selesai** (v4.2.0). ORM, SQL Server, peningkatan pool, dan observabilitas semuanya sudah diterapkan — lihat tabel di bawah.
+> Status: **selesai** (v5.0.0). ORM, SQL Server, peningkatan pool, dan observabilitas semuanya sudah diterapkan — lihat tabel di bawah.
 > Desain lengkap: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Dua kesenjangan struktural masih harus ditutup:

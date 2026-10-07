@@ -528,14 +528,14 @@ cargo check -p ecat                                  # 默认仍能编
 - Modify: `CHANGELOG.md`
 - Modify: 37 个 `Cargo.toml` + `Cargo.lock`
 
-- [ ] **Step 1: CHANGELOG 加 4.2.0 段**
+- [ ] **Step 1: CHANGELOG 加 5.0.0 段**
 
 新增（`Breaker`/`BreakerConfig`/`BreakerState` 公开、`CircuitBreakerExecutor`、`RdbmsRouting`、三个 feature、`ecat` 两个 feature），变更（`RdbmsError` 新增 `NoAvailableReplica` 变体 —— **要在破坏性变更段点名**）。
 
-- [ ] **Step 2: 版本 bump 4.1.0 → 4.2.0**
+- [ ] **Step 2: 版本 bump 4.1.0 → 5.0.0**
 
 ```bash
-git ls-files '*Cargo.toml' | xargs sed -i 's/"4\.1\.0"/"4.2.0"/g'
+git ls-files '*Cargo.toml' | xargs sed -i 's/"4\.1\.0"/"5.0.0"/g'
 cargo metadata --format-version=1 --offline > /dev/null; echo "rc=$?"
 ```
 

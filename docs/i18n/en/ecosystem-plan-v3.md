@@ -2,7 +2,7 @@
 
 > **Update (2026-08-07, v2.3.3)**: remaining gap #1 "mTLS into transport" is done — `HttpServer::tls` / `GrpcServer::tls` take real effect based on tokio-rustls / tonic rustls (CA verification and mandatory client certificates supported); gaps #2 (Redis rate limit) and #3 (GitLab CI) were completed earlier with v2.3.0. All gaps listed in the plan are now fully landed.
 
-> **Update (2026-10-07, v4.2.0)**: the v4.0 plan is fully delivered — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, the pool enhancements (`CircuitBreakerExecutor` / `RdbmsRouting`) and the three observability features (`metrics` / `health` / `tracing`) are all implemented.
+> **Update (2026-10-07, v5.0.0)**: the v4.0 plan is fully delivered — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, the pool enhancements (`CircuitBreakerExecutor` / `RdbmsRouting`) and the three observability features (`metrics` / `health` / `tracing`) are all implemented.
 
 **Version:** 2.4.2  
 **Date:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0 Plan (2026-10-05) — Full ORM and SQL Server
 
-> Status: **done** (v4.2.0). The ORM, SQL Server, pool enhancements and observability all landed — see the table below.
+> Status: **done** (v5.0.0). The ORM, SQL Server, pool enhancements and observability all landed — see the table below.
 > Full design: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Two structural gaps remain to be closed:

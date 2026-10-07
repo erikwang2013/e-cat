@@ -2,7 +2,7 @@
 
 > **Обновление (2026-08-07, v2.3.3)**: оставшийся пробел #1 «mTLS в transport» выполнен — `HttpServer::tls` / `GrpcServer::tls` реально работают на основе tokio-rustls / rustls tonic (поддержка проверки CA и принудительных клиентских сертификатов); пробелы #2 (rate limit Redis) и #3 (GitLab CI) ранее выполнены в составе v2.3.0. Все пробелы из плана теперь закрыты.
 
-> **Обновление (2026-10-07, v4.2.0)**: план v4.0 полностью реализован — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, расширения пула (`CircuitBreakerExecutor` / `RdbmsRouting`) и три feature наблюдаемости (`metrics` / `health` / `tracing`) готовы.
+> **Обновление (2026-10-07, v5.0.0)**: план v4.0 полностью реализован — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, расширения пула (`CircuitBreakerExecutor` / `RdbmsRouting`) и три feature наблюдаемости (`metrics` / `health` / `tracing`) готовы.
 
 **Версия:** 2.4.2  
 **Дата:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## План v4.0 (2026-10-05) — полный ORM и SQL Server
 
-> Статус: **завершено** (v4.2.0). ORM, SQL Server, расширения пула и наблюдаемость реализованы — см. таблицу ниже.
+> Статус: **завершено** (v5.0.0). ORM, SQL Server, расширения пула и наблюдаемость реализованы — см. таблицу ниже.
 > Полный дизайн: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Предстоит закрыть два структурных пробела:

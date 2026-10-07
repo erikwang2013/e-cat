@@ -2,7 +2,7 @@
 
 > **更新（2026-08-07, v2.3.3）**: 剩余缺口 #1「mTLS 接入 transport」已完成——`HttpServer::tls` / `GrpcServer::tls` 基于 tokio-rustls / tonic rustls 真实生效（支持 CA 校验与强制客户端证书）；缺口 #2（Redis 限流）、#3（GitLab CI）此前已随 v2.3.0 完成。规划所列缺口至此全部落地。
 
-> **更新（2026-10-07, v4.2.0）**: v4.0 规划全部落地 —— `ecat-orm` / `ecat-orm-derive`、`ecat-data-mssql`、池增强（`CircuitBreakerExecutor` / `RdbmsRouting`）与可观测性三 feature（`metrics` / `health` / `tracing`）均已实现。
+> **更新（2026-10-07, v5.0.0）**: v4.0 规划全部落地 —— `ecat-orm` / `ecat-orm-derive`、`ecat-data-mssql`、池增强（`CircuitBreakerExecutor` / `RdbmsRouting`）与可观测性三 feature（`metrics` / `health` / `tracing`）均已实现。
 
 **版本:** 2.4.2  
 **日期:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0 规划（2026-10-05）— 完整 ORM 与 SQL Server
 
-> 状态：**已完成**（v4.2.0）。ORM、SQL Server、池增强与可观测性均已落地，见下表。
+> 状态：**已完成**（v5.0.0）。ORM、SQL Server、池增强与可观测性均已落地，见下表。
 > 完整设计见 [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](superpowers/specs/2026-10-05-orm-and-mssql-design.md)。
 
 补齐两项结构性缺口：

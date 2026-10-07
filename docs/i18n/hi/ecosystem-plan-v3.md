@@ -2,7 +2,7 @@
 
 > **अपडेट (2026-08-07, v2.3.3)**: शेष अंतराल #1「transport में mTLS एकीकरण」पूर्ण — `HttpServer::tls` / `GrpcServer::tls` tokio-rustls / tonic rustls पर आधारित वास्तविक रूप से प्रभावी है (CA सत्यापन और अनिवार्य क्लाइंट प्रमाणपत्र का समर्थन); अंतराल #2 (Redis रेट-लिमिट)、#3 (GitLab CI) पहले v2.3.0 के साथ पूरे हो चुके थे। योजना में सूचीबद्ध अंतराल अब सभी लागू हैं।
 
-> **अद्यतन (2026-10-07, v4.2.0)**: v4.0 योजना पूरी तरह लागू हो चुकी है — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, पूल संवर्धन (`CircuitBreakerExecutor` / `RdbmsRouting`) और तीन अवलोकनीयता feature (`metrics` / `health` / `tracing`) सभी कार्यान्वित हैं।
+> **अद्यतन (2026-10-07, v5.0.0)**: v4.0 योजना पूरी तरह लागू हो चुकी है — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, पूल संवर्धन (`CircuitBreakerExecutor` / `RdbmsRouting`) और तीन अवलोकनीयता feature (`metrics` / `health` / `tracing`) सभी कार्यान्वित हैं।
 
 **संस्करण:** 2.4.2  
 **दिनांक:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0 योजना (2026-10-05) — पूर्ण ORM और SQL Server
 
-> स्थिति: **पूर्ण** (v4.2.0)। ORM, SQL Server, पूल संवर्धन और अवलोकनीयता सभी लागू हो चुके हैं — नीचे तालिका देखें।
+> स्थिति: **पूर्ण** (v5.0.0)। ORM, SQL Server, पूल संवर्धन और अवलोकनीयता सभी लागू हो चुके हैं — नीचे तालिका देखें।
 > पूर्ण डिज़ाइन: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md)।
 
 दो संरचनात्मक अंतराल भरने बाकी हैं:

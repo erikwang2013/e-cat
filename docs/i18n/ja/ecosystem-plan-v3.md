@@ -2,7 +2,7 @@
 
 > **更新（2026-08-07, v2.3.3）**: 残ギャップ #1「transport への mTLS 接続」が完了 — `HttpServer::tls` / `GrpcServer::tls` が tokio-rustls / tonic rustls ベースで実際に有効（CA 検証とクライアント証明書強制に対応）；ギャップ #2（Redis レートリミット）、#3（GitLab CI）は v2.3.0 で完了済み。計画に挙げられたギャップはこれで全て実装済み。
 
-> **更新（2026-10-07, v4.2.0）**: v4.0 計画はすべて完了しました —— `ecat-orm` / `ecat-orm-derive`、`ecat-data-mssql`、プール強化（`CircuitBreakerExecutor` / `RdbmsRouting`）、可観測性の 3 feature（`metrics` / `health` / `tracing`）はいずれも実装済みです。
+> **更新（2026-10-07, v5.0.0）**: v4.0 計画はすべて完了しました —— `ecat-orm` / `ecat-orm-derive`、`ecat-data-mssql`、プール強化（`CircuitBreakerExecutor` / `RdbmsRouting`）、可観測性の 3 feature（`metrics` / `health` / `tracing`）はいずれも実装済みです。
 
 **バージョン:** 2.4.2  
 **日付:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0 計画（2026-10-05）— 完全な ORM と SQL Server
 
-> 状態：**完了**（v4.2.0）。ORM、SQL Server、プール強化、可観測性はすべて実装済みです（下表参照）。
+> 状態：**完了**（v5.0.0）。ORM、SQL Server、プール強化、可観測性はすべて実装済みです（下表参照）。
 > 完全な設計は [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md) を参照。
 
 2 つの構造的ギャップを埋めます：

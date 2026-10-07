@@ -2,7 +2,7 @@
 
 > **تحديث (2026-08-07، v2.3.3)**: اكتملت الفجوة المتبقية #1 «دمج mTLS في النقل» — `HttpServer::tls` / `GrpcServer::tls` فعّالة فعليًا عبر tokio-rustls / rustls الخاص بـ tonic (تدعم التحقق من CA وفرض شهادة العميل)؛ الفجوتان #2 (حد معدل Redis) و#3 (GitLab CI) اكتملتا سابقًا مع v2.3.0. وبذلك تُنفَّذ جميع الفجوات المذكورة في الخطط.
 
-> **تحديث (2026-10-07، v4.2.0)**: اكتملت خطة v4.0 بالكامل — `ecat-orm` / `ecat-orm-derive` و`ecat-data-mssql` وتحسينات المجمع (`CircuitBreakerExecutor` / `RdbmsRouting`) وميزات المراقبة الثلاث (`metrics` / `health` / `tracing`) جميعها منفّذة.
+> **تحديث (2026-10-07، v5.0.0)**: اكتملت خطة v4.0 بالكامل — `ecat-orm` / `ecat-orm-derive` و`ecat-data-mssql` وتحسينات المجمع (`CircuitBreakerExecutor` / `RdbmsRouting`) وميزات المراقبة الثلاث (`metrics` / `health` / `tracing`) جميعها منفّذة.
 
 **الإصدار:** 2.4.2  
 **التاريخ:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## خطة v4.0 (2026-10-05) — ORM كامل و SQL Server
 
-> الحالة: **مكتمل** (v4.2.0). تم إنجاز ORM و SQL Server وتحسينات المجمع والمراقبة — انظر الجدول أدناه.
+> الحالة: **مكتمل** (v5.0.0). تم إنجاز ORM و SQL Server وتحسينات المجمع والمراقبة — انظر الجدول أدناه.
 > التصميم الكامل: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 يبقى سدّ فجوتين بنيويتين:

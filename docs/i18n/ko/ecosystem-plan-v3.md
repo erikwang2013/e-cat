@@ -2,7 +2,7 @@
 
 > **업데이트 (2026-08-07, v2.3.3)**: 남은 격차 #1「mTLS transport 연동」완료 — `HttpServer::tls` / `GrpcServer::tls`가 tokio-rustls / tonic rustls 기반으로 실제 동작(CA 검증과 클라이언트 인증서 강제 지원); 격차 #2(Redis rate limit), #3(GitLab CI)은 이전에 v2.3.0과 함께 완료. 계획에 명시된 격차가 이로써 전부 구현되었습니다.
 
-> **업데이트(2026-10-07, v4.2.0)**: v4.0 계획이 모두 완료되었습니다 — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, 풀 강화(`CircuitBreakerExecutor` / `RdbmsRouting`), 관측성 3개 feature(`metrics` / `health` / `tracing`)가 모두 구현되었습니다.
+> **업데이트(2026-10-07, v5.0.0)**: v4.0 계획이 모두 완료되었습니다 — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, 풀 강화(`CircuitBreakerExecutor` / `RdbmsRouting`), 관측성 3개 feature(`metrics` / `health` / `tracing`)가 모두 구현되었습니다.
 
 **버전:** 2.4.2  
 **날짜:** 2026-08-01  
@@ -78,7 +78,7 @@
 
 ## v4.0 계획 (2026-10-05) — 완전한 ORM과 SQL Server
 
-> 상태: **완료**(v4.2.0). ORM, SQL Server, 풀 강화, 관측성이 모두 구현되었습니다(아래 표 참조).
+> 상태: **완료**(v5.0.0). ORM, SQL Server, 풀 강화, 관측성이 모두 구현되었습니다(아래 표 참조).
 > 전체 설계는 [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md) 참조.
 
 두 가지 구조적 격차를 채웁니다:
