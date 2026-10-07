@@ -614,4 +614,4 @@ cargo clippy --workspace --all-targets -- -D warnings; echo "rc=$?"
 
 测试数（`cargo test -p <crate>` 汇总 passed，拆前 → 拆后）：`ecat-security` 26→26、`ecat-registry-consul` 24→24、`ecat-transport-http` 20→20、`ecat-graphql` 35→35、`ecat-cli` 12→12，无一 crate 下降。
 
-验证：5 个 crate `cargo clippy --all-targets -- -D warnings` 全 rc=0；`cargo fmt --all -- --check` rc=0；`cargo check --workspace --all-targets` rc=0。每个新文件都在父模块挂了 `mod` 声明（漏挂即编译失败，不会静默 0 通过）。移动等价性以脚本逐 token 比对（未改动的 `pub(crate)`/`use` 行与空白、尾随逗号归一后代码逐字符一致，字符串字面量逐字节一致）；`ecat-cli` 另跑二进制端到端冒烟（`--help` / `new` / `proto add` / `upgrade`）。
+验证：5 个 crate `cargo clippy --all-targets -- -D warnings` 全 rc=0；`cargo fmt --all -- --check` rc=0；`cargo check --workspace --all-targets` rc=0。每个新文件都在父模块挂了 `mod` 声明 —— ⚠️ **但「漏挂 `mod` 就会编译失败」这个说法是错的，别拿它当判据**（2026-10-07 独立复核纠正）：漏挂 `mod layer;` 确实会因 `pub use layer::…` 而编译失败，可**漏挂 `mod tests;`（或任何无人引用的模块）是完全静默的** —— 孤儿 `.rs` 直接被忽略，编译通过、测试跑 0 个。真正的判据是**实测测试数不低于基线**，不是「能不能编译」。移动等价性以脚本逐 token 比对（未改动的 `pub(crate)`/`use` 行与空白、尾随逗号归一后代码逐字符一致，字符串字面量逐字节一致）；`ecat-cli` 另跑二进制端到端冒烟（`--help` / `new` / `proto add` / `upgrade`）。
