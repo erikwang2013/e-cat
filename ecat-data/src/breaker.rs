@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use ecat_circuit_breaker::{Breaker, BreakerConfig, BreakerError, BreakerState};
 
 use crate::dialect::Dialect;
-use crate::rdbms::{RdbmsError, Row, SqlExecutor};
+use crate::rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
 
 /// 给任意 [`SqlExecutor`] 包一层熔断。
 ///
@@ -110,11 +110,24 @@ impl<S: SqlExecutor> SqlExecutor for CircuitBreakerExecutor<S> {
     }
 }
 
+#[async_trait]
+impl<S: RdbmsClient> RdbmsClient for CircuitBreakerExecutor<S> {
+    /// 事务**不经熔断**，直接委托内层。
+    ///
+    /// 两件事要分清：
+    /// - **把熔断套到事务上** —— 要在 `TransactionInner` 层面再包一层，代价大于收益（不做）
+    /// - **把 `transaction()` 委托给内层** —— 就是这三行（要做）：端点要能装进
+    ///   `Arc<dyn RdbmsClient>`，而事务天然走 primary，失败由 SQL 层报错。
+    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+        self.inner.transaction().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dialect::Dialect;
-    use crate::rdbms::{RdbmsError, Row, SqlExecutor};
+    use crate::rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
     use async_trait::async_trait;
     use ecat_circuit_breaker::{BreakerConfig, BreakerState};
     use std::sync::Arc;
@@ -189,6 +202,38 @@ mod tests {
         fn dialect(&self) -> Dialect {
             Dialect::Sqlite
         }
+    }
+
+    #[async_trait]
+    impl RdbmsClient for FakeExecutor {
+        async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+            self.record(Transaction::new())
+        }
+    }
+
+    /// `transaction()` **委托内层、不经熔断** —— 委托 ≠ 熔断。
+    ///
+    /// 端点要能装进 `Arc<dyn RdbmsClient>`，所以这个委托必须在；
+    /// 而把熔断套到事务上要在 `TransactionInner` 层面再包一层（代价大于收益，不做）。
+    #[tokio::test]
+    async fn transaction_delegates_without_going_through_the_breaker() {
+        let (inner, calls) = FakeExecutor::new(true);
+        let exec = CircuitBreakerExecutor::new(inner, BreakerConfig::default());
+
+        assert!(exec.transaction().await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "必须委托给内层");
+        assert_eq!(exec.state(), BreakerState::Closed);
+
+        // 累计 6 次事务失败：若 transaction() 走了熔断，状态早该 Open
+        for _ in 0..5 {
+            assert!(exec.transaction().await.is_err());
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 6);
+        assert_eq!(
+            exec.state(),
+            BreakerState::Closed,
+            "事务失败不得计入熔断窗口（熔断器根本没被碰）"
+        );
     }
 
     /// 熔断打开后，内层**一次都不该被调用** —— 这才叫熔断，
