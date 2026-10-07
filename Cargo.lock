@@ -1745,6 +1745,8 @@ name = "ecat-metrics"
 version = "5.0.0"
 dependencies = [
  "axum 0.8.9",
+ "ecat-data-mssql",
+ "ecat-data-sqlx",
  "prometheus",
  "tokio",
  "tower 0.5.3",

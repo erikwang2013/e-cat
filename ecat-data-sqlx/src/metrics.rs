@@ -10,23 +10,19 @@
 //! | `ecat_rdbms_query_timeout_total` | counter | `backend` |
 //! | `ecat_rdbms_transactions_leaked_total` | counter | `backend` |
 //!
-//! 池连接数是**抓取时现读**的（手写 [`Collector`]）：本 crate 的查询路径里没有
-//! 「取连接」的钩子（取用由 sqlx 内部完成），没有哪个调用点能顺手 `set` 一下。
-//! 后两个 counter 读的是 `ecat-data` 的进程级静态量
+//! 池连接数是**抓取时现读**的（取数闭包挂在 `ecat_metrics` 的唯一 collector 上）：
+//! 本 crate 的查询路径里没有「取连接」的钩子（取用由 sqlx 内部完成），没有哪个
+//! 调用点能顺手 `set` 一下。后两个 counter 读的是 `ecat-data` 的进程级静态量
 //! （[`timeout_counter`] 取的 `TIMEOUTS` Rdbms 维度 / [`TRANSACTIONS_LEAKED`]）—— 把日志变成可告警的指标，
 //! 不另建计数器（spec:726-727）。
 
 use crate::pool::Pool;
 use ecat_data::{BackendKind, TRANSACTIONS_LEAKED, timeout_counter};
-use prometheus::core::{Collector, Desc};
-use prometheus::proto::{Counter, Gauge, LabelPair, Metric, MetricFamily, MetricType};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 
 /// 取连接的累计超时次数（[`count_pool_timeout`] 递增）。
 ///
-/// 不复用 `TIMEOUTS`：那个数的是**查询**超时（连接已经拿到手），这里数的是
+/// 不复用 [`timeout_counter`]`(BackendKind::Rdbms)` 那个槽：那个数的是**查询**超时（连接已经拿到手），这里数的是
 /// **等连接**超时 —— 前者查慢查询、后者查池容量，混成一个指标会同时丢掉两条线索。
 static POOL_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
 
@@ -37,203 +33,32 @@ pub(crate) fn count_pool_timeout() {
 
 /// 注册池指标。`backend` 是标签值（`"primary"` / `"replica-1"` 之类）。
 ///
-/// 幂等：collector 只注册一次，重复调用只是多挂一个被观测的池；同一个 `backend`
-/// 重复注册则覆盖（避免同一标签出现两份样本）。
+/// 幂等：重复调用只是多挂一个被观测的池；同一个 `backend` 重复注册则覆盖
+/// （避免同一标签出现两份样本）。
 ///
-/// 唯一会失败的情形是 registry 里已有同名指标 —— 那时四个指标都不会输出。
+/// **四个家族的全进程唯一 collector 在 `ecat_metrics`**（`ecat-metrics/src/rdbms.rs`）：
+/// 本函数只把本 crate 的取数闭包挂上去。早期版本在这里自建 collector —— 那会与
+/// `ecat-data-mssql` 的同名家族互相顶掉（`Registry` 只留先注册的那一份，
+/// 后者的四个指标静默消失）。
 pub fn register_pool_metrics(backend: &'static str, pool: &Pool) {
-    let pools = POOLS.get_or_init(|| {
-        let pools = Arc::new(Pools::new());
-        // 与 ecat-metrics 自己的注册同款：AlreadyReg 只可能是名字撞车，
-        // 而这里的名字是本 crate 独占的。
-        let _ = ecat_metrics::registry().register(Box::new(Registered(Arc::clone(&pools))));
-        pools
-    });
-    pools.add(backend, pool.clone());
-}
-
-/// 真正注册进 registry 的那层壳。
-///
-/// 不能直接 `impl Collector for Arc<Pools>`：`Arc` 是外部类型，孤儿规则不允许
-/// （E0117）。包一层自有类型即可，内部仍是同一个 [`Pools`]。
-struct Registered(Arc<Pools>);
-
-impl Collector for Registered {
-    fn desc(&self) -> Vec<&Desc> {
-        self.0.descs.iter().collect()
-    }
-
-    fn collect(&self) -> Vec<MetricFamily> {
-        self.0.collect()
-    }
-}
-
-/// 全局 collector：一个进程一个，四个指标家族都在它身上。
-///
-/// 为什么不是「一个池一个 collector」：`Registry` 按「指标名 + 常量标签」去重，
-/// 同名 collector 注册第二次直接 `AlreadyReg` —— 多后端共用一个 registry 时
-/// 只有合并成单 collector 这一条路。
-static POOLS: OnceLock<Arc<Pools>> = OnceLock::new();
-
-struct Pools {
-    /// `backend` 标签 → 池。持有 `Pool` 本身（`Pool` 内部是 `Arc`，克隆很轻）。
-    pools: Mutex<Vec<(&'static str, Pool)>>,
-    descs: [Desc; 4],
-}
-
-impl Pools {
-    fn new() -> Self {
-        Self {
-            pools: Mutex::new(Vec::new()),
-            descs: [
-                desc(
-                    "ecat_rdbms_pool_connections",
-                    "Connections in the RDBMS connection pool",
-                    &["backend", "state"],
-                ),
-                desc(
-                    "ecat_rdbms_pool_timeouts_total",
-                    "Total RDBMS pool acquire timeouts",
-                    &["backend"],
-                ),
-                desc(
-                    "ecat_rdbms_query_timeout_total",
-                    "Total RDBMS query timeouts",
-                    &["backend"],
-                ),
-                desc(
-                    "ecat_rdbms_transactions_leaked_total",
-                    "Total RDBMS transactions dropped without commit or rollback",
-                    &["backend"],
-                ),
-            ],
-        }
-    }
-
-    fn add(&self, backend: &'static str, pool: Pool) {
-        let mut pools = self.pools.lock().unwrap();
-        match pools.iter_mut().find(|(name, _)| *name == backend) {
-            Some(slot) => slot.1 = pool,
-            None => pools.push((backend, pool)),
-        }
-    }
-}
-
-impl Collector for Pools {
-    fn desc(&self) -> Vec<&Desc> {
-        self.descs.iter().collect()
-    }
-
-    fn collect(&self) -> Vec<MetricFamily> {
-        let pools = self.pools.lock().unwrap();
-        let mut connections = Vec::with_capacity(pools.len() * 2);
-        let mut pool_timeouts = Vec::with_capacity(pools.len());
-        let mut query_timeouts = Vec::with_capacity(pools.len());
-        let mut leaked = Vec::with_capacity(pools.len());
-
-        // 四个 counter/静态量对每个 backend 各出一份样本：`TIMEOUTS` 等是
-        // 进程级的，按 backend 重复计数是既定代价（spec:726 要求的接法）。
-        let timeouts = count(timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed));
-        let leaks = count(TRANSACTIONS_LEAKED.load(Ordering::Relaxed));
-        let acquire_timeouts = count(POOL_TIMEOUTS.load(Ordering::Relaxed));
-
-        for (backend, pool) in pools.iter() {
-            let backend = *backend;
-            let size = pool.size();
-            let idle = pool.idle();
-            connections.push(gauge(
-                labels(&[("backend", backend), ("state", "idle")]),
-                f64::from(idle),
-            ));
-            connections.push(gauge(
-                labels(&[("backend", backend), ("state", "active")]),
-                f64::from(size.saturating_sub(idle)),
-            ));
-            pool_timeouts.push(counter(labels(&[("backend", backend)]), acquire_timeouts));
-            query_timeouts.push(counter(labels(&[("backend", backend)]), timeouts));
-            leaked.push(counter(labels(&[("backend", backend)]), leaks));
-        }
-
-        vec![
-            family(
-                "ecat_rdbms_pool_connections",
-                "Connections in the RDBMS connection pool",
-                MetricType::GAUGE,
-                connections,
-            ),
-            family(
-                "ecat_rdbms_pool_timeouts_total",
-                "Total RDBMS pool acquire timeouts",
-                MetricType::COUNTER,
-                pool_timeouts,
-            ),
-            family(
-                "ecat_rdbms_query_timeout_total",
-                "Total RDBMS query timeouts",
-                MetricType::COUNTER,
-                query_timeouts,
-            ),
-            family(
-                "ecat_rdbms_transactions_leaked_total",
-                "Total RDBMS transactions dropped without commit or rollback",
-                MetricType::COUNTER,
-                leaked,
-            ),
-        ]
-    }
-}
-
-fn count(v: u64) -> f64 {
-    v as f64
-}
-
-fn desc(name: &str, help: &str, labels: &[&str]) -> Desc {
-    Desc::new(
-        name.to_string(),
-        help.to_string(),
-        labels.iter().map(|l| (*l).to_string()).collect(),
-        HashMap::new(),
-    )
-    .expect("指标名与标签名合法")
-}
-
-fn labels(pairs: &[(&str, &str)]) -> Vec<LabelPair> {
-    pairs
-        .iter()
-        .map(|(name, value)| {
-            let mut l = LabelPair::default();
-            l.set_name((*name).to_string());
-            l.set_value((*value).to_string());
-            l
-        })
-        .collect()
-}
-
-fn gauge(labels: Vec<LabelPair>, value: f64) -> Metric {
-    let mut m = Metric::default();
-    m.set_label(labels.into());
-    let mut g = Gauge::default();
-    g.set_value(value);
-    m.set_gauge(g);
-    m
-}
-
-fn counter(labels: Vec<LabelPair>, value: f64) -> Metric {
-    let mut m = Metric::default();
-    m.set_label(labels.into());
-    let mut c = Counter::default();
-    c.set_value(value);
-    m.set_counter(c);
-    m
-}
-
-fn family(name: &str, help: &str, kind: MetricType, metrics: Vec<Metric>) -> MetricFamily {
-    let mut f = MetricFamily::default();
-    f.set_name(name.to_string());
-    f.set_help(help.to_string());
-    f.set_field_type(kind);
-    f.set_metric(metrics.into());
-    f
+    // `Pool` 内部是 `Arc`，克隆只是多一个句柄；闭包要 `'static`，所以按值捕获。
+    let pool = pool.clone();
+    ecat_metrics::register_rdbms_metrics(
+        backend,
+        // 一次读取同时给出两个投影：分两次读会在并发下出现 idle + active > size。
+        Box::new(move || {
+            let idle = u64::from(pool.idle());
+            let size = u64::from(pool.size());
+            (idle, size.saturating_sub(idle))
+        }),
+        // 读的是计数器的当前值，不是 [`count_pool_timeout`]（那是**递增**用的，
+        // 返回 `()`）—— 闭包要的是数据源。
+        Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed)),
+        // 三个 counter 都是**进程级**的，与具体池无关 —— 每个 backend 各出一份
+        // 同样的值（spec:726 的既定接法，不是缺陷）。
+        Box::new(|| timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed)),
+        Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
+    );
 }
 
 #[cfg(test)]

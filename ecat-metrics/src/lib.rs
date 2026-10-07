@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod metrics_layer;
 mod outbound;
+mod rdbms;
 
 use axum::Router;
 use axum::response::IntoResponse;
@@ -10,6 +11,7 @@ use std::sync::OnceLock;
 
 pub use metrics_layer::{MetricsLayer, MetricsService};
 pub use outbound::{OutboundCounterFn, OutboundStateFn, register_outbound_metrics};
+pub use rdbms::{RdbmsConnectionsFn, RdbmsCounterFn, register_rdbms_metrics};
 
 static REGISTRY: OnceLock<Registry> = OnceLock::new();
 

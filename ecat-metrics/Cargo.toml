@@ -16,3 +16,10 @@ tower.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+# 跨 crate 回归：两个后端必须在**同一个测试二进制**里才有意义
+# （见 tests/rdbms_shared_families.rs 的模块文档）。dev-dependencies 不参与
+# 正常构建图，所以这个环是合法的；但本仓库没有先例 —— 先验证一次。
+ecat-data-sqlx = { workspace = true, features = ["metrics"] }
+# ecat-data-mssql 不在 workspace.dependencies 表里，直写 path + version
+# （与 ecat/Cargo.toml:22 同款）。
+ecat-data-mssql = { version = "5.0.0", path = "../ecat-data-mssql", features = ["metrics"] }
