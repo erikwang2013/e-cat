@@ -142,7 +142,7 @@ impl Breaker {
         T: 'static,
         E: std::fmt::Display,
     {
-        {
+        let permit = {
             let mut inner = self.lock();
             match inner.state {
                 BreakerState::Open => {
@@ -155,16 +155,22 @@ impl Breaker {
                             return Err(BreakerError::Open);
                         }
                     }
+                    // 迁移这一跳不借名额（与原实现一致）。
+                    None
                 }
                 BreakerState::HalfOpen => {
                     if inner.half_open_count >= self.config.half_open_probes {
                         return Err(BreakerError::ProbesExhausted);
                     }
                     inner.half_open_count += 1;
+                    Some(ProbePermit {
+                        breaker: self,
+                        armed: true,
+                    })
                 }
-                BreakerState::Closed => {}
+                BreakerState::Closed => None,
             }
-        }
+        };
 
         let result = f().await;
         let mut inner = self.lock();
@@ -216,6 +222,11 @@ impl Breaker {
             BreakerState::Open => {}
         }
 
+        // 探测已记录 ⇒ 名额归还的责任已由状态机承担，撤销 Drop 里的归还。
+        if let Some(permit) = permit {
+            permit.disarm();
+        }
+
         result.map_err(BreakerError::Inner)
     }
 
@@ -252,6 +263,40 @@ impl Breaker {
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// 半开探测名额的 RAII 归还。
+///
+/// 名额在 `f().await` **之前**借出（`call` 的 `HalfOpen` 分支），用掉却在那之后的
+/// 记录逻辑里 —— 中间的 future 被 drop 就跑不到记录逻辑。本类型把「归还」挂到
+/// `Drop` 上，让取消路径自动还名额。
+///
+/// **不归还的后果**：`half_open_probes` 次被取消的探测之后，熔断器永久停在
+/// `HalfOpen`（每次调用立即 `ProbesExhausted`），只能靠重启进程恢复。
+struct ProbePermit<'a> {
+    breaker: &'a Breaker,
+    /// `false` = 探测已记入滑动窗口，名额算用掉了，`Drop` 不再归还。
+    armed: bool,
+}
+
+impl ProbePermit<'_> {
+    /// 探测已按成功/失败记入窗口 —— 撤销归还。
+    ///
+    /// **必须在记录之后调用**：提前 disarm 等于回到「有借无还」。
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ProbePermit<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let mut inner = self.breaker.lock();
+            // `saturating_sub`：`armed` 与「借出过」同源，理论上不会到 0；
+            // 真到了也宁可少还一个也不要在抓取/调用路径上 panic。
+            inner.half_open_count = inner.half_open_count.saturating_sub(1);
+        }
     }
 }
 
@@ -383,5 +428,48 @@ mod tests {
             serde_json::from_str(r#"{"failure_ratio": 0.9, "window": 5}"#).unwrap();
         assert_eq!(given.failure_ratio, 0.9);
         assert_eq!(given.window, Duration::from_secs(5));
+    }
+
+    /// 被取消的探测**必须**归还名额。
+    ///
+    /// 借出名额（`breaker.rs:107`）在 `f().await`（`:113`）之前，而名额的用掉
+    /// （`:116-159` 的记录逻辑）在 await 之后 —— 中间的 future 一旦被 drop，
+    /// 名额就丢了。`half_open_probes` 次之后熔断器永久停在 `HalfOpen`
+    /// （每次调用直接 `ProbesExhausted`），**没有任何路径能恢复**。
+    ///
+    /// 这里用 `tokio::time::timeout` 制造 drop —— 它正是 5a / 5b 给每个后端
+    /// 套的那一层，也是线上最常见的取消源。
+    #[tokio::test]
+    async fn cancelled_half_open_probes_return_their_permit() {
+        let cfg = BreakerConfig {
+            open_duration: Duration::from_millis(20),
+            ..BreakerConfig::default()
+        };
+        let probes = cfg.half_open_probes;
+        let b = Breaker::new(cfg);
+
+        // 打满窗口的样本下限（5，见 `breaker.rs:134`）把熔断器打开。
+        let fail = || async { Err::<(), &str>("backend down") };
+        for _ in 0..5 {
+            let _ = b.call(fail).await;
+        }
+        assert_eq!(b.state(), BreakerState::Open);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        // 借出名额后立刻取消，重复 `probes + 1` 次 —— 要比 `probes` 多一次：
+        // 冷却后的**第一次**调用只做 `Open → HalfOpen` 迁移（`breaker.rs:92-102`），
+        // 它**不借名额**，所以 `probes` 次取消只借走 `probes - 1` 个。
+        for _ in 0..(probes + 1) {
+            let hang = || async { std::future::pending::<Result<(), &str>>().await };
+            let _ = tokio::time::timeout(Duration::from_millis(5), b.call(hang)).await;
+        }
+
+        // 名额都还回来了 ⇒ 还能放行探测，且这次成功探测把熔断器关回去。
+        let ok = || async { Ok::<(), &str>(()) };
+        assert!(
+            b.call(ok).await.is_ok(),
+            "被取消的探测没归还名额 ⇒ 永久 ProbesExhausted"
+        );
+        assert_eq!(b.state(), BreakerState::Closed);
     }
 }
