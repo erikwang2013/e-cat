@@ -1924,12 +1924,12 @@ cargo test -p ecat-metrics 2>&1 | grep -E '^test |^test result'
 
 ```rust
 use crate::pool::Pool;
-use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED};
+use ecat_data::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 取连接的累计超时次数（[`count_pool_timeout`] 递增）。
 ///
-/// 不复用 [`QUERY_TIMEOUTS`]：那个数的是**查询**超时（连接已经拿到手），这里数的是
+/// 不复用 [`TIMEOUTS`]（`BackendKind::Rdbms` 槽）：那个数的是**查询**超时（连接已经拿到手），这里数的是
 /// **等连接**超时 —— 前者查慢查询、后者查池容量，混成一个指标会同时丢掉两条线索。
 static POOL_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
 
@@ -1961,7 +1961,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool) {
         Box::new(count_pool_timeout),
         // 三个 counter 都是**进程级**的，与具体池无关 —— 每个 backend 各出一份
         // 同样的值（spec:726 的既定接法，不是缺陷）。
-        Box::new(|| QUERY_TIMEOUTS.load(Ordering::Relaxed)),
+        Box::new(|| TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed)),
         Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
     );
 }
@@ -1982,7 +1982,7 @@ cargo test -p ecat-data-sqlx --features metrics 2>&1 | grep -E '^test |^test res
 ```rust
 use crate::pool::MssqlManager;
 use deadpool::managed::Pool;
-use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED};
+use ecat_data::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ...（这里放回原有的 POOL_TIMEOUTS 静态量、count_pool_timeout、idle_active，一字不改）
@@ -2004,7 +2004,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool<MssqlManager>) {
         // idle + active > size 的假样本。
         Box::new(move || idle_active(&pool.status())),
         Box::new(count_pool_timeout),
-        Box::new(|| QUERY_TIMEOUTS.load(Ordering::Relaxed)),
+        Box::new(|| TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed)),
         Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
     );
 }
@@ -3427,8 +3427,8 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 | # | 判据 | 验证 |
 |---|---|---|
 | 1 | `cargo test --workspace` 全绿，测试数 ≥ 1096（批次 4 末值）+ 本批新增 | Task 8 Step 5 |
-| 2 | **13 个 `run_with_timeout` 调用点全部迁移**（实测数，非 spec 的 16） | `rg -n 'run_with_timeout\(' --type rust \| wc -l` 与 Task 1 Step 1 基线比对 |
-| 3 | `QUERY_TIMEOUTS` 在仓内**零残留**（除 CHANGELOG 的历史段） | `rg 'QUERY_TIMEOUTS' --type rust` 输出为空 |
+| 2 | **13 个 `run_with_timeout` 调用点全部迁移**（实测数，非 spec 的 16） | `rg -n 'run_with_timeout\(' --type rust \| wc -l` 会读到 **15**（13 个既有 + Task 1 新增的 2 处测试调用）→ 按**清单式核对**这 13 个文件:行，不比总数 |
+| 3 | `QUERY_TIMEOUTS` 在仓内**零残留**（除 CHANGELOG 的历史段） | `rg 'QUERY_TIMEOUTS' --type rust` **零代码引用**（Task 1 Step 2 片段自带一句历史注释 `本量取代了 5.0.0 的 QUERY_TIMEOUTS`，故**输出非空是正常的**；只要求无 `use`/无读取点） |
 | 4 | **两个 `metrics.rs` 消费者在 `--features metrics` 下编译并测试通过** | Task 1 Step 8 最后一条 |
 | 5 | Redis 与 ClickHouse 各有**一条真超时**测试（断言 `DeadlineExceeded` / `Timeout`） | Task 4 Step 9、Task 5 Step 11 |
 | 6 | Redis 与 ClickHouse 各有**一条真熔断**测试（断言 `Open` **且** 快速返回的时间判据） | 同上 |
