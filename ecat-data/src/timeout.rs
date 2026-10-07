@@ -161,6 +161,31 @@ mod tests {
         timeout_counter(kind).load(Ordering::SeqCst)
     }
 
+    /// 钉住 7 个下标与判别值一致。
+    ///
+    /// [`timeout_counter`] 的无 `_` 分支 `match` 只保证**编译期穷尽**：把臂写反
+    /// （如 `Cache` 接到 `TIMEOUTS[2]`）照样编译通过，而且是这里唯一可能的编辑
+    /// 错误。别的用例只覆盖 Tsdb 与 Storage 两个槽，Cache↔Search 写反了没人会
+    /// 发现 —— 这个映射要被后续各后端的 `metrics` 依赖，按槽钉死。
+    #[test]
+    fn timeout_counter_indexes_match_discriminants() {
+        for k in [
+            BackendKind::Rdbms,
+            BackendKind::Cache,
+            BackendKind::Search,
+            BackendKind::Graph,
+            BackendKind::Document,
+            BackendKind::Storage,
+            BackendKind::Tsdb,
+        ] {
+            assert!(
+                std::ptr::eq(timeout_counter(k), &TIMEOUTS[k as usize]),
+                "timeout_counter({k:?}) 必须与 TIMEOUTS[{}] 是同一个槽",
+                k as usize
+            );
+        }
+    }
+
     #[tokio::test]
     async fn none_timeout_passes_result_through() {
         let r: Result<u64, RdbmsError> =
