@@ -143,7 +143,8 @@ mod tests {
     use crate::dialect::Dialect;
     use crate::rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
     use async_trait::async_trait;
-    use ecat_circuit_breaker::{BreakerConfig, BreakerState};
+    use ecat_circuit_breaker::{BreakerConfig, BreakerError, BreakerState};
+    use ecat_errors::{Error, ErrorCode};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -327,5 +328,28 @@ mod tests {
         assert_eq!(exec.state(), BreakerState::Open);
         assert_eq!(exec.dialect(), Dialect::Sqlite);
         assert_eq!(exec.inner().dialect(), Dialect::Sqlite);
+    }
+
+    /// `ecat_errors::Error` 侧的映射，三个分支各一条：`Inner` **原样透出**
+    /// （熔断只决定「调不调用」，不改写后端报错）；`Open` / `ProbesExhausted`
+    /// 归成 `Unavailable` + 组件标识 —— 这两种情况内层根本没被调用，
+    /// 拿不到内层错误，也不该让调用方以为后端答了话。
+    #[test]
+    fn breaker_error_to_backend_error_maps_all_three_variants() {
+        let inner = Error::new(ErrorCode::DeadlineExceeded, "redis", "connect timed out");
+        let passthrough = breaker_error_to_backend_error(BreakerError::Inner(inner), "redis");
+        assert_eq!(passthrough.code, ErrorCode::DeadlineExceeded);
+        assert_eq!(passthrough.reason, "redis");
+        assert_eq!(passthrough.message, "connect timed out");
+
+        let open = breaker_error_to_backend_error(BreakerError::Open, "clickhouse");
+        assert_eq!(open.code, ErrorCode::Unavailable);
+        assert_eq!(open.reason, "clickhouse");
+        assert_eq!(open.message, "circuit breaker is open");
+
+        let probes = breaker_error_to_backend_error(BreakerError::ProbesExhausted, "clickhouse");
+        assert_eq!(probes.code, ErrorCode::Unavailable);
+        assert_eq!(probes.reason, "clickhouse");
+        assert_eq!(probes.message, "circuit breaker: too many probes");
     }
 }

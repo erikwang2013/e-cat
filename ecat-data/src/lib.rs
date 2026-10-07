@@ -21,5 +21,7 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
 pub use routing::RdbmsRouting;
 pub use search::SearchClient;
 pub use storage::StorageClient;
-pub use timeout::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED, TimeoutError, run_with_timeout};
+pub use timeout::{
+    BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED, TimeoutError, run_with_timeout, timeout_counter,
+};
 pub use tsdb::{DataPoint, FieldValue, TsdbClient};
