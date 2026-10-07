@@ -161,11 +161,26 @@ impl Breaker {
         result.map_err(BreakerError::Inner)
     }
 
-    /// 读取当前状态，供选端点时判断是否跳过（如 `RdbmsRouting`）。
+    /// 读取**有效**状态，供选端点时判断是否跳过（如 `RdbmsRouting`）。
     ///
-    /// 只读：不做 `Open` → `HalfOpen` 的冷却期转换，那是 `call` 的职责。
+    /// **包含冷却期的 `Open` → `HalfOpen` 转换。** 这一点是**必需的，不是便利**：
+    /// 调用方（如 `RdbmsRouting`）用它来**跳过** `Open` 的端点；若这里不转换，
+    /// 被跳过的端点就永远没人调 `call` —— 而真正的状态迁移在 `call` 里 ——
+    /// 于是冷却期过后也不会被重新放行，**任何失败过的端点被永久排除**，
+    /// 读能力单调缩水。熔断器的意义正是「恢复后重新放行」。
+    ///
+    /// 本方法仍是**只读**的：它只**报告**冷却期已过，不改内部的 `state` 字段
+    /// （真正的迁移仍由 `call` 做）。所以拿的是普通锁，不是可变语义。
     pub fn state(&self) -> BreakerState {
-        self.lock().state
+        let inner = self.lock();
+        let cooled_down = inner
+            .opened_at
+            .is_some_and(|t| t.elapsed() >= self.config.open_duration);
+        if inner.state == BreakerState::Open && cooled_down {
+            BreakerState::HalfOpen
+        } else {
+            inner.state
+        }
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -201,6 +216,50 @@ mod tests {
             assert!(matches!(r, Err(BreakerError::Inner(_))));
         }
 
+        assert_eq!(breaker.state(), BreakerState::Open);
+    }
+
+    /// 连续打 5 次失败把熔断器打到 `Open`。
+    async fn trip(breaker: &Breaker) {
+        for _ in 0..5 {
+            let r: Result<(), BreakerError<std::io::Error>> = breaker
+                .call(|| async { Err::<(), std::io::Error>(std::io::Error::other("fail")) })
+                .await;
+            assert!(matches!(r, Err(BreakerError::Inner(_))));
+        }
+    }
+
+    /// **冷却期过后 `state()` 必须报告 `HalfOpen`。**
+    ///
+    /// 这是「跳过 `Open` 端点」那类调用方（如 `RdbmsRouting`）能恢复的**唯一**途径：
+    /// 真正的迁移在 `call` 里，而被跳过的端点没人调 `call` —— `state()` 不转换的话，
+    /// **任何失败过的端点被永久排除**，读能力单调缩水。
+    ///
+    /// `open_duration = ZERO` 让冷却期立即过去 —— 测试**不依赖时间**，无 flake。
+    #[tokio::test]
+    async fn state_reports_half_open_once_the_cooldown_has_elapsed() {
+        let breaker = Breaker::new(BreakerConfig {
+            open_duration: Duration::ZERO,
+            ..BreakerConfig::default()
+        });
+        trip(&breaker).await;
+        assert_eq!(
+            breaker.state(),
+            BreakerState::HalfOpen,
+            "冷却期已过 ⇒ 必须报告 HalfOpen，否则端点被永久排除"
+        );
+    }
+
+    /// 反向对照：冷却期**未过**时仍报 `Open`。
+    ///
+    /// 没有这条，上一条可能被实现成「恒 `HalfOpen`」而照样通过。
+    #[tokio::test]
+    async fn state_stays_open_while_the_cooldown_is_running() {
+        let breaker = Breaker::new(BreakerConfig {
+            open_duration: Duration::from_secs(600),
+            ..BreakerConfig::default()
+        });
+        trip(&breaker).await;
         assert_eq!(breaker.state(), BreakerState::Open);
     }
 }
