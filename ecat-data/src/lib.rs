@@ -11,7 +11,7 @@ mod storage;
 mod timeout;
 mod tsdb;
 
-pub use breaker::CircuitBreakerExecutor;
+pub use breaker::{CircuitBreakerExecutor, breaker_error_to_backend_error, map_breaker_error};
 pub use cache::Cache;
 pub use dialect::Dialect;
 pub use document::DocumentClient;
@@ -21,5 +21,5 @@ pub use rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, Transact
 pub use routing::RdbmsRouting;
 pub use search::SearchClient;
 pub use storage::StorageClient;
-pub use timeout::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED, run_with_timeout};
+pub use timeout::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED, TimeoutError, run_with_timeout};
 pub use tsdb::{DataPoint, FieldValue, TsdbClient};

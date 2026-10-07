@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use ecat_circuit_breaker::{Breaker, BreakerConfig, BreakerError, BreakerState};
+use ecat_errors::{Error, ErrorCode};
 
 use crate::dialect::Dialect;
 use crate::rdbms::{RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
@@ -34,11 +35,23 @@ impl<S> CircuitBreakerExecutor<S> {
 
 /// 熔断器错误的映射：后端自身的错误**原样透出** —— 熔断只决定「调不调用」，
 /// 不改写后端报错。熔断打开/探测耗尽时后端根本没被调用，报「连接不可用」。
-/// （`RdbmsRouting` 的端点复用同一套映射，故 `pub(crate)`。）
-pub(crate) fn map_breaker_error(e: BreakerError<RdbmsError>) -> RdbmsError {
+/// （`RdbmsRouting` 的端点与 Redis / ClickHouse 的包装层复用同一套映射，故公开。）
+pub fn map_breaker_error(e: BreakerError<RdbmsError>) -> RdbmsError {
     match e {
         BreakerError::Inner(inner) => inner,
         other => RdbmsError::Connection(other.to_string()),
+    }
+}
+
+/// `ecat_errors::Error` 侧的同一套映射（六个非 RDBMS trait 用的错误类型）。
+///
+/// 与 [`map_breaker_error`] 分开是因为 `ecat_errors::Error` 与 `BreakerError`
+/// **都是外部类型**，写不出统一的 `From` 实现（孤儿规则），只能各来一个函数。
+/// `reason` 是后端标识（如 `"redis"`），进 `Error::reason`。
+pub fn breaker_error_to_backend_error(e: BreakerError<Error>, reason: &'static str) -> Error {
+    match e {
+        BreakerError::Inner(inner) => inner,
+        other => Error::new(ErrorCode::Unavailable, reason, other.to_string()),
     }
 }
 

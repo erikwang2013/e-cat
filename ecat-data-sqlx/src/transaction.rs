@@ -9,7 +9,7 @@
 use crate::cell::{mysql_rows_to_result, pg_rows_to_result, sqlite_rows_to_result};
 use crate::db_err;
 use async_trait::async_trait;
-use ecat_data::{Dialect, RdbmsError, Row, TransactionInner, run_with_timeout};
+use ecat_data::{BackendKind, Dialect, RdbmsError, Row, TransactionInner, run_with_timeout};
 use sqlx::Executor as _;
 use std::time::Duration;
 
@@ -34,7 +34,7 @@ macro_rules! tx_wrapper {
         #[async_trait]
         impl TransactionInner for $name {
             async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError> {
-                run_with_timeout(self.query_timeout, async {
+                run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
                     let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
                     tx.execute(sql)
                         .await
@@ -45,7 +45,7 @@ macro_rules! tx_wrapper {
             }
 
             async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-                run_with_timeout(self.query_timeout, async {
+                run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
                     let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
                     let rows = tx.fetch_all(sql).await.map_err(db_err)?;
                     $rows(rows)
@@ -58,7 +58,7 @@ macro_rules! tx_wrapper {
                 sql: &str,
                 params: &[serde_json::Value],
             ) -> Result<u64, RdbmsError> {
-                run_with_timeout(self.query_timeout, async {
+                run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
                     let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
                     let mut q = sqlx::query(sql);
                     for param in params {
@@ -91,7 +91,7 @@ macro_rules! tx_wrapper {
                 sql: &str,
                 params: &[serde_json::Value],
             ) -> Result<Vec<Row>, RdbmsError> {
-                run_with_timeout(self.query_timeout, async {
+                run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
                     let tx = self.inner.as_mut().ok_or_else(tx_finished)?;
                     let mut q = sqlx::query(sql);
                     for param in params {

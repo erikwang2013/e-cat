@@ -13,11 +13,11 @@
 //! 池连接数是**抓取时现读**的（手写 [`Collector`]）：本 crate 的查询路径里没有
 //! 「取连接」的钩子（取用由 sqlx 内部完成），没有哪个调用点能顺手 `set` 一下。
 //! 后两个 counter 读的是 `ecat-data` 的进程级静态量
-//! （[`QUERY_TIMEOUTS`] / [`TRANSACTIONS_LEAKED`]）—— 把日志变成可告警的指标，
+//! （[`TIMEOUTS`] 的 RDBMS 维度 / [`TRANSACTIONS_LEAKED`]）—— 把日志变成可告警的指标，
 //! 不另建计数器（spec:726-727）。
 
 use crate::pool::Pool;
-use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED};
+use ecat_data::{BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED};
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::{Counter, Gauge, LabelPair, Metric, MetricFamily, MetricType};
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 /// 取连接的累计超时次数（[`count_pool_timeout`] 递增）。
 ///
-/// 不复用 [`QUERY_TIMEOUTS`]：那个数的是**查询**超时（连接已经拿到手），这里数的是
+/// 不复用 [`TIMEOUTS`]：那个数的是**查询**超时（连接已经拿到手），这里数的是
 /// **等连接**超时 —— 前者查慢查询、后者查池容量，混成一个指标会同时丢掉两条线索。
 static POOL_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
 
@@ -131,9 +131,9 @@ impl Collector for Pools {
         let mut query_timeouts = Vec::with_capacity(pools.len());
         let mut leaked = Vec::with_capacity(pools.len());
 
-        // 四个 counter/静态量对每个 backend 各出一份样本：`QUERY_TIMEOUTS` 等是
+        // 四个 counter/静态量对每个 backend 各出一份样本：`TIMEOUTS` 等是
         // 进程级的，按 backend 重复计数是既定代价（spec:726 要求的接法）。
-        let timeouts = count(QUERY_TIMEOUTS.load(Ordering::Relaxed));
+        let timeouts = count(TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed));
         let leaks = count(TRANSACTIONS_LEAKED.load(Ordering::Relaxed));
         let acquire_timeouts = count(POOL_TIMEOUTS.load(Ordering::Relaxed));
 
@@ -278,12 +278,12 @@ mod tests {
         let c = client().await;
         register_pool_metrics("sqlx-sqlite-test", c.pool());
 
-        let q_lo = QUERY_TIMEOUTS.fetch_add(1, Ordering::Relaxed) + 1;
+        let q_lo = TIMEOUTS[BackendKind::Rdbms as usize].fetch_add(1, Ordering::Relaxed) + 1;
         let l_lo = TRANSACTIONS_LEAKED.fetch_add(1, Ordering::Relaxed) + 1;
 
         let text = ecat_metrics::metrics_text();
 
-        let q_hi = QUERY_TIMEOUTS.load(Ordering::Relaxed);
+        let q_hi = TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::Relaxed);
         let l_hi = TRANSACTIONS_LEAKED.load(Ordering::Relaxed);
 
         for name in [

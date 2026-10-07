@@ -18,7 +18,7 @@ mod transaction;
 use async_trait::async_trait;
 use cell::{mysql_rows_to_result, pg_rows_to_result, sqlite_rows_to_result};
 use ecat_data::{
-    Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
+    BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
     run_with_timeout,
 };
 use std::time::Duration;
@@ -149,7 +149,7 @@ impl SqlxClient {
         crate::tracing::timed(
             self.slow_query,
             sql,
-            run_with_timeout(self.query_timeout, fut),
+            run_with_timeout(BackendKind::Rdbms, self.query_timeout, fut),
         )
         .await
     }

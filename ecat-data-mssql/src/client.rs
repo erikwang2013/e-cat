@@ -13,7 +13,7 @@ use crate::pool::MssqlManager;
 use async_trait::async_trait;
 use deadpool::managed::{Object, Pool, PoolError};
 use ecat_data::{
-    Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
+    BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
     run_with_timeout,
 };
 use serde_json::Value;
@@ -118,7 +118,7 @@ impl MssqlClient {
         crate::tracing::timed(
             self.slow_query,
             sql,
-            run_with_timeout(self.query_timeout, fut),
+            run_with_timeout(BackendKind::Rdbms, self.query_timeout, fut),
         )
         .await
     }
@@ -285,7 +285,7 @@ impl MssqlTransaction {
 impl TransactionInner for MssqlTransaction {
     // 四个执行方法与客户端同一套 `run_with_timeout`（超时语义见结构体文档）。
     async fn execute(&mut self, sql: &str) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
             let result = self.conn.execute(sql, &[]).await.map_err(db_err)?;
             Ok(result.total())
         })
@@ -293,7 +293,7 @@ impl TransactionInner for MssqlTransaction {
     }
 
     async fn query(&mut self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
             let stream = self.conn.query(sql, &[]).await.map_err(db_err)?;
             rows_to_result(stream.into_first_result().await.map_err(db_err)?)
         })
@@ -301,7 +301,7 @@ impl TransactionInner for MssqlTransaction {
     }
 
     async fn execute_with(&mut self, sql: &str, params: &[Value]) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
             let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
             let refs = to_sql_refs(&binds);
             let result = self.conn.execute(sql, &refs).await.map_err(db_err)?;
@@ -311,7 +311,7 @@ impl TransactionInner for MssqlTransaction {
     }
 
     async fn query_with(&mut self, sql: &str, params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        run_with_timeout(BackendKind::Rdbms, self.query_timeout, async {
             let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
             let refs = to_sql_refs(&binds);
             let stream = self.conn.query(sql, &refs).await.map_err(db_err)?;
