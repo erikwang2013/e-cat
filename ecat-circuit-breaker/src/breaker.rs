@@ -12,23 +12,75 @@ pub enum BreakerState {
     HalfOpen,
 }
 
+impl BreakerState {
+    /// 指标的数值编码：`0` = closed、`1` = open、`2` = half-open。
+    ///
+    /// `ecat_outbound_breaker_state` 的取值即此。**不要改这个映射** ——
+    /// 告警规则与仪表盘会写死这三个数；将来加状态只能往后再追加数字。
+    ///
+    /// 放在本 crate 而不是指标侧：编码器与枚举定义放一起才不会各改各的。
+    pub fn code(self) -> u8 {
+        match self {
+            BreakerState::Closed => 0,
+            BreakerState::Open => 1,
+            BreakerState::HalfOpen => 2,
+        }
+    }
+}
+
 /// 熔断阈值。字段与 `CircuitBreakerLayer` 的 builder 一一对应，
 /// 默认值与 `CircuitBreakerLayer::new()` 相同（0.5 / 30s / 3 / 10s）。
-#[derive(Debug, Clone)]
+///
+/// 每个字段都有 `#[serde(default)]`：配置文件里写 `breaker: {}`
+/// 与 `breaker: {"failure_ratio": 0.5}` 都必须能反序列化（前者是常见写法）。
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct BreakerConfig {
+    #[serde(default = "default_failure_ratio")]
     pub failure_ratio: f64,
+    #[serde(default = "default_window", with = "duration_secs")]
     pub window: Duration,
+    #[serde(default = "default_half_open_probes")]
     pub half_open_probes: u32,
+    #[serde(default = "default_open_duration", with = "duration_secs")]
     pub open_duration: Duration,
 }
 
+fn default_failure_ratio() -> f64 {
+    0.5
+}
+
+fn default_window() -> Duration {
+    Duration::from_secs(30)
+}
+
+fn default_half_open_probes() -> u32 {
+    3
+}
+
+fn default_open_duration() -> Duration {
+    Duration::from_secs(10)
+}
+
+/// `Duration` ↔ 秒的 serde 适配：配置里写 `window: 30`，
+/// 而不是 serde 默认给的 `{secs, nanos}` 结构体。
+mod duration_secs {
+    use serde::{Deserialize, Deserializer};
+    use std::time::Duration;
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
+        Ok(Duration::from_secs(u64::deserialize(d)?))
+    }
+}
+
 impl Default for BreakerConfig {
+    /// 走同一组 `default_*` 函数，而不是把四个数字再抄一遍 ——
+    /// 抄两遍就会分叉：serde 侧省略字段拿到 30 秒、`Default` 侧拿到别的。
     fn default() -> Self {
         Self {
-            failure_ratio: 0.5,
-            window: Duration::from_secs(30),
-            half_open_probes: 3,
-            open_duration: Duration::from_secs(10),
+            failure_ratio: default_failure_ratio(),
+            window: default_window(),
+            half_open_probes: default_half_open_probes(),
+            open_duration: default_open_duration(),
         }
     }
 }
@@ -43,6 +95,9 @@ pub(crate) struct Inner {
     pub(crate) window: SlidingWindow,
     pub(crate) opened_at: Option<Instant>,
     pub(crate) half_open_count: u32,
+    /// `Closed → Open` 的累计次数。半开探测失败**重新打开也算一次**
+    /// （那是「后端还是不行」的第二次确认，与首次打开同等重要）。
+    pub(crate) opened_total: u64,
 }
 
 /// 熔断器：`Open` 时不调用下游，直接快速失败。
@@ -61,6 +116,7 @@ impl Breaker {
             window: SlidingWindow::new(config.window),
             opened_at: None,
             half_open_count: 0,
+            opened_total: 0,
         };
         Self {
             config,
@@ -140,6 +196,7 @@ impl Breaker {
                     );
                     inner.state = BreakerState::Open;
                     inner.opened_at = Some(Instant::now());
+                    inner.opened_total += 1;
                 }
             }
             BreakerState::HalfOpen => {
@@ -153,6 +210,7 @@ impl Breaker {
                     tracing::warn!("circuit breaker: half-open → open (probe failed)");
                     inner.state = BreakerState::Open;
                     inner.opened_at = Some(Instant::now());
+                    inner.opened_total += 1;
                 }
             }
             BreakerState::Open => {}
@@ -181,6 +239,15 @@ impl Breaker {
         } else {
             inner.state
         }
+    }
+
+    /// `Closed → Open` 的累计次数（半开探测失败重新打开也计入）。
+    ///
+    /// 供指标 `ecat_outbound_breaker_open_total`。用 `state()` 轮询猜测
+    /// 「开了几次」是错的 —— 轮询间隔决定准确性，而且熔断器可能开又关，
+    /// 两次探测之间发生的事抓不到。
+    pub fn opened_total(&self) -> u64 {
+        self.lock().opened_total
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -261,5 +328,60 @@ mod tests {
         });
         trip(&breaker).await;
         assert_eq!(breaker.state(), BreakerState::Open);
+    }
+
+    /// `opened_total` 数的是**打开次数**，不是当前状态 ——
+    /// 只断言「打开后 ≥1」是空验收（一个恒返回 1 的实现也能过）。
+    /// 这里驱动两次独立的打开：首次按失败率、之后由半开探测失败重新打开。
+    #[tokio::test]
+    async fn opened_total_counts_each_open_not_the_state() {
+        let cfg = BreakerConfig {
+            open_duration: Duration::from_millis(20),
+            ..BreakerConfig::default()
+        };
+        let b = Breaker::new(cfg);
+        assert_eq!(b.opened_total(), 0, "初始不得已经计过数");
+
+        let fail = || async { Err::<(), &str>("backend down") };
+        // 窗口的样本下限是 5（`breaker.rs:134` 的 `window.total() >= 5`），
+        // 恰好打满才触发打开。
+        for _ in 0..5 {
+            let _ = b.call(fail).await;
+        }
+        assert_eq!(b.state(), BreakerState::Open);
+        assert_eq!(b.opened_total(), 1);
+
+        // 冷却 → 半开 → 探测失败 → 重新打开，计到 2。
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let _ = b.call(fail).await;
+        assert_eq!(b.opened_total(), 2, "半开探测失败重新打开必须再计一次");
+    }
+
+    /// 三个状态的编码是**对外契约**（告警规则里写死了这些数），
+    /// 逐个钉住而不是只钉一个 —— 只钉一个的话，改另一个的映射不会被发现。
+    #[test]
+    fn state_codes_are_the_metric_contract() {
+        assert_eq!(BreakerState::Closed.code(), 0);
+        assert_eq!(BreakerState::Open.code(), 1);
+        assert_eq!(BreakerState::HalfOpen.code(), 2);
+    }
+
+    /// serde 默认值必须与 `Default` **逐字段相同** ——
+    /// 配置文件省略字段与代码里 `BreakerConfig::default()` 是两条路径，
+    /// 分叉了就是「同一份配置在两种构造方式下行为不同」。
+    #[test]
+    fn deserialized_defaults_match_default_impl() {
+        let from_json: BreakerConfig = serde_json::from_str("{}").unwrap();
+        let d = BreakerConfig::default();
+        assert_eq!(from_json.failure_ratio, d.failure_ratio);
+        assert_eq!(from_json.window, d.window);
+        assert_eq!(from_json.half_open_probes, d.half_open_probes);
+        assert_eq!(from_json.open_duration, d.open_duration);
+
+        // 显式给值也要生效（只测 `{}` 的话，一个忽略输入的实现也能过）。
+        let given: BreakerConfig =
+            serde_json::from_str(r#"{"failure_ratio": 0.9, "window": 5}"#).unwrap();
+        assert_eq!(given.failure_ratio, 0.9);
+        assert_eq!(given.window, Duration::from_secs(5));
     }
 }

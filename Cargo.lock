@@ -1331,6 +1331,8 @@ dependencies = [
 name = "ecat-circuit-breaker"
 version = "5.0.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 2.0.19",
  "tokio",
  "tower 0.5.3",
