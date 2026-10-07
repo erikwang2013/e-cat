@@ -1029,7 +1029,7 @@ impl Drop for ProbePermit<'_> {
         }
 ```
 
-⚠️ **别改状态迁移本身**：permit 只多归还一次名额，`state` / `window` / `opened_at` 的语义一个都不动。`disarm()` 的位置必须在记录之后 —— 放前面就等于没修。
+⚠️ **别改状态迁移本身**：permit 只多归还一次名额，`state` / `window` / `opened_at` 的语义一个都不动。`disarm()` 的位置必须在记录之后（提前 disarm 会让**同一次探测**既被记录又被归还，名额多还一个）。⚠️ **但这与「取消修复」无关**（2026-10-08 复核纠正）：取消路径**根本不经过 `disarm`** —— future 在 `f().await` 处被 drop，走的是 `Drop` 归还，所以 `disarm` 放前放后都不影响取消语义。原计划此处写「放前面就等于没修」，不准确。
 
 ```bash
 cargo test -p ecat-circuit-breaker cancelled_half_open_probes 2>&1 | grep -E '^test |^test result'
@@ -3247,7 +3247,7 @@ mkdir -p docs/superpowers/checklists
 1. `## 1. 加配置字段` —— `query_timeout_secs` / `breaker` / `max_concurrency` 三个字段的**逐字**声明 + `0 = 禁用` 转换函数 + 各自的行内 rustdoc。注明：`breaker` 字段依赖 `BreakerConfig: Deserialize`（Task 4 Step 5 加的）。
 2. `## 2. 包 run_with_timeout` —— **熔断在外、超时在内**的顺序，附一段说明（为什么不能反过来：卡死后端会打不开熔断器 + 半开名额泄漏）。给出 `guarded` 外壳的两个变体（`RdbmsError` / `ecat_errors::Error`）。
 3. `## 3. 加 Breaker 字段` —— 逐实例一个 `Arc<Breaker>`、`state()` 给路由用、`opened_total()` 给指标用、`guarded` 里闭包按需构造 future。
-4. `## 4. 注册指标` —— 三个指标名 + 维度 + 数据源表；**`collector` 在 `ecat-metrics`，本 crate 只写 ~15 行注册**（`[features] metrics = ["dep:ecat-metrics"]`，**不要**再各建 collector —— 会撞 `AlreadyReg`，见「出入 11」）；`backend` 标签值取**后端类别名**（`"redis"` / `"clickhouse"`；一个后端有两条 I/O 路径时按路径各出一份，如 `"clickhouse-tsdb"`）。附一句「为什么不能照抄批次 4 的每 crate 一份」。
+4. `## 4. 注册指标` —— 三个指标名 + 维度 + 数据源表；**`collector` 在 `ecat-metrics`，本 crate 只写 ~15 行注册**（`[features] metrics = ["dep:ecat-metrics"]`，**不要**再各建 collector —— 会撞 `AlreadyReg`，见「出入 11」）；`backend` 标签值取**产品级名**（`"redis"` / `"clickhouse"`；一个后端有两条 I/O 路径时按路径各出一份，如 `"clickhouse-tsdb"`）。⚠️ **与 spec 的差异要写明**：spec §4 写的是类别名（`rdbms`/`cache`/…），**实际约定是产品名** —— 告警规则**必须按产品名写**（`backend="redis"`），照 spec 写永远匹配不到。另：指标标签是**产品名**、错误里的 `reason` 是**类别** slug（`"cache"`），两者粒度不同是有意的（见 `BackendKind::slug()`）。附一句「为什么不能照抄批次 4 的每 crate 一份」。
 5. `## 5. 加一条超时测试` —— 判据三选一（按后端的可测性）：①有 HTTP 接口 → axum mock + 延迟（ClickHouse 模式）；②有原生连接 → 假 `TcpListener` 装死（mssql 模式）；③内层可替身 → 假 impl + `future::pending()`。**必须是端到端**（打真实方法），不能只测 `run_with_timeout` 本身。
 6. `## 6. 加一条熔断测试` —— 连续失败后断言**两件事**：`state() == Open` **且** 下一次调用**不等满超时**就返回（时间断言）。只断言 `is_err()` 是空验收。
 
@@ -3463,7 +3463,7 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 
 | 步骤 | 结果 |
 |---|---|
-| 追加 1 的 RED 输出（Task 2a Step 9） | |
+| 追加 1 的 RED 输出（Task 2a Step 9） | ✅ **复核者独立复现**（非仅实施者自述）：禁用 `ProbePermit` 的 `Drop` 归还体 → `cancelled_half_open_probes_return_their_permit` FAILED，`被取消的探测没归还名额 ⇒ 永久 ProbesExhausted`（即 5.0.0 线上缺陷）；复原后 19 passed / rc=0。另：把 `disarm` 改成不置 `armed=false` → 测试**挂死**（exit 124，同线程重入 Mutex）⇒ `armed = false` 是承重的一行。 |
 | 追加 2 的 RED 输出（Task 3 Step 3） | |
 | `cargo test --workspace` | |
 | `cargo test --workspace --doc` | |
