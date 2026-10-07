@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> 所有后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证。详见 [数据库配置教程](docs/database-config-tutorial.md)。
+> 除 `ecat-data-sqlx` 与 `ecat-data-memcached` 两处例外，各后端 Config 均支持可选的 `tls` 字段（`TlsClientConfig`），用于配置 TLS 客户端证书认证：前者**不支持**该字段，配了会启动报错（其 TLS 走 URL 参数）；后者的该字段**静默无效**，声明了但全 crate 无人读。详见 [数据库配置教程](docs/database-config-tutorial.md)。
 
 ## ORM（ecat-orm）
 

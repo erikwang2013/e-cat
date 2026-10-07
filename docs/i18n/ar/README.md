@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> تدعم جميع Configs الخلفية حقل `tls` اختياريًا (`TlsClientConfig`) لتكوين مصادقة شهادة عميل TLS. انظر [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md).
+> باستثناء حالتين، تدعم جميع Configs الخلفية حقل `tls` اختياريًا (`TlsClientConfig`) لتكوين مصادقة شهادة عميل TLS: `ecat-data-sqlx` **لا يدعمه** — ضبطه يُفشل بدء التشغيل (TLS يمرّ عبر معاملات URL)؛ و`ecat-data-memcached` يقبل الحقل لكنه **يتجاهله بصمت** (مُعلَن ولا يُقرأ). انظر [برنامج تعليمي لإعداد قاعدة البيانات](database-config-tutorial.md).
 
 ## ORM ‏(ecat-orm)
 

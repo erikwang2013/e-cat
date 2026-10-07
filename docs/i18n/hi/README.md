@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> सभी बैकएंड Config वैकल्पिक `tls` फ़ील्ड (`TlsClientConfig`) का समर्थन करते हैं, जो TLS क्लाइंट प्रमाणपत्र प्रमाणीकरण कॉन्फ़िगर करने के लिए है। विवरण के लिए देखें [डेटाबेस कॉन्फ़िगरेशन ट्यूटोरियल](database-config-tutorial.md)。
+> दो अपवादों को छोड़कर, सभी बैकएंड Config वैकल्पिक `tls` फ़ील्ड (`TlsClientConfig`) का समर्थन करते हैं, जो TLS क्लाइंट प्रमाणपत्र प्रमाणीकरण कॉन्फ़िगर करने के लिए है: `ecat-data-sqlx` इसे **समर्थित नहीं करता** — सेट करने पर शुरुआत विफल हो जाएगी (इसका TLS URL पैरामीटर से जाता है); `ecat-data-memcached` फ़ील्ड लेता है पर उसे **चुपचाप अनदेखा** करता है (घोषित, कहीं पढ़ा नहीं जाता)। विवरण के लिए देखें [डेटाबेस कॉन्फ़िगरेशन ट्यूटोरियल](database-config-tutorial.md)।
 
 ## ORM (ecat-orm)
 

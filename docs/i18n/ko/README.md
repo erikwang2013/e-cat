@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> 모든 백엔드 Config는 선택적 `tls` 필드(`TlsClientConfig`)를 지원하며, TLS 클라이언트 인증서 인증을 구성할 수 있습니다. 자세한 내용은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md)을 참조하세요.
+> `ecat-data-sqlx`와 `ecat-data-memcached` 두 가지를 제외하면, 모든 백엔드 Config는 선택적 `tls` 필드(`TlsClientConfig`)를 지원하여 TLS 클라이언트 인증서 인증을 구성할 수 있습니다: 전자는 **지원하지 않으며**, 설정하면 기동 시 오류가 납니다(TLS는 URL 파라미터로 지정). 후자는 필드를 받아들이지만 **조용히 무시**합니다(선언만 되고 읽히지 않음). 자세한 내용은 [데이터베이스 설정 튜토리얼](database-config-tutorial.md)을 참조하세요.
 
 ## ORM (ecat-orm)
 

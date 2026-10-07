@@ -423,7 +423,7 @@ let ng = NebulaGraphClient::with_auth("http://ng:19669", "space1", "root", "nebu
 
 ## TLS 인증서 설정
 
-모든 데이터 백엔드는 선택적 TLS 클라이언트 인증(`tls` 필드)을 지원합니다.
+데이터 백엔드는 대체로 선택적 TLS 클라이언트 인증(`tls` 필드)을 지원하지만 **두 가지 예외**가 있습니다: `ecat-data-sqlx`는 이 필드를 지원하지 않으며 설정하면 기동 시 오류가 납니다(TLS는 URL 파라미터로 지정). `ecat-data-memcached`의 이 필드는 **조용히 무시됩니다** — 선언만 되어 있고 crate 어디에서도 읽지 않습니다.
 
 ### 설정 예시
 

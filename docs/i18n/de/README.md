@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> Alle Backend-Configs unterstützen das optionale Feld `tls` (`TlsClientConfig`) zur Konfiguration der TLS-Client-Zertifikatsauthentifizierung. Details siehe [Tutorial zur Datenbankkonfiguration](database-config-tutorial.md).
+> Mit Ausnahme von zwei Fällen unterstützen alle Backend-Configs das optionale Feld `tls` (`TlsClientConfig`) zur Konfiguration der TLS-Client-Zertifikatsauthentifizierung: `ecat-data-sqlx` **unterstützt es nicht** — ist es gesetzt, schlägt der Start fehl (sein TLS läuft über URL-Parameter); `ecat-data-memcached` nimmt das Feld an, **ignoriert es aber still** (deklariert, nie gelesen). Details siehe [Tutorial zur Datenbankkonfiguration](database-config-tutorial.md).
 
 ## ORM (ecat-orm)
 

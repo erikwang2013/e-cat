@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> Semua Config backend mendukung kolom opsional `tls` (`TlsClientConfig`) untuk mengonfigurasi autentikasi sertifikat klien TLS. Lihat [Tutorial Konfigurasi Database](database-config-tutorial.md).
+> Kecuali dua kasus, semua Config backend mendukung kolom opsional `tls` (`TlsClientConfig`) untuk mengonfigurasi autentikasi sertifikat klien TLS: `ecat-data-sqlx` **tidak mendukungnya** — mengisinya membuat startup gagal (TLS-nya lewat parameter URL); `ecat-data-memcached` menerima field ini tetapi **mengabaikannya diam-diam** (dideklarasikan, tidak pernah dibaca). Lihat [Tutorial Konfigurasi Database](database-config-tutorial.md).
 
 ## ORM (ecat-orm)
 

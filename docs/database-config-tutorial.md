@@ -423,7 +423,7 @@ let ng = NebulaGraphClient::with_auth("http://ng:19669", "space1", "root", "nebu
 
 ## TLS 证书配置
 
-所有数据后端均支持可选的 TLS 客户端认证（`tls` 字段）。
+各数据后端普遍支持可选的 TLS 客户端认证（`tls` 字段），但有**两处例外**：`ecat-data-sqlx` 不支持该字段，配了会启动报错（其 TLS 走 URL 参数）；`ecat-data-memcached` 的该字段**静默无效** —— 声明了，但全 crate 无人读取。
 
 ### 配置示例
 

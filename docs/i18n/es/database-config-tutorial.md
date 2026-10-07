@@ -423,7 +423,7 @@ let ng = NebulaGraphClient::with_auth("http://ng:19669", "space1", "root", "nebu
 
 ## Configuración de certificados TLS
 
-Todos los backends de datos admiten autenticación TLS opcional de cliente (campo `tls`).
+Todos los backends de datos admiten en general autenticación TLS opcional de cliente (campo `tls`), con **dos excepciones**: `ecat-data-sqlx` no admite el campo — si lo pones, el arranque falla (su TLS va por parámetros de URL); el campo de `ecat-data-memcached` es **silenciosamente inerte** — declarado, pero no se lee en ningún punto del crate.
 
 ### Ejemplo de configuración
 

@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> সব ব্যাকএন্ড Config ঐচ্ছিক `tls` ফিল্ড (`TlsClientConfig`) সমর্থন করে, TLS ক্লায়েন্ট সার্টিফিকেট অথেনটিকেশন কনফিগ করতে। বিস্তারিত দেখুন [ডেটাবেস কনফিগ টিউটোরিয়াল](database-config-tutorial.md)।
+> দুটি ব্যতিক্রম ছাড়া, সব ব্যাকএন্ড Config ঐচ্ছিক `tls` ফিল্ড (`TlsClientConfig`) সমর্থন করে, TLS ক্লায়েন্ট সার্টিফিকেট অথেনটিকেশন কনফিগার করতে: `ecat-data-sqlx` এটি **সমর্থন করে না** — দিলে চালু হওয়ার সময়ই ত্রুটি হবে (এর TLS যায় URL প্যারামিটার দিয়ে); `ecat-data-memcached` ফিল্ডটি নেয় কিন্তু **চুপচাপ উপেক্ষা করে** (ঘোষিত, কোথাও পড়া হয় না)। বিস্তারিত দেখুন [ডেটাবেস কনফিগ টিউটোরিয়াল](database-config-tutorial.md)।
 
 ## ORM (ecat-orm)
 

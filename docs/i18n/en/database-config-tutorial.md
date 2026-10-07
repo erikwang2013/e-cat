@@ -423,7 +423,7 @@ let ng = NebulaGraphClient::with_auth("http://ng:19669", "space1", "root", "nebu
 
 ## TLS Certificate Configuration
 
-All data backends support optional TLS client authentication (the `tls` field).
+All data backends generally support optional TLS client authentication (the `tls` field), with **two exceptions**: `ecat-data-sqlx` does not support the field — setting it makes startup fail (its TLS goes through URL parameters); `ecat-data-memcached`'s field is **silently inert** — declared, but never read anywhere in the crate.
 
 ### Config Example
 

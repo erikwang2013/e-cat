@@ -214,7 +214,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> Все Config бэкендов поддерживают опциональное поле `tls` (`TlsClientConfig`) для настройки TLS-аутентификации клиентским сертификатом. Подробнее см. [Руководство по настройке баз данных](database-config-tutorial.md).
+> За двумя исключениями, все Config бэкендов поддерживают опциональное поле `tls` (`TlsClientConfig`) для настройки TLS-аутентификации клиентским сертификатом: `ecat-data-sqlx` его **не поддерживает** — при задании запуск завершится ошибкой (его TLS идёт через параметры URL); `ecat-data-memcached` поле принимает, но **молча игнорирует** (объявлено, нигде не читается). Подробнее см. [Руководство по настройке баз данных](database-config-tutorial.md).
 
 ## ORM (ecat-orm)
 

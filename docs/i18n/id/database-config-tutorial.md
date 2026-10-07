@@ -423,7 +423,7 @@ let ng = NebulaGraphClient::with_auth("http://ng:19669", "space1", "root", "nebu
 
 ## Konfigurasi Sertifikat TLS
 
-Semua backend data mendukung autentikasi klien TLS opsional (kolom `tls`).
+Semua backend data umumnya mendukung autentikasi klien TLS opsional (kolom `tls`), dengan **dua pengecualian**: `ecat-data-sqlx` tidak mendukung field ini — mengisinya membuat startup gagal (TLS-nya lewat parameter URL); field `ecat-data-memcached` **diam-diam tidak berefek** — dideklarasikan, tetapi tidak pernah dibaca di crate.
 
 ### Contoh Konfigurasi
 
