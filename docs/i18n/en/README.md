@@ -5,7 +5,7 @@
 
 Ecat's Chinese name: 一只猫 (literally "a cat")
 
-**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crates).
+**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v4.1.0 · 56 crates).
 
 It offers an API-first development experience, a pluggable component architecture, a unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started seamlessly, while fully leveraging Rust's type safety, zero-cost abstractions, and extreme performance.
 
@@ -309,7 +309,6 @@ e-cat/
 ├── ecat-data-redis/            # Redis cache backend
 ├── ecat-mq/                    # Message queue abstraction
 ├── ecat-events/                # Event bus (local + remote)
-├── ecat-testing/               # Integration test utilities
 ├── ecat-openapi/               # OpenAPI spec generation
 ├── ecat-bench/                 # Benchmarks
 ├── ecat-tracing/               # Distributed tracing (trace_id inject/extract)
@@ -336,7 +335,6 @@ e-cat/
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
 ├── ecat-lock/                  # Distributed lock abstraction (Redis impl)
 ├── ecat-scheduler/             # tokio scheduled task runner
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP trace export
 ├── ecat-data-tdengine/         # TDengine time-series backend
 ├── ecat-data-mongodb/          # MongoDB document backend
 ├── ecat-data-s3/               # S3 / MinIO object storage backend
@@ -552,7 +550,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 3.0.2), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
+Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 4.1.0), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
 
 ### Why prost (instead of protobuf-rs)
 

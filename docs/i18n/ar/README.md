@@ -5,7 +5,7 @@
 
 الاسم الصيني لـ Ecat: 一只猫 (تُنطق "إي تشي ماو"، وتعني حرفيًا "قطة")
 
-**一只猫 (Ecat)** هو إطار عمل للخدمات المصغرة بلغة Rust، يهدف إلى منافسة [go-kratos/kratos](https://github.com/go-kratos/kratos) الإصدار v3 (v3.0.2 · 56 crate).
+**一只猫 (Ecat)** هو إطار عمل للخدمات المصغرة بلغة Rust، يهدف إلى منافسة [go-kratos/kratos](https://github.com/go-kratos/kratos) الإصدار v3 (v4.1.0 · 56 crate).
 
 يوفر تجربة تطوير API-first، وبنية مكونات قابلة للتركيب، وتجريدًا موحدًا للوسائط الوسيطة (middleware) بين HTTP/gRPC، وسلسلة أدوات CLI متكاملة. يمكن للمطوّرين الملمّين بـ Kratos البدء فورًا دون عناء، مع الاستفادة الكاملة من أمان الأنواع في Rust، وتجريدات التكلفة الصفرية، والأداء الفائق.
 
@@ -308,7 +308,6 @@ e-cat/
 ├── ecat-data-redis/            # تنفيذ التخزين المؤقت Redis
 ├── ecat-mq/                    # تجريد قوائم الرسائل
 ├── ecat-events/                # ناقل الأحداث (محلي + بعيد)
-├── ecat-testing/               # أدوات اختبار التكامل
 ├── ecat-openapi/               # توليد مواصفات OpenAPI
 ├── ecat-bench/                 # معايير الأداء
 ├── ecat-tracing/               # التتبع الموزع (حقن/استخراج trace_id)
@@ -335,7 +334,6 @@ e-cat/
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
 ├── ecat-lock/                  # تجريد الأقفال الموزعة (تنفيذ Redis)
 ├── ecat-scheduler/             # جدولة المهام التوقيتية tokio
-├── ecat-tracing-otlp/          # تصدير تتبع OpenTelemetry OTLP
 ├── ecat-data-tdengine/         # خلفية السلاسل الزمنية TDengine
 ├── ecat-data-mongodb/          # خلفية المستندات MongoDB
 ├── ecat-data-s3/               # خلفية التخزين الكائني S3 / MinIO
@@ -551,7 +549,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### لماذا Cargo Workspace
 
-اتساقًا مع التصميم المعياري لـ Kratos. تُنشر جميع crates `ecat-*` بإصدارات متزامنة داخل workspace (حاليًا 3.0.2)، وتُترجم كل منها بشكل مستقل، ويستوردها المستخدمون حسب الحاجة. تحافظ crates النواة على الحد الأدنى من التبعيات، بينما توفر crates المساهمة تكاملات اختيارية.
+اتساقًا مع التصميم المعياري لـ Kratos. تُنشر جميع crates `ecat-*` بإصدارات متزامنة داخل workspace (حاليًا 4.1.0)، وتُترجم كل منها بشكل مستقل، ويستوردها المستخدمون حسب الحاجة. تحافظ crates النواة على الحد الأدنى من التبعيات، بينما توفر crates المساهمة تكاملات اختيارية.
 
 ### لماذا prost (بدلًا من protobuf-rs)
 

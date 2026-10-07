@@ -75,7 +75,7 @@ homepage = "https://github.com/erikwang2013/e-cat"
 keywords = ["web", "framework", "async", "http", "microservices"]
 categories = ["web-programming::http-server", "asynchronous"]
 # 不设 documentation：docs.rs 会按 crate 名自动生成 https://docs.rs/<crate>，
-# 写死 workspace 级别反而会让 52 个 crate 的文档链接全部指向 ecat。
+# 写死 workspace 级别反而会让 56 个 crate 的文档链接全部指向 ecat。
 
 
 [profile.release]

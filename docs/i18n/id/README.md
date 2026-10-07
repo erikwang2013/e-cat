@@ -5,7 +5,7 @@
 
 Nama Tionghoa Ecat: 一只猫 (seekor kucing)
 
-**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crates).
+**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v4.1.0 · 56 crates).
 
 Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dipasang, abstraksi middleware HTTP/gRPC terpadu, serta rantai alat CLI yang lengkap. Pengembang yang akrab dengan Kratos dapat langsung menggunakannya, sekaligus memanfaatkan sepenuhnya type-safety Rust, abstraksi biaya nol, dan performa ekstrem.
 
@@ -309,7 +309,6 @@ e-cat/
 ├── ecat-data-redis/            # Implementasi cache Redis
 ├── ecat-mq/                    # Abstraksi message queue
 ├── ecat-events/                # Event bus (lokal + remote)
-├── ecat-testing/               # Perkakas pengujian integrasi
 ├── ecat-openapi/               # Pembuatan spec OpenAPI
 ├── ecat-bench/                 # Benchmark kinerja
 ├── ecat-tracing/               # Tracing terdistribusi (injeksi/ekstraksi trace_id)
@@ -336,7 +335,6 @@ e-cat/
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
 ├── ecat-lock/                  # Abstraksi distributed lock (implementasi Redis)
 ├── ecat-scheduler/             # Penjadwal tugas tokio
-├── ecat-tracing-otlp/          # Ekspor trace OpenTelemetry OTLP
 ├── ecat-data-tdengine/         # Backend time-series TDengine
 ├── ecat-data-mongodb/          # Backend dokumen MongoDB
 ├── ecat-data-s3/               # Backend object storage S3 / MinIO
@@ -552,7 +550,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Mengapa Cargo Workspace
 
-Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 3.0.2), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
+Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 4.1.0), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
 
 ### Mengapa prost (bukan protobuf-rs)
 

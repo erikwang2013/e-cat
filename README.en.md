@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md)
 
-**Ecat** is a Rust microservices framework (v3.0.2 · 56 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v4.1.0 · 56 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -306,11 +306,9 @@ e-cat/
 ├── ecat-mq-mqtt/               # MQTT adapter
 ├── ecat-mq-nats/               # NATS adapter
 ├── ecat-events/                # Event bus (local + remote)
-├── ecat-testing/               # Integration test tools
 ├── ecat-openapi/               # OpenAPI spec generation
 ├── ecat-bench/                 # Performance benchmarks
 ├── ecat-tracing/               # Distributed tracing (trace_id)
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP export
 ├── ecat-graphql/               # GraphQL endpoint (single-field)
 ├── ecat-versioning/            # API version routing
 ├── ecat-tls/                   # TLS config & cert generation
@@ -511,6 +509,10 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **GraphQL resolution (ecat-graphql)**: field arguments and nested selections are supported (`query_field`/`mutation_field` rich resolvers receive `args`/`variables`/`selection`); aliases, fragments and multiple top-level fields are still rejected — do not expose it as a general-purpose GraphQL endpoint.
 - **OAuth2 introspection cache (ecat-auth)**: the cache key is a SHA-256 hash of the token (no plaintext token stored); cached values are whitelist-filtered (default keeps sub/exp/iat/role plus extra iss/aud/scope/roles, configurable via `cache_claims_whitelist`; misses still return full claims, only cached values are filtered); expired entries are actively purged on write (default TTL 300s).
 - **Kafka offset handling (ecat-mq-kafka)**: `enable.auto.commit=false` by default with no manual commit — after a restart the consumer re-reads from the partition end (latest), skipping messages produced while down; explicitly set `auto_commit=true` for at-least-once semantics (resumes from the last committed point).
+- **`sqlite::memory:` does not support cross-connection transaction scenarios (ecat-orm)**: the pool holds only one connection, occupied by the transaction, so a second statement inside it waits until timeout; use a file path (`sqlite:<path>?mode=rwc`) when you need multiple connections.
+- **`join` column lists carry no table prefix (ecat-orm)**: when the joined table and the main table share a column name, real databases report `ambiguous column name`.
+- **Batch `update_many` optimistic-lock conflicts cannot be traced to a row (ecat-orm)**: you can only detect them via "rows returned < rows passed"; use per-row `update` when you need to locate the row.
+- **`join` table names and ON conditions are not whitelist-validated (ecat-orm)**: `join(table, on)` takes strings, and strings carry no type information; same trust boundary as `filter_raw`.
 
 ## Design Goals
 
@@ -533,7 +535,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 3.0.2), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
+Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 4.1.0), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
 
 ### Why prost (not protobuf-rs)
 

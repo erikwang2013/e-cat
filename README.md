@@ -5,7 +5,7 @@
 
 Ecat中文名：一只猫
 
-**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v3.0.2 · 56 crates）。
+**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v4.1.0 · 56 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -307,7 +307,6 @@ e-cat/
 ├── ecat-data-redis/            # Redis 缓存实现
 ├── ecat-mq/                    # 消息队列抽象
 ├── ecat-events/                # 事件总线（本地 + 远程）
-├── ecat-testing/               # 集成测试工具
 ├── ecat-openapi/               # OpenAPI spec 生成
 ├── ecat-bench/                 # 性能基准
 ├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
@@ -334,7 +333,6 @@ e-cat/
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
 ├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
 ├── ecat-scheduler/             # tokio 定时任务调度
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
 ├── ecat-data-tdengine/         # TDengine 时序后端
 ├── ecat-data-mongodb/          # MongoDB 文档后端
 ├── ecat-data-s3/               # S3 / MinIO 对象存储后端
@@ -528,6 +526,10 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **GraphQL 解析（ecat-graphql）**：支持字段参数与嵌套 selection（`query_field`/`mutation_field` 富 resolver 可访问 `args`/`variables`/`selection`）；仍不支持别名、fragment 与多顶层字段，请勿将其暴露为通用 GraphQL 端点。
 - **OAuth2 内省缓存（ecat-auth）**：缓存 key 为 token 的 SHA-256 hash（不存 token 明文）；缓存值经白名单过滤（默认保留 sub/exp/iat/role + extra 的 iss/aud/scope/roles，`cache_claims_whitelist` 可配置；miss 时仍返回完整 claims，仅缓存值过滤）；TTL 过期条目在写入时主动清除（默认 TTL 300s）。
 - **Kafka offset（ecat-mq-kafka）**：默认 `enable.auto.commit=false` 且无手动 commit——进程重启后从分区末尾（latest）重读，停机期间产生的消息会被跳过；需显式配置 `auto_commit=true` 才具备 at-least-once 语义（重启从最近提交点继续）。
+- **`sqlite::memory:` 不支持跨连接事务场景（ecat-orm）**：池只有一条被事务占住的连接，事务内第二条语句会等到超时；需要多连接时用文件路径（`sqlite:<path>?mode=rwc`）。
+- **`join` 的列清单不带表前缀（ecat-orm）**：被连表与主体有同名列时真库报 `ambiguous column name`。
+- **批量 `update_many` 的乐观锁冲突无法定位到行（ecat-orm）**：只能靠「返回行数 < 传入行数」察觉，需要定位时用逐行 `update`。
+- **`join` 的表名与 ON 条件不做白名单校验（ecat-orm）**：`join(table, on)` 收的是字符串，字符串里没有类型信息；与 `filter_raw` 同一信任边界。
 
 ## 设计目标
 
@@ -550,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### 为什么用 Cargo Workspace
 
-与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 3.0.2），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
+与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 4.1.0），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
 
 ### 为什么用 prost（而非 protobuf-rs）
 

@@ -5,7 +5,7 @@
 
 Le nom chinois d'Ecat : une chatte (一只猫)
 
-**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crates).
+**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v4.1.0 · 56 crates).
 
 Il offre une expérience de développement API-first, une architecture de composants enfichables, une abstraction unifiée des middleware HTTP/gRPC, ainsi qu'une chaîne d'outils CLI complète. Les développeurs familiers avec Kratos peuvent démarrer sans difficulté, tout en tirant pleinement parti de la sécurité de typage, des abstractions à coût zéro et des performances extrêmes de Rust.
 
@@ -284,68 +284,66 @@ dialectes se trouvent dans la section ORM de la [référence API](api.md).
 
 ```
 e-cat/
-├── ecat/                       # 核心：App 生命周期
-├── ecat-transport/             # 传输抽象（Server trait）
-├── ecat-transport-http/        # axum 实现
-├── ecat-transport-grpc/        # tonic 实现
-├── ecat-middleware/            # tower::Layer 中间件
-├── ecat-protos/                # Protobuf 定义
-├── ecat-errors/                # 错误码体系
-├── ecat-metadata/              # 元数据传递
-├── ecat-encoding/              # 序列化抽象
-├── ecat-logging/               # tracing 集成
-├── ecat-registry/              # 服务注册发现
-├── ecat-config/                # 配置管理
-├── ecat-metrics/               # Prometheus 集成
-├── ecat-data/                  # 数据访问 trait
-├── ecat-security/              # 攻击检测（security-rust）
-├── ecat-cli/                   # CLI 工具
-├── ecat-health/                # 健康检查（/health /ready）
-├── ecat-auth/                  # 认证中间件（JWT / API Key）
-├── ecat-client/                # 服务间 HTTP 客户端
-├── ecat-circuit-breaker/       # 熔断器（Tower Layer）
-├── ecat-registry-consul/       # Consul 服务注册
-├── ecat-config-remote/         # Consul KV 远程配置
-├── ecat-data-redis/            # Redis 缓存实现
-├── ecat-mq/                    # 消息队列抽象
-├── ecat-events/                # 事件总线（本地 + 远程）
-├── ecat-testing/               # 集成测试工具
-├── ecat-openapi/               # OpenAPI spec 生成
-├── ecat-bench/                 # 性能基准
-├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
-├── ecat-registry-etcd/         # etcd 服务注册
-├── ecat-mq-kafka/              # Kafka 消息队列适配
-├── ecat-data-opensearch/       # OpenSearch 搜索后端
-├── ecat-data-influxdb/         # InfluxDB 时序后端
+├── ecat/                       # Cœur : cycle de vie de l'App
+├── ecat-transport/             # Abstraction de transport (Server trait)
+├── ecat-transport-http/        # implémentation axum
+├── ecat-transport-grpc/        # implémentation tonic
+├── ecat-middleware/            # middleware tower::Layer
+├── ecat-protos/                # Définitions Protobuf
+├── ecat-errors/                # Système de codes d'erreur
+├── ecat-metadata/              # Propagation des métadonnées
+├── ecat-encoding/              # Abstraction de sérialisation
+├── ecat-logging/               # Intégration tracing
+├── ecat-registry/              # Enregistrement et découverte de services
+├── ecat-config/                # Gestion de la configuration
+├── ecat-metrics/               # Intégration Prometheus
+├── ecat-data/                  # Traits d'accès aux données
+├── ecat-security/              # Détection d'attaques (security-rust)
+├── ecat-cli/                   # Outillage CLI
+├── ecat-health/                # Contrôles de santé (/health /ready)
+├── ecat-auth/                  # Middleware d'authentification (JWT / API Key)
+├── ecat-client/                # Client HTTP inter-services
+├── ecat-circuit-breaker/       # Coupe-circuit (Tower Layer)
+├── ecat-registry-consul/       # Enregistrement de services Consul
+├── ecat-config-remote/         # Configuration distante Consul KV
+├── ecat-data-redis/            # Implémentation de cache Redis
+├── ecat-mq/                    # Abstraction de file de messages
+├── ecat-events/                # Bus d'événements (local + distant)
+├── ecat-openapi/               # Génération de spec OpenAPI
+├── ecat-bench/                 # Benchmarks de performance
+├── ecat-tracing/               # Traçage distribué (injection/extraction de trace_id)
+├── ecat-registry-etcd/         # Enregistrement de services etcd
+├── ecat-mq-kafka/              # Adaptateur de file de messages Kafka
+├── ecat-data-opensearch/       # Backend de recherche OpenSearch
+├── ecat-data-influxdb/         # Backend de séries temporelles InfluxDB
 ├── ecat-graphql/               # GraphQL endpoint
-├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
-├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-elasticsearch/    # Backend de recherche Elasticsearch
+├── ecat-data-clickhouse/       # Backend OLAP ClickHouse
+├── ecat-data-sqlx/             # Backend RDBMS (SQLite/PG/MySQL/TiDB)
 ├── ecat-data-mssql/            # Backend SQL Server (tiberius-ng)
 ├── ecat-orm/                   # ORM : macro d'entité, constructeur de requêtes, migrations
 ├── ecat-orm-derive/            # Macro dérivée #[derive(Entity)]
-├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
-├── ecat-data-neo4j/            # Neo4j 图后端
-├── ecat-data-nebulagraph/      # NebulaGraph 图后端
-├── ecat-data-arangodb/         # ArangoDB 图后端
-├── ecat-data-iotdb/            # IoTDB 时序后端
-├── ecat-data-questdb/          # QuestDB 时序后端
+├── ecat-data-memcached/        # Backend de cache Memcached (implémentation en mémoire)
+├── ecat-data-neo4j/            # Backend de graphes Neo4j
+├── ecat-data-nebulagraph/      # Backend de graphes NebulaGraph
+├── ecat-data-arangodb/         # Backend de graphes ArangoDB
+├── ecat-data-iotdb/            # Backend de séries temporelles IoTDB
+├── ecat-data-questdb/          # Backend de séries temporelles QuestDB
 ├── ecat-transport-ws/          # WebSocket transport
-├── ecat-versioning/            # API 版本路由
-├── ecat-tls/                   # TLS 证书配置与自动生成
+├── ecat-versioning/            # Routage des versions d'API
+├── ecat-tls/                   # Configuration et génération automatique de certificats TLS
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
-├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
-├── ecat-scheduler/             # tokio 定时任务调度
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
-├── ecat-data-tdengine/         # TDengine 时序后端
-├── ecat-data-mongodb/          # MongoDB 文档后端
-├── ecat-data-s3/               # S3 / MinIO 对象存储后端
-├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
-├── ecat-mq-mqtt/               # MQTT 消息后端
-├── ecat-mq-nats/               # NATS 消息后端
-├── config/                     # 配置示例文件
-├── docs/                       # 设计文档与生态规划
-└── examples/                   # 示例项目
+├── ecat-lock/                  # Abstraction de verrou distribué (implémentation Redis)
+├── ecat-scheduler/             # Planificateur de tâches tokio
+├── ecat-data-tdengine/         # Backend de séries temporelles TDengine
+├── ecat-data-mongodb/          # Backend de documents MongoDB
+├── ecat-data-s3/               # Backend de stockage objet S3 / MinIO
+├── ecat-mq-rabbitmq/           # Backend de messagerie RabbitMQ
+├── ecat-mq-mqtt/               # Backend de messagerie MQTT
+├── ecat-mq-nats/               # Backend de messagerie NATS
+├── config/                     # Fichiers de configuration d'exemple
+├── docs/                       # Documents de conception et feuille de route de l'écosystème
+└── examples/                   # Projets d'exemple
 ```
 
 ## Démarrage rapide
@@ -552,7 +550,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Pourquoi un Cargo Workspace
 
-Conforme à la conception modulaire de Kratos. Tous les crates `ecat-*` sont publiés en version synchronisée avec le workspace (actuellement 3.0.2), chacun compilé indépendamment, l'utilisateur les importe au besoin. Les crates centraux gardent un minimum de dépendances, les crates contrib fournissent des intégrations optionnelles.
+Conforme à la conception modulaire de Kratos. Tous les crates `ecat-*` sont publiés en version synchronisée avec le workspace (actuellement 4.1.0), chacun compilé indépendamment, l'utilisateur les importe au besoin. Les crates centraux gardent un minimum de dépendances, les crates contrib fournissent des intégrations optionnelles.
 
 ### Pourquoi prost (plutôt que protobuf-rs)
 

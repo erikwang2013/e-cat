@@ -5,7 +5,7 @@
 
 Китайское название Ecat: «одна кошка» (一只猫)
 
-**«Одна кошка»** — это Rust-фреймворк для микросервисов, ориентированный на [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crate).
+**«Одна кошка»** — это Rust-фреймворк для микросервисов, ориентированный на [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v4.1.0 · 56 crate).
 
 API-first подход к разработке, плагинная архитектура компонентов, единая абстракция HTTP/gRPC-промежуточных слоёв (middleware) и полный набор инструментов CLI. Разработчики, знакомые с Kratos, могут начать работать без переучивания, получая при этом типобезопасность Rust, zero-cost абстракции и экстремальную производительность.
 
@@ -284,68 +284,66 @@ let page = User::query()
 
 ```
 e-cat/
-├── ecat/                       # 核心：App 生命周期
-├── ecat-transport/             # 传输抽象（Server trait）
-├── ecat-transport-http/        # axum 实现
-├── ecat-transport-grpc/        # tonic 实现
-├── ecat-middleware/            # tower::Layer 中间件
-├── ecat-protos/                # Protobuf 定义
-├── ecat-errors/                # 错误码体系
-├── ecat-metadata/              # 元数据传递
-├── ecat-encoding/              # 序列化抽象
-├── ecat-logging/               # tracing 集成
-├── ecat-registry/              # 服务注册发现
-├── ecat-config/                # 配置管理
-├── ecat-metrics/               # Prometheus 集成
-├── ecat-data/                  # 数据访问 trait
-├── ecat-security/              # 攻击检测（security-rust）
-├── ecat-cli/                   # CLI 工具
-├── ecat-health/                # 健康检查（/health /ready）
-├── ecat-auth/                  # 认证中间件（JWT / API Key）
-├── ecat-client/                # 服务间 HTTP 客户端
-├── ecat-circuit-breaker/       # 熔断器（Tower Layer）
-├── ecat-registry-consul/       # Consul 服务注册
-├── ecat-config-remote/         # Consul KV 远程配置
-├── ecat-data-redis/            # Redis 缓存实现
-├── ecat-mq/                    # 消息队列抽象
-├── ecat-events/                # 事件总线（本地 + 远程）
-├── ecat-testing/               # 集成测试工具
-├── ecat-openapi/               # OpenAPI spec 生成
-├── ecat-bench/                 # 性能基准
-├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
-├── ecat-registry-etcd/         # etcd 服务注册
-├── ecat-mq-kafka/              # Kafka 消息队列适配
-├── ecat-data-opensearch/       # OpenSearch 搜索后端
-├── ecat-data-influxdb/         # InfluxDB 时序后端
+├── ecat/                       # Ядро: жизненный цикл App
+├── ecat-transport/             # Абстракция транспорта (Server trait)
+├── ecat-transport-http/        # реализация axum
+├── ecat-transport-grpc/        # реализация tonic
+├── ecat-middleware/            # промежуточное ПО tower::Layer
+├── ecat-protos/                # Определения Protobuf
+├── ecat-errors/                # Система кодов ошибок
+├── ecat-metadata/              # Передача метаданных
+├── ecat-encoding/              # Абстракция сериализации
+├── ecat-logging/               # Интеграция tracing
+├── ecat-registry/              # Регистрация и обнаружение сервисов
+├── ecat-config/                # Управление конфигурацией
+├── ecat-metrics/               # Интеграция Prometheus
+├── ecat-data/                  # Трейты доступа к данным
+├── ecat-security/              # Обнаружение атак (security-rust)
+├── ecat-cli/                   # Инструменты CLI
+├── ecat-health/                # Проверки работоспособности (/health /ready)
+├── ecat-auth/                  # Промежуточное ПО аутентификации (JWT / API Key)
+├── ecat-client/                # HTTP-клиент для межсервисных вызовов
+├── ecat-circuit-breaker/       # Размыкатель цепи (Tower Layer)
+├── ecat-registry-consul/       # Регистрация сервисов Consul
+├── ecat-config-remote/         # Удалённая конфигурация Consul KV
+├── ecat-data-redis/            # Реализация кэша Redis
+├── ecat-mq/                    # Абстракция очереди сообщений
+├── ecat-events/                # Шина событий (локальная + удалённая)
+├── ecat-openapi/               # Генерация spec OpenAPI
+├── ecat-bench/                 # Бенчмарки производительности
+├── ecat-tracing/               # Распределённая трассировка (внедрение/извлечение trace_id)
+├── ecat-registry-etcd/         # Регистрация сервисов etcd
+├── ecat-mq-kafka/              # Адаптер очереди сообщений Kafka
+├── ecat-data-opensearch/       # Бэкенд поиска OpenSearch
+├── ecat-data-influxdb/         # Бэкенд временных рядов InfluxDB
 ├── ecat-graphql/               # GraphQL endpoint
-├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
-├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-elasticsearch/    # Бэкенд поиска Elasticsearch
+├── ecat-data-clickhouse/       # Бэкенд OLAP ClickHouse
+├── ecat-data-sqlx/             # Бэкенд RDBMS (SQLite/PG/MySQL/TiDB)
 ├── ecat-data-mssql/            # Бэкенд SQL Server (tiberius-ng)
 ├── ecat-orm/                   # ORM: макрос сущностей, построитель запросов, миграции
 ├── ecat-orm-derive/            # Макрос-производный #[derive(Entity)]
-├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
-├── ecat-data-neo4j/            # Neo4j 图后端
-├── ecat-data-nebulagraph/      # NebulaGraph 图后端
-├── ecat-data-arangodb/         # ArangoDB 图后端
-├── ecat-data-iotdb/            # IoTDB 时序后端
-├── ecat-data-questdb/          # QuestDB 时序后端
+├── ecat-data-memcached/        # Бэкенд кэша Memcached (реализация в памяти)
+├── ecat-data-neo4j/            # Бэкенд графов Neo4j
+├── ecat-data-nebulagraph/      # Бэкенд графов NebulaGraph
+├── ecat-data-arangodb/         # Бэкенд графов ArangoDB
+├── ecat-data-iotdb/            # Бэкенд временных рядов IoTDB
+├── ecat-data-questdb/          # Бэкенд временных рядов QuestDB
 ├── ecat-transport-ws/          # WebSocket transport
-├── ecat-versioning/            # API 版本路由
-├── ecat-tls/                   # TLS 证书配置与自动生成
+├── ecat-versioning/            # Маршрутизация версий API
+├── ecat-tls/                   # Настройка и авто-генерация сертификатов TLS
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
-├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
-├── ecat-scheduler/             # tokio 定时任务调度
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
-├── ecat-data-tdengine/         # TDengine 时序后端
-├── ecat-data-mongodb/          # MongoDB 文档后端
-├── ecat-data-s3/               # S3 / MinIO 对象存储后端
-├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
-├── ecat-mq-mqtt/               # MQTT 消息后端
-├── ecat-mq-nats/               # NATS 消息后端
-├── config/                     # 配置示例文件
-├── docs/                       # 设计文档与生态规划
-└── examples/                   # 示例项目
+├── ecat-lock/                  # Абстракция распределённой блокировки (реализация Redis)
+├── ecat-scheduler/             # Планировщик задач tokio
+├── ecat-data-tdengine/         # Бэкенд временных рядов TDengine
+├── ecat-data-mongodb/          # Бэкенд документов MongoDB
+├── ecat-data-s3/               # Бэкенд объектного хранилища S3 / MinIO
+├── ecat-mq-rabbitmq/           # Бэкенд сообщений RabbitMQ
+├── ecat-mq-mqtt/               # Бэкенд сообщений MQTT
+├── ecat-mq-nats/               # Бэкенд сообщений NATS
+├── config/                     # Примеры файлов конфигурации
+├── docs/                       # Документы проектирования и план экосистемы
+└── examples/                   # Примеры проектов
 ```
 
 ## Быстрый старт
@@ -552,7 +550,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Почему Cargo Workspace
 
-В соответствии с модульным дизайном Kratos. Все crate-ы `ecat-*` выпускаются в workspace с синхронизированными версиями (сейчас 3.0.2), компилируются независимо, пользователь подключает по необходимости. Базовые crate-ы держат минимальные зависимости, contrib crate-ы дают опциональные интеграции.
+В соответствии с модульным дизайном Kratos. Все crate-ы `ecat-*` выпускаются в workspace с синхронизированными версиями (сейчас 4.1.0), компилируются независимо, пользователь подключает по необходимости. Базовые crate-ы держат минимальные зависимости, contrib crate-ы дают опциональные интеграции.
 
 ### Почему prost (а не protobuf-rs)
 

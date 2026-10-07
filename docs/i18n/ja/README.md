@@ -5,7 +5,7 @@
 
 Ecat の日本語名: 一匹の猫
 
-**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v3.0.2 · 56 crates）。
+**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v4.1.0 · 56 crates）。
 
 API-first の開発体験、プラグイン可能なコンポーネントアーキテクチャ、統一された HTTP/gRPC ミドルウェア抽象、そして充実した CLI ツールチェーンを提供します。Kratos に慣れた開発者がシームレスに使い始められる一方、Rust の型安全性、ゼロコスト抽象、極限のパフォーマンスを最大限に活用できます。
 
@@ -283,68 +283,66 @@ let page = User::query()
 
 ```
 e-cat/
-├── ecat/                       # 核心：App 生命周期
-├── ecat-transport/             # 传输抽象（Server trait）
-├── ecat-transport-http/        # axum 实现
-├── ecat-transport-grpc/        # tonic 实现
-├── ecat-middleware/            # tower::Layer 中间件
-├── ecat-protos/                # Protobuf 定义
-├── ecat-errors/                # 错误码体系
-├── ecat-metadata/              # 元数据传递
-├── ecat-encoding/              # 序列化抽象
-├── ecat-logging/               # tracing 集成
-├── ecat-registry/              # 服务注册发现
-├── ecat-config/                # 配置管理
-├── ecat-metrics/               # Prometheus 集成
-├── ecat-data/                  # 数据访问 trait
-├── ecat-security/              # 攻击检测（security-rust）
-├── ecat-cli/                   # CLI 工具
-├── ecat-health/                # 健康检查（/health /ready）
-├── ecat-auth/                  # 认证中间件（JWT / API Key）
-├── ecat-client/                # 服务间 HTTP 客户端
-├── ecat-circuit-breaker/       # 熔断器（Tower Layer）
-├── ecat-registry-consul/       # Consul 服务注册
-├── ecat-config-remote/         # Consul KV 远程配置
-├── ecat-data-redis/            # Redis 缓存实现
-├── ecat-mq/                    # 消息队列抽象
-├── ecat-events/                # 事件总线（本地 + 远程）
-├── ecat-testing/               # 集成测试工具
+├── ecat/                       # コア：App ライフサイクル
+├── ecat-transport/             # トランスポート抽象（Server trait）
+├── ecat-transport-http/        # axum 実装
+├── ecat-transport-grpc/        # tonic 実装
+├── ecat-middleware/            # tower::Layer ミドルウェア
+├── ecat-protos/                # Protobuf 定義
+├── ecat-errors/                # エラーコード体系
+├── ecat-metadata/              # メタデータ伝播
+├── ecat-encoding/              # シリアライズ抽象
+├── ecat-logging/               # tracing 統合
+├── ecat-registry/              # サービス登録・ディスカバリ
+├── ecat-config/                # 設定管理
+├── ecat-metrics/               # Prometheus 統合
+├── ecat-data/                  # データアクセス trait
+├── ecat-security/              # 攻撃検知（security-rust）
+├── ecat-cli/                   # CLI ツール
+├── ecat-health/                # ヘルスチェック（/health /ready）
+├── ecat-auth/                  # 認証ミドルウェア（JWT / API Key）
+├── ecat-client/                # サービス間 HTTP クライアント
+├── ecat-circuit-breaker/       # サーキットブレーカー（Tower Layer）
+├── ecat-registry-consul/       # Consul サービス登録
+├── ecat-config-remote/         # Consul KV リモート設定
+├── ecat-data-redis/            # Redis キャッシュ実装
+├── ecat-mq/                    # メッセージキューの抽象化
+├── ecat-events/                # イベントバス（ローカル + リモート）
 ├── ecat-openapi/               # OpenAPI spec 生成
-├── ecat-bench/                 # 性能基准
-├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
-├── ecat-registry-etcd/         # etcd 服务注册
-├── ecat-mq-kafka/              # Kafka 消息队列适配
-├── ecat-data-opensearch/       # OpenSearch 搜索后端
-├── ecat-data-influxdb/         # InfluxDB 时序后端
+├── ecat-bench/                 # ベンチマーク
+├── ecat-tracing/               # 分散トレーシング（trace_id の注入/抽出）
+├── ecat-registry-etcd/         # etcd サービス登録
+├── ecat-mq-kafka/              # Kafka メッセージキューアダプタ
+├── ecat-data-opensearch/       # OpenSearch 検索バックエンド
+├── ecat-data-influxdb/         # InfluxDB 時系列バックエンド
 ├── ecat-graphql/               # GraphQL endpoint
-├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
-├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-elasticsearch/    # Elasticsearch 検索バックエンド
+├── ecat-data-clickhouse/       # ClickHouse OLAP バックエンド
+├── ecat-data-sqlx/             # RDBMS バックエンド（SQLite/PG/MySQL/TiDB）
 ├── ecat-data-mssql/            # SQL Server バックエンド（tiberius-ng）
 ├── ecat-orm/                   # ORM：エンティティマクロ、クエリビルダー、マイグレーション
 ├── ecat-orm-derive/            # #[derive(Entity)] 派生マクロ
-├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
-├── ecat-data-neo4j/            # Neo4j 图后端
-├── ecat-data-nebulagraph/      # NebulaGraph 图后端
-├── ecat-data-arangodb/         # ArangoDB 图后端
-├── ecat-data-iotdb/            # IoTDB 时序后端
-├── ecat-data-questdb/          # QuestDB 时序后端
+├── ecat-data-memcached/        # Memcached キャッシュバックエンド（インメモリ実装）
+├── ecat-data-neo4j/            # Neo4j グラフバックエンド
+├── ecat-data-nebulagraph/      # NebulaGraph グラフバックエンド
+├── ecat-data-arangodb/         # ArangoDB グラフバックエンド
+├── ecat-data-iotdb/            # IoTDB 時系列バックエンド
+├── ecat-data-questdb/          # QuestDB 時系列バックエンド
 ├── ecat-transport-ws/          # WebSocket transport
-├── ecat-versioning/            # API 版本路由
-├── ecat-tls/                   # TLS 证书配置与自动生成
+├── ecat-versioning/            # API バージョンルーティング
+├── ecat-tls/                   # TLS 証明書の設定と自動生成
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
-├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
-├── ecat-scheduler/             # tokio 定时任务调度
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
-├── ecat-data-tdengine/         # TDengine 时序后端
-├── ecat-data-mongodb/          # MongoDB 文档后端
-├── ecat-data-s3/               # S3 / MinIO 对象存储后端
-├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
-├── ecat-mq-mqtt/               # MQTT 消息后端
-├── ecat-mq-nats/               # NATS 消息后端
-├── config/                     # 配置示例文件
-├── docs/                       # 设计文档与生态规划
-└── examples/                   # 示例项目
+├── ecat-lock/                  # 分散ロック抽象（Redis 実装）
+├── ecat-scheduler/             # tokio スケジューラ
+├── ecat-data-tdengine/         # TDengine 時系列バックエンド
+├── ecat-data-mongodb/          # MongoDB ドキュメントバックエンド
+├── ecat-data-s3/               # S3 / MinIO オブジェクトストレージバックエンド
+├── ecat-mq-rabbitmq/           # RabbitMQ メッセージバックエンド
+├── ecat-mq-mqtt/               # MQTT メッセージバックエンド
+├── ecat-mq-nats/               # NATS メッセージバックエンド
+├── config/                     # 設定サンプルファイル
+├── docs/                       # 設計ドキュメントとエコシステム計画
+└── examples/                   # サンプルプロジェクト
 ```
 
 ## クイックスタート
@@ -551,7 +549,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### なぜ Cargo Workspace か
 
-Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 3.0.2）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
+Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 4.1.0）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
 
 ### なぜ prost（protobuf-rs ではなく）か
 

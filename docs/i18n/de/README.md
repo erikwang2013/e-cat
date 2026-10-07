@@ -5,7 +5,7 @@
 
 Der chinesische Name von Ecat: 一只猫 (wörtlich „eine Katze")
 
-**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v3.0.2 · 56 crates).
+**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v4.1.0 · 56 crates).
 
 Es bietet eine API-first-Entwicklungserfahrung, eine pluggbare Komponentenarchitektur, eine einheitliche HTTP/gRPC-Middleware-Abstraktion sowie eine vollständige CLI-Werkzeugkette. Entwickler, die Kratos kennen, können nahtlos einsteigen und gleichzeitig die Typsicherheit, Zero-Cost-Abstraktionen und die extreme Leistung von Rust voll ausschöpfen.
 
@@ -309,7 +309,6 @@ e-cat/
 ├── ecat-data-redis/            # Redis-Cache-Implementierung
 ├── ecat-mq/                    # Message-Queue-Abstraktion
 ├── ecat-events/                # Event-Bus (lokal + remote)
-├── ecat-testing/               # Integrationstest-Werkzeuge
 ├── ecat-openapi/               # OpenAPI-spec-Generierung
 ├── ecat-bench/                 # Performance-Benchmarks
 ├── ecat-tracing/               # Verteilte Ablaufverfolgung (trace_id-Injektion/-Extraktion)
@@ -336,7 +335,6 @@ e-cat/
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
 ├── ecat-lock/                  # Verteilte-Lock-Abstraktion (Redis-Implementierung)
 ├── ecat-scheduler/             # tokio-Timer-Task-Scheduling
-├── ecat-tracing-otlp/          # OpenTelemetry-OTLP-Tracing-Export
 ├── ecat-data-tdengine/         # TDengine-Zeitreihen-Backend
 ├── ecat-data-mongodb/          # MongoDB-Dokumenten-Backend
 ├── ecat-data-s3/               # S3-/MinIO-Objektspeicher-Backend
@@ -552,7 +550,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Warum ein Cargo Workspace
 
-Konsistent mit dem modularen Design von Kratos. Alle `ecat-*`-Crates werden im Workspace mit synchronisierten Versionen veröffentlicht (aktuell 3.0.2), jeweils unabhängig kompiliert, Nutzer binden nach Bedarf ein. Kern-Crates halten die Abhängigkeiten minimal, Contrib-Crates bieten optionale Integrationen.
+Konsistent mit dem modularen Design von Kratos. Alle `ecat-*`-Crates werden im Workspace mit synchronisierten Versionen veröffentlicht (aktuell 4.1.0), jeweils unabhängig kompiliert, Nutzer binden nach Bedarf ein. Kern-Crates halten die Abhängigkeiten minimal, Contrib-Crates bieten optionale Integrationen.
 
 ### Warum prost (statt protobuf-rs)
 
