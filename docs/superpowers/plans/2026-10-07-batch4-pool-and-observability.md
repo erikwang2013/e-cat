@@ -585,7 +585,7 @@ cargo clippy --workspace --all-targets -- -D warnings; echo "rc=$?"
 判据 2 用 `#[test]`/`#[tokio::test]` 标注的函数名逐条比对验证：重构前 12 个一个不少，新增 3 个（`1fb7ab0` 的 `state()` 测试），12 → 15。
 判据 7：`RdbmsError` 无 `#[non_exhaustive]`，仓内 30+ 处用法全为 `matches!`/构造，无穷举 `match`，破坏性只作用于下游（已进 CHANGELOG）。
 
-### ⚠️ 判据 4 的实测出入（未达标，本批未碰）
+### ⚠️ 判据 4 的实测出入（批次 4 记录时未达标；存量违规已由后续重构批次清掉，见本节末）
 
 判据写「每个源文件 < 500 行」。实测**有 5 个存量违规文件**，均**未被本批改动**（逐字节行数前后相同）：
 
@@ -599,3 +599,19 @@ cargo clippy --workspace --all-targets -- -D warnings; echo "rc=$?"
 
 括号里只点名了 `ecat-circuit-breaker` 那个 546 行的违规 —— 写计划时**误以为那是唯一的**。该违规本批已修（现最大 265 行），**批次 4 自己改动的文件全部 < 500 行**。
 上述 5 个属既有技术债，发布前不动（改它们会让刚跑绿的全量闸门作废、需重跑约 1 小时）。
+
+#### 后续重构：上述 5 个违规文件已全部拆到 < 500 行（2026-10-07，一个 crate 一个提交）
+
+纯重构：不改行为、不改公开 API，测试只允许移动位置。
+
+| 文件 | 拆前 | 拆后 | 拆分方式 | 提交 |
+|---|---|---|---|---|
+| `ecat-graphql/src/lib.rs` | 517 | **231** | 测试外移 `src/tests.rs`（281 行） | `f257cde` |
+| `ecat-transport-http/src/lib.rs` | 524 | **103** | 测试外移 `src/tests.rs`（420 行） | `5cf2ed8` |
+| `ecat-registry-consul/src/lib.rs` | 710 | **334** | 测试外移 `src/tests.rs`（375 行） | `6d4094d` |
+| `ecat-security/src/lib.rs` | 737 | **187** | 按职责拆 `layer.rs`（197 行，两个 tower 中间件，lib.rs 用 `pub use` 再导出保持公开路径）；测试外移 `tests.rs`（357 行） | `68a8c83` |
+| `ecat-cli/src/main.rs` | 519 | **55** | 按职责拆 `cli.rs` 60 / `project.rs` 54 / `proto.rs` 182 / `upgrade.rs` 106 / `watch.rs` 90（跨模块项显式 `pub(crate)`）；该二进制无内联测试可移 | `6def1bc` |
+
+测试数（`cargo test -p <crate>` 汇总 passed，拆前 → 拆后）：`ecat-security` 26→26、`ecat-registry-consul` 24→24、`ecat-transport-http` 20→20、`ecat-graphql` 35→35、`ecat-cli` 12→12，无一 crate 下降。
+
+验证：5 个 crate `cargo clippy --all-targets -- -D warnings` 全 rc=0；`cargo fmt --all -- --check` rc=0；`cargo check --workspace --all-targets` rc=0。每个新文件都在父模块挂了 `mod` 声明（漏挂即编译失败，不会静默 0 通过）。移动等价性以脚本逐 token 比对（未改动的 `pub(crate)`/`use` 行与空白、尾随逗号归一后代码逐字符一致，字符串字面量逐字节一致）；`ecat-cli` 另跑二进制端到端冒烟（`--help` / `new` / `proto add` / `upgrade`）。
