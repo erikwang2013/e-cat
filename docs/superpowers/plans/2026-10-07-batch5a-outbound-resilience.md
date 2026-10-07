@@ -1958,7 +1958,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool) {
             let size = u64::from(pool.size());
             (idle, size.saturating_sub(idle))
         }),
-        Box::new(count_pool_timeout),
+        Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed)),
         // 三个 counter 都是**进程级**的，与具体池无关 —— 每个 backend 各出一份
         // 同样的值（spec:726 的既定接法，不是缺陷）。
         Box::new(|| timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed)),
@@ -2003,7 +2003,7 @@ pub fn register_pool_metrics(backend: &'static str, pool: &Pool<MssqlManager>) {
         // 一次 `status()` 同时给出两个投影：分两次读会在并发下出现
         // idle + active > size 的假样本。
         Box::new(move || idle_active(&pool.status())),
-        Box::new(count_pool_timeout),
+        Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed)),
         Box::new(|| timeout_counter(BackendKind::Rdbms).load(Ordering::Relaxed)),
         Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
     );
@@ -3464,9 +3464,18 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 | 步骤 | 结果 |
 |---|---|
 | 追加 1 的 RED 输出（Task 2a Step 9） | ✅ **复核者独立复现**（非仅实施者自述）：禁用 `ProbePermit` 的 `Drop` 归还体 → `cancelled_half_open_probes_return_their_permit` FAILED，`被取消的探测没归还名额 ⇒ 永久 ProbesExhausted`（即 5.0.0 线上缺陷）；复原后 19 passed / rc=0。另：把 `disarm` 改成不置 `armed=false` → 测试**挂死**（exit 124，同线程重入 Mutex）⇒ `armed = false` 是承重的一行。 |
-| 追加 2 的 RED 输出（Task 3 Step 3） | |
+| 追加 2 的 RED 输出（Task 3 Step 3） | ✅ 实测（跨 crate 测试 `both_backends_keep_their_samples_in_one_process`）：`FAILED … 缺 ecat_rdbms_pool_connections{backend="regression-mssql"}` —— 输出里 **mssql 那一族连 `# HELP`/`# TYPE` 行都没有**，证明是「整份 collector 被 `AlreadyReg` 顶掉」而非值算错；修后 GREEN（1 passed）。dev-dep 环闸门：`cargo metadata --offline` rc=0 **且测试目标真实编译+运行**（构建期环亦成立），`cargo tree --edges normal` 仍是 axum/prometheus/tower（零增重）。 |
 | `cargo test --workspace` | |
 | `cargo test --workspace --doc` | |
 | `cargo fmt --all -- --check` | |
 | `cargo clippy --workspace --all-targets -- -D warnings` | |
 | `--all-features` 四 crate | |
+
+**落码期发现的计划片段错误（均已由实施者实测复现后纠偏，已更新本文件的片段）**：
+1. **Task 3 Step 6/7**：`Box::new(count_pool_timeout)` 编译不过（`E0271: expected … to return u64, but it returns ()`）——
+   片段一边要求「原样保留 `count_pool_timeout`」（递增函数、返回 `()`），一边把它当 `RdbmsCounterFn = Box<dyn Fn() -> u64>` 传，自相矛盾。
+   已改为 `Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed))`（即原 collector 的写法，契约逐字未变）。
+2. **Task 1 的新增测试** `timeout_counters_are_per_backend_kind` 原写法**是 flaky 的**（与既有的 `slow_future_times_out_and_counts` 并发争同一个 `Rdbms` 槽，实测 12/15 误红）——
+   已改为用无人写的 `Storage` 作证人槽（20/20 绿）。计划已更新。
+3. **Task 3 片段曾引用 Task 1 已删的 `QUERY_TIMEOUTS`**（会 E0432）—— 已在 `a97153b` 修正。
+**共同教训**：本文件的代码片段由计划作者人工撰写、**未经编译**（当时的环境跑不动构建）。实施者遇到片段跑不通时，正确做法是「实测复现 → 停下报 lead → 经确认后偏离并写进提交信息」，**不要**默默改成自认为对的样子。
