@@ -99,7 +99,7 @@ Ecat中文名：一只猫
 - **分布式追踪**：请求 span、trace_id 注入/提取
 - **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
 - **多协议**：HTTP、gRPC、WebSocket、GraphQL 统一路由
-- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）
+- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）、OLAP（ClickHouse）
 
 ### Kratos 概念映射
 

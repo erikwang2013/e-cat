@@ -99,7 +99,7 @@ Client-Anfrage
 - **Verteilte Ablaufverfolgung**: Request-Spans, trace_id-Injektion/-Extraktion
 - **gRPC-Client**: GrpcClient integriert Service Discovery und Load Balancing
 - **Mehrere Protokolle**: einheitliches Routing für HTTP, gRPC, WebSocket und GraphQL
-- **Mehrere Datenquellen**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), Cache (Redis/Memcached), Suche (OpenSearch/Elasticsearch), Graph (Neo4j/NebulaGraph/ArangoDB), Zeitreihen (InfluxDB/IoTDB/QuestDB/TDengine), Dokumente (MongoDB), Objektspeicher (S3/MinIO)
+- **Mehrere Datenquellen**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), Cache (Redis/Memcached), Suche (OpenSearch/Elasticsearch), Graph (Neo4j/NebulaGraph/ArangoDB), Zeitreihen (InfluxDB/IoTDB/QuestDB/TDengine), Dokumente (MongoDB), Objektspeicher (S3/MinIO), OLAP (ClickHouse)
 
 ### Kratos-Konzept-Zuordnung
 

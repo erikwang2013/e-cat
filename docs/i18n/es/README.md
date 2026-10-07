@@ -99,7 +99,7 @@ Ofrece una experiencia de desarrollo API-first, una arquitectura de componentes 
 - **Trazado distribuido**: spans de petición, inyección/extracción de trace_id
 - **Cliente gRPC**: GrpcClient integra descubrimiento de servicios y balanceo de carga
 - **Multiprotocolo**: enrutamiento unificado de HTTP, gRPC, WebSocket y GraphQL
-- **Múltiples fuentes de datos**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), caché (Redis/Memcached), búsqueda (OpenSearch/Elasticsearch), grafos (Neo4j/NebulaGraph/ArangoDB), series temporales (InfluxDB/IoTDB/QuestDB/TDengine), documentos (MongoDB), almacenamiento de objetos (S3/MinIO)
+- **Múltiples fuentes de datos**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), caché (Redis/Memcached), búsqueda (OpenSearch/Elasticsearch), grafos (Neo4j/NebulaGraph/ArangoDB), series temporales (InfluxDB/IoTDB/QuestDB/TDengine), documentos (MongoDB), almacenamiento de objetos (S3/MinIO), OLAP (ClickHouse)
 
 ### Mapeo de conceptos de Kratos
 

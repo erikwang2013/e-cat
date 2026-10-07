@@ -99,7 +99,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 - **分散トレーシング**：リクエスト span、trace_id の注入/抽出
 - **gRPC クライアント**：GrpcClient がサービスディスカバリとロードバランシングを統合
 - **マルチプロトコル**：HTTP、gRPC、WebSocket、GraphQL の統一ルーティング
-- **マルチデータソース**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、キャッシュ（Redis/Memcached）、検索（OpenSearch/Elasticsearch）、グラフ（Neo4j/NebulaGraph/ArangoDB）、時系列（InfluxDB/IoTDB/QuestDB/TDengine）、ドキュメント（MongoDB）、オブジェクトストレージ（S3/MinIO）
+- **マルチデータソース**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、キャッシュ（Redis/Memcached）、検索（OpenSearch/Elasticsearch）、グラフ（Neo4j/NebulaGraph/ArangoDB）、時系列（InfluxDB/IoTDB/QuestDB/TDengine）、ドキュメント（MongoDB）、オブジェクトストレージ（S3/MinIO）、OLAP（ClickHouse）
 
 ### Kratos コンセプトマッピング
 

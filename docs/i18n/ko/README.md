@@ -99,7 +99,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 - **분산 추적**: 요청 span, trace_id 주입/추출
 - **gRPC 클라이언트**: GrpcClient가 서비스 디스커버리·로드 밸런싱 통합
 - **다중 프로토콜**: HTTP, gRPC, WebSocket, GraphQL 통합 라우팅
-- **다중 데이터 소스**: RDBMS(SQLite/PG/MySQL/TiDB/SQL Server), 캐시(Redis/Memcached), 검색(OpenSearch/Elasticsearch), 그래프(Neo4j/NebulaGraph/ArangoDB), 시계열(InfluxDB/IoTDB/QuestDB/TDengine), 문서(MongoDB), 객체 스토리지(S3/MinIO)
+- **다중 데이터 소스**: RDBMS(SQLite/PG/MySQL/TiDB/SQL Server), 캐시(Redis/Memcached), 검색(OpenSearch/Elasticsearch), 그래프(Neo4j/NebulaGraph/ArangoDB), 시계열(InfluxDB/IoTDB/QuestDB/TDengine), 문서(MongoDB), 객체 스토리지(S3/MinIO), OLAP (ClickHouse)
 
 ### Kratos 개념 매핑
 

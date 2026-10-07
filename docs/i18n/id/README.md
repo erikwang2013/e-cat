@@ -99,7 +99,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 - **Pelacakan terdistribusi**: span permintaan, injeksi/ekstraksi trace_id
 - **Klien gRPC**: GrpcClient terintegrasi dengan service discovery dan load balancing
 - **Multi-protokol**: HTTP, gRPC, WebSocket, GraphQL dengan routing terpadu
-- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), object storage (S3/MinIO)
+- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
 
 ### Pemetaan Konsep Kratos
 

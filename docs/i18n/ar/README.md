@@ -99,7 +99,7 @@
 - **التتبع الموزع**: spans الطلبات، حقن/استخراج trace_id
 - **عميل gRPC**: يدمج GrpcClient اكتشاف الخدمات وموازنة الحمل
 - **متعدد البروتوكولات**: توجيه موحد لـ HTTP وgRPC وWebSocket وGraphQL
-- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، التخزين الكائني (S3/MinIO)
+- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، التخزين الكائني (S3/MinIO)، OLAP (ClickHouse)
 
 ### مقارنة مفاهيم Kratos
 

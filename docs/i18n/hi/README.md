@@ -99,7 +99,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 - **वितरित ट्रेसिंग**：अनुरोध span, trace_id इंजेक्शन/निष्कर्षण
 - **gRPC क्लाइंट**：GrpcClient सेवा खोज और लोड बैलेंसिंग के साथ एकीकृत
 - **बहु-प्रोटोकॉल**：HTTP、gRPC、WebSocket、GraphQL एकीकृत रूटिंग
-- **बहु-डेटा स्रोत**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)、कैश (Redis/Memcached)、खोज (OpenSearch/Elasticsearch)、ग्राफ (Neo4j/NebulaGraph/ArangoDB)、टाइम-सीरीज़ (InfluxDB/IoTDB/QuestDB/TDengine)、दस्तावेज़ (MongoDB)、ऑब्जेक्ट स्टोरेज (S3/MinIO)
+- **बहु-डेटा स्रोत**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)、कैश (Redis/Memcached)、खोज (OpenSearch/Elasticsearch)、ग्राफ (Neo4j/NebulaGraph/ArangoDB)、टाइम-सीरीज़ (InfluxDB/IoTDB/QuestDB/TDengine)、दस्तावेज़ (MongoDB)、ऑब्जेक्ट स्टोरेज (S3/MinIO)、OLAP（ClickHouse）
 
 ### Kratos अवधारणा मैपिंग
 

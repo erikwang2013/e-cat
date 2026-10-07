@@ -99,7 +99,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 - **ডিস্ট্রিবিউটেড ট্রেসিং**：রিকোয়েস্ট span, trace_id ইনজেকশন/এক্সট্রাকশন
 - **gRPC ক্লায়েন্ট**：GrpcClient সার্ভিস ডিসকভারি ও লোড ব্যালেন্সিং একীভূত
 - **মাল্টি-প্রোটোকল**：HTTP, gRPC, WebSocket, GraphQL ইউনিফাইড রাউটিং
-- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), অবজেক্ট স্টোরেজ (S3/MinIO)
+- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), অবজেক্ট স্টোরেজ (S3/MinIO), OLAP (ClickHouse)
 
 ### Kratos কনসেপ্ট ম্যাপিং
 

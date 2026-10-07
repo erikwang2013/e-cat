@@ -99,7 +99,7 @@ API-first подход к разработке, плагинная архите�
 - **Распределённая трассировка**: span запросов, инъекция/извлечение trace_id
 - **gRPC-клиент**: GrpcClient с интеграцией service discovery и балансировки нагрузки
 - **Мультипротокол**: единая маршрутизация HTTP, gRPC, WebSocket, GraphQL
-- **Мульти-источники данных**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), кэш (Redis/Memcached), поиск (OpenSearch/Elasticsearch), графы (Neo4j/NebulaGraph/ArangoDB), временные ряды (InfluxDB/IoTDB/QuestDB/TDengine), документы (MongoDB), объектное хранилище (S3/MinIO)
+- **Мульти-источники данных**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), кэш (Redis/Memcached), поиск (OpenSearch/Elasticsearch), графы (Neo4j/NebulaGraph/ArangoDB), временные ряды (InfluxDB/IoTDB/QuestDB/TDengine), документы (MongoDB), объектное хранилище (S3/MinIO), OLAP (ClickHouse)
 
 ### Сопоставление концепций Kratos
 

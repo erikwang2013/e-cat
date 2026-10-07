@@ -94,7 +94,7 @@ Client Request
 - **Auth**: JWT / API Key authentication middleware, claims propagated to request context
 - **Messaging**: MessageQueue trait + EventBus local/remote Pub/Sub
 - **Multi-protocol**: HTTP, gRPC, WebSocket, GraphQL unified routing
-- **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO)
+- **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
 
 ### Kratos Concept Mapping
 
