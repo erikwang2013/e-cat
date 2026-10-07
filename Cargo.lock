@@ -1329,6 +1329,7 @@ dependencies = [
 name = "ecat-circuit-breaker"
 version = "4.1.0"
 dependencies = [
+ "thiserror 2.0.19",
  "tokio",
  "tower 0.5.3",
  "tracing",
