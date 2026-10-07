@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+thiserror.workspace = true
 tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
 
