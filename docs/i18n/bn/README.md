@@ -99,7 +99,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 - **ডিস্ট্রিবিউটেড ট্রেসিং**：রিকোয়েস্ট span, trace_id ইনজেকশন/এক্সট্রাকশন
 - **gRPC ক্লায়েন্ট**：GrpcClient সার্ভিস ডিসকভারি ও লোড ব্যালেন্সিং একীভূত
 - **মাল্টি-প্রোটোকল**：HTTP, gRPC, WebSocket, GraphQL ইউনিফাইড রাউটিং
-- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), অবজেক্ট স্টোরেজ (S3/MinIO)
+- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), অবজেক্ট স্টোরেজ (S3/MinIO)
 
 ### Kratos কনসেপ্ট ম্যাপিং
 
@@ -160,7 +160,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 
 > সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
 
-> **কনস্ট্রাক্টর নামকরণ কনভেনশন**：মেসেজ কিউ crates (`ecat-mq-*`) এর প্রধান কনস্ট্রাক্টর একই `connect` (যেমন `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), সাথে `from_config` কনফিগ থেকে লোড করার জন্য; ডেটা ব্যাকএন্ড crates (`ecat-data-*`) এর বেশিরভাগ প্রধান কনস্ট্রাক্টর `new`, ব্যতিক্রম: `ecat-data-redis` / `ecat-data-sqlx` `connect` অনুসরণ করে, `ecat-data-mongodb` / `ecat-data-s3` শুধুমাত্র `from_config` প্রদান করে। এটি বিদ্যমান কনভেনশন, বাধ্যতামূলকভাবে একীভূত নয় (ব্রেকিং পরিবর্তন এড়াতে); 3.0 উইন্ডোতে একীকরণ মূল্যায়ন করা যেতে পারে।
+> **কনস্ট্রাক্টর নামকরণ কনভেনশন**：মেসেজ কিউ crates (`ecat-mq-*`) এর প্রধান কনস্ট্রাক্টর একই `connect` (যেমন `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), সাথে `from_config` কনফিগ থেকে লোড করার জন্য; ডেটা ব্যাকএন্ড crates (`ecat-data-*`) এর বেশিরভাগ প্রধান কনস্ট্রাক্টর `new`, ব্যতিক্রম: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` `connect` অনুসরণ করে, `ecat-data-mongodb` / `ecat-data-s3` শুধুমাত্র `from_config` প্রদান করে। এটি বিদ্যমান কনভেনশন, বাধ্যতামূলকভাবে একীভূত নয় (ব্রেকিং পরিবর্তন এড়াতে); 3.0 উইন্ডোতে একীকরণ মূল্যায়ন করা যেতে পারে।
 
 ### ডেটাবেস কনফিগ উদাহরণ
 

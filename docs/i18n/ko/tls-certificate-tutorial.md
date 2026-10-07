@@ -137,7 +137,7 @@ redis:
 ```yaml
 sql:
   url: "postgres://db.internal:5432/mydb?sslmode=require"
-  tls: {}  # 예약 필드
+  # 참고: sql 섹션에는 tls 필드가 **없습니다** — 설정하면 기동 시 오류가 발생합니다. TLS는 항상 URL 파라미터로 지정합니다(아래 표 참조).
 ```
 
 | 데이터베이스 | TLS URL 파라미터 |

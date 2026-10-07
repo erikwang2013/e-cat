@@ -99,7 +99,7 @@ Il offre une expérience de développement API-first, une architecture de compos
 - **Traçage distribué** : spans de requête, injection/extraction de trace_id
 - **Client gRPC** : GrpcClient intégré avec découverte de services et équilibrage de charge
 - **Multi-protocole** : routage unifié HTTP, gRPC, WebSocket et GraphQL
-- **Multi-sources de données** : RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), recherche (OpenSearch/Elasticsearch), graphes (Neo4j/NebulaGraph/ArangoDB), séries temporelles (InfluxDB/IoTDB/QuestDB/TDengine), documents (MongoDB), stockage d'objets (S3/MinIO)
+- **Multi-sources de données** : RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), recherche (OpenSearch/Elasticsearch), graphes (Neo4j/NebulaGraph/ArangoDB), séries temporelles (InfluxDB/IoTDB/QuestDB/TDengine), documents (MongoDB), stockage d'objets (S3/MinIO)
 
 ### Correspondance des concepts Kratos
 
@@ -160,7 +160,7 @@ Il offre une expérience de développement API-first, une architecture de compos
 
 > Tous les backends de données sont abstraits via des traits unifiés (`RdbmsClient` pour les transactions, `SqlExecutor` pour l'exécution et le dialecte / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) ; il suffit d'importer le crate contrib correspondant. Chaque backend fournit une structure `XxxConfig` (`#[derive(Deserialize)]`) qui permet de charger les informations de connexion depuis un fichier de configuration JSON/YAML.
 
-> **Convention de nommage des constructeurs** : pour les crates de file de messages (`ecat-mq-*`), le constructeur principal est uniformément `connect` (par ex. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), avec `from_config` pour charger depuis la configuration ; pour les crates de backend de données (`ecat-data-*`), le constructeur principal est le plus souvent `new`, exceptions : `ecat-data-redis` / `ecat-data-sqlx` conservent `connect`, `ecat-data-mongodb` / `ecat-data-s3` ne fournissent que `from_config`. Il s'agit d'une convention existante, non imposée (pour éviter les changements incompatibles) ; une unification pourra être évaluée dans la fenêtre 3.0.
+> **Convention de nommage des constructeurs** : pour les crates de file de messages (`ecat-mq-*`), le constructeur principal est uniformément `connect` (par ex. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), avec `from_config` pour charger depuis la configuration ; pour les crates de backend de données (`ecat-data-*`), le constructeur principal est le plus souvent `new`, exceptions : `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` conservent `connect`, `ecat-data-mongodb` / `ecat-data-s3` ne fournissent que `from_config`. Il s'agit d'une convention existante, non imposée (pour éviter les changements incompatibles) ; une unification pourra être évaluée dans la fenêtre 3.0.
 
 ### Exemple de configuration de base de données
 

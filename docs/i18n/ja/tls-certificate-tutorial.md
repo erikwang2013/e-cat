@@ -137,7 +137,7 @@ redis:
 ```yaml
 sql:
   url: "postgres://db.internal:5432/mydb?sslmode=require"
-  tls: {}  # 保留字段
+  # 注意：sql セクションに tls フィールドは**ありません** —— 設定すると起動時にエラーになります。TLS は必ず URL パラメータで指定します（下の表を参照）。
 ```
 
 | データベース | TLS URL パラメータ |

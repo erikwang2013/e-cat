@@ -6,7 +6,7 @@
 
 **版本:** 2.4.2  
 **日期:** 2026-08-01  
-**crate 总数:** 55 · 全部规划已完成
+**crate 总数:** 56 · 全部规划已完成
 
 ---
 
@@ -51,7 +51,7 @@
 
 ## 判定
 
-**e-cat 已达到生产可用成熟度。** 47 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
+**e-cat 已达到生产可用成熟度。** 56 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
 
 ## 数据后端覆盖（16 个）
 
@@ -100,5 +100,6 @@
 | 连接池增强 | 查询超时、`warm_up()` 预热、智能 recycle、熔断（复用 `ecat-circuit-breaker`）、读写分离 `RdbmsRouting` | ✅ 已完成（批次 4 —— 查询超时与 `warm_up()` 见批次 1；`CircuitBreakerExecutor` 与 `RdbmsRouting` 见批次 4） |
 | 可观测性 | 池指标接 `ecat-metrics`、池探活接 `ecat-health`、慢查询接 `ecat-tracing`（均为 opt-in feature） | ✅ 已完成（批次 4；`metrics` / `health` / `tracing` 三个 feature 默认关闭） |
 
-**破坏性变更**：trait 拆分 + `SqlxClient::from_pool` 签名 + 移除 `AnyPool`——三项均已在分支
-`feat/orm-mssql` 上落地（批次 1，尚未发布）；发布时 workspace 版本 3.0.3 → **4.0.0**。
+**破坏性变更**：trait 拆分 + `SqlxClient::from_pool` 签名 + 移除 `AnyPool`——三项均已随
+**v4.0.0** 发布。本批次（池增强与可观测性）因 `RdbmsError` 新增 `NoAvailableReplica` 变体
+（破坏性）发布为 **v5.0.0**。

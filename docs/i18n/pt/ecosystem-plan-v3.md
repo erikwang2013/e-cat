@@ -6,7 +6,7 @@
 
 **Versão:** 2.4.2  
 **Data:** 2026-08-01  
-**Total de crates:** 55 · todo o planejamento concluído
+**Total de crates:** 56 · todo o planejamento concluído
 
 ---
 
@@ -51,7 +51,7 @@
 
 ## Veredito
 
-**O e-cat alcançou maturidade pronta para produção.** 47 crates cobrem toda a stack de microsserviços: transporte → middleware → descoberta de serviço → configuração → segurança → dados → mensagens → observabilidade → DevOps → ferramentas de API. As 3 lacunas restantes são otimizações de baixo esforço, sem lacunas estruturais.
+**O e-cat alcançou maturidade pronta para produção.** 56 crates cobrem toda a stack de microsserviços: transporte → middleware → descoberta de serviço → configuração → segurança → dados → mensagens → observabilidade → DevOps → ferramentas de API. As 3 lacunas restantes são otimizações de baixo esforço, sem lacunas estruturais.
 
 ## Cobertura de backends de dados (16)
 
@@ -102,5 +102,5 @@ Mudanças de fundação associadas:
 | Observabilidade | Métricas do pool para `ecat-metrics`, sondas de saúde do pool para `ecat-health`, consultas lentas para `ecat-tracing` (todas com feature opt-in) | ✅ Concluído (lote 4; as features `metrics` / `health` / `tracing` vêm desativadas por padrão) |
 
 **Mudanças incompatíveis**: divisão do trait + assinatura de `SqlxClient::from_pool` + remoção do
-`AnyPool` — as três já aplicadas na branch `feat/orm-mssql` (lote 1, ainda não publicado);
-no lançamento, versão do workspace 3.0.3 → **4.0.0**.
+`AnyPool` — as três foram publicadas na **v4.0.0**. Este lote (melhorias de pool e observabilidade)
+sai como **v5.0.0**, pois a nova variante `RdbmsError::NoAvailableReplica` é incompatível.

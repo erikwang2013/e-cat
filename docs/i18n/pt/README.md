@@ -99,7 +99,7 @@ Oferece uma experiência de desenvolvimento API-first, arquitetura de componente
 - **Rastreamento distribuído**: spans de requisição, injeção/extração de trace_id
 - **Cliente gRPC**: GrpcClient integra descoberta de serviço e balanceamento de carga
 - **Múltiplos protocolos**: HTTP, gRPC, WebSocket e GraphQL roteados de forma unificada
-- **Múltiplas fontes de dados**: RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), busca (OpenSearch/Elasticsearch), grafos (Neo4j/NebulaGraph/ArangoDB), séries temporais (InfluxDB/IoTDB/QuestDB/TDengine), documentos (MongoDB), armazenamento de objetos (S3/MinIO)
+- **Múltiplas fontes de dados**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), busca (OpenSearch/Elasticsearch), grafos (Neo4j/NebulaGraph/ArangoDB), séries temporais (InfluxDB/IoTDB/QuestDB/TDengine), documentos (MongoDB), armazenamento de objetos (S3/MinIO)
 
 ### Mapeamento de conceitos do Kratos
 
@@ -160,7 +160,7 @@ Oferece uma experiência de desenvolvimento API-first, arquitetura de componente
 
 > Todos os backends de dados são abstraídos por traits unificados (`RdbmsClient` para transações, `SqlExecutor` para execução e dialeto / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); importe o crate contrib correspondente conforme necessário. Cada backend fornece uma struct `XxxConfig` (`#[derive(Deserialize)]`) que suporta carregar as informações de conexão a partir de arquivos de configuração JSON/YAML.
 
-> **Convenção de nomenclatura de construtores**: os crates de fila de mensagens (`ecat-mq-*`) usam `connect` como construtor principal (ex.: `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), além de `from_config` para carregar da configuração; a maioria dos crates de backend de dados (`ecat-data-*`) usa `new` como construtor principal, com exceções: `ecat-data-redis` / `ecat-data-sqlx` mantêm `connect`, e `ecat-data-mongodb` / `ecat-data-s3` oferecem apenas `from_config`. Trata-se de uma convenção existente, não unificada à força (para evitar mudanças que quebrem código); pode ser avaliada uma unificação na janela 3.0.
+> **Convenção de nomenclatura de construtores**: os crates de fila de mensagens (`ecat-mq-*`) usam `connect` como construtor principal (ex.: `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), além de `from_config` para carregar da configuração; a maioria dos crates de backend de dados (`ecat-data-*`) usa `new` como construtor principal, com exceções: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` mantêm `connect`, e `ecat-data-mongodb` / `ecat-data-s3` oferecem apenas `from_config`. Trata-se de uma convenção existente, não unificada à força (para evitar mudanças que quebrem código); pode ser avaliada uma unificação na janela 3.0.
 
 ### Exemplo de configuração de banco de dados
 

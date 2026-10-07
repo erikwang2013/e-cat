@@ -99,7 +99,7 @@ It offers an API-first development experience, a pluggable component architectur
 - **Distributed tracing**: request spans, trace_id injection/extraction
 - **gRPC client**: GrpcClient integrates service discovery and load balancing
 - **Multi-protocol**: unified routing for HTTP, gRPC, WebSocket, and GraphQL
-- **Multiple data sources**: RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), time series (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO)
+- **Multiple data sources**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), time series (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO)
 
 ### Kratos Concept Mapping
 
@@ -160,7 +160,7 @@ It offers an API-first development experience, a pluggable component architectur
 
 > All data backends are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); import the corresponding contrib crate as needed. Each backend provides an `XxxConfig` struct (`#[derive(Deserialize)]`) that supports loading connection information from JSON/YAML config files.
 
-> **Constructor naming convention**: the message queue crates (`ecat-mq-*`) uniformly use `connect` as the primary constructor (e.g. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), and also provide `from_config` for loading from config; most data backend crates (`ecat-data-*`) use `new`, with exceptions: `ecat-data-redis` / `ecat-data-sqlx` keep `connect`, and `ecat-data-mongodb` / `ecat-data-s3` only provide `from_config`. This is an existing convention and is not forced to be unified (to avoid breaking changes); unification can be evaluated in the 3.0 window.
+> **Constructor naming convention**: the message queue crates (`ecat-mq-*`) uniformly use `connect` as the primary constructor (e.g. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), and also provide `from_config` for loading from config; most data backend crates (`ecat-data-*`) use `new`, with exceptions: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` keep `connect`, and `ecat-data-mongodb` / `ecat-data-s3` only provide `from_config`. This is an existing convention and is not forced to be unified (to avoid breaking changes); unification can be evaluated in the 3.0 window.
 
 ### Database Configuration Example
 

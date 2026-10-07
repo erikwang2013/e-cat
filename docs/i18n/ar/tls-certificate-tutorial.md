@@ -137,7 +137,7 @@ redis:
 ```yaml
 sql:
   url: "postgres://db.internal:5432/mydb?sslmode=require"
-  tls: {}  # حقل محجوز
+  # ملاحظة: قسم sql **لا يحتوي** على حقل tls — ضبطه يُفشل بدء التشغيل. TLS يمرّ دائمًا عبر معاملات URL (انظر الجدول أدناه).
 ```
 
 | قاعدة البيانات | معاملات TLS في URL |

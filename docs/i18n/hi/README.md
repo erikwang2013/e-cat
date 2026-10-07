@@ -99,7 +99,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 - **वितरित ट्रेसिंग**：अनुरोध span, trace_id इंजेक्शन/निष्कर्षण
 - **gRPC क्लाइंट**：GrpcClient सेवा खोज और लोड बैलेंसिंग के साथ एकीकृत
 - **बहु-प्रोटोकॉल**：HTTP、gRPC、WebSocket、GraphQL एकीकृत रूटिंग
-- **बहु-डेटा स्रोत**：RDBMS (SQLite/PG/MySQL/TiDB)、कैश (Redis/Memcached)、खोज (OpenSearch/Elasticsearch)、ग्राफ (Neo4j/NebulaGraph/ArangoDB)、टाइम-सीरीज़ (InfluxDB/IoTDB/QuestDB/TDengine)、दस्तावेज़ (MongoDB)、ऑब्जेक्ट स्टोरेज (S3/MinIO)
+- **बहु-डेटा स्रोत**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)、कैश (Redis/Memcached)、खोज (OpenSearch/Elasticsearch)、ग्राफ (Neo4j/NebulaGraph/ArangoDB)、टाइम-सीरीज़ (InfluxDB/IoTDB/QuestDB/TDengine)、दस्तावेज़ (MongoDB)、ऑब्जेक्ट स्टोरेज (S3/MinIO)
 
 ### Kratos अवधारणा मैपिंग
 
@@ -160,7 +160,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 
 > सभी डेटा बैकएंड एकीकृत trait एब्स्ट्रैक्शन (`RdbmsClient` ट्रांज़ैक्शन के लिए, `SqlExecutor` निष्पादन और डायलेक्ट के लिए / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) के माध्यम से उपलब्ध हैं, आवश्यकता अनुसार संबंधित contrib crate आयात करें। प्रत्येक बैकएंड एक `XxxConfig` स्ट्रक्चर (`#[derive(Deserialize)]`) प्रदान करता है, जो JSON/YAML कॉन्फ़िगरेशन फ़ाइल से कनेक्शन जानकारी लोड करने का समर्थन करता है।
 
-> **कंस्ट्रक्टर नामकरण परंपरा**：मैसेज क्यू crates (`ecat-mq-*`) का मुख्य कंस्ट्रक्टर एकीकृत रूप से `connect` है (जैसे `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`), साथ ही कॉन्फ़िगरेशन से लोड करने के लिए `from_config` प्रदान करता है; डेटा बैकएंड crates (`ecat-data-*`) का अधिकांश मुख्य कंस्ट्रक्टर `new` है, अपवाद: `ecat-data-redis` / `ecat-data-sqlx` `connect` का उपयोग करते हैं, `ecat-data-mongodb` / `ecat-data-s3` केवल `from_config` प्रदान करते हैं। यह मौजूदा परंपरा है, अनिवार्य एकीकरण नहीं (ब्रेकिंग चेंज से बचने के लिए); 3.0 विंडो में एकीकरण का मूल्यांकन किया जा सकता है।
+> **कंस्ट्रक्टर नामकरण परंपरा**：मैसेज क्यू crates (`ecat-mq-*`) का मुख्य कंस्ट्रक्टर एकीकृत रूप से `connect` है (जैसे `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`), साथ ही कॉन्फ़िगरेशन से लोड करने के लिए `from_config` प्रदान करता है; डेटा बैकएंड crates (`ecat-data-*`) का अधिकांश मुख्य कंस्ट्रक्टर `new` है, अपवाद: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` `connect` का उपयोग करते हैं, `ecat-data-mongodb` / `ecat-data-s3` केवल `from_config` प्रदान करते हैं। यह मौजूदा परंपरा है, अनिवार्य एकीकरण नहीं (ब्रेकिंग चेंज से बचने के लिए); 3.0 विंडो में एकीकरण का मूल्यांकन किया जा सकता है।
 
 ### डेटाबेस कॉन्फ़िगरेशन उदाहरण
 

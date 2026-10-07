@@ -137,7 +137,7 @@ redis:
 ```yaml
 sql:
   url: "postgres://db.internal:5432/mydb?sslmode=require"
-  tls: {}  # 保留字段
+  # Catatan: bagian sql **tidak punya** field tls — mengisinya membuat startup gagal. TLS selalu lewat parameter URL (lihat tabel di bawah).
 ```
 
 | Database | Parameter URL TLS |

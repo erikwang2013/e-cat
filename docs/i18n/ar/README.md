@@ -99,7 +99,7 @@
 - **التتبع الموزع**: spans الطلبات، حقن/استخراج trace_id
 - **عميل gRPC**: يدمج GrpcClient اكتشاف الخدمات وموازنة الحمل
 - **متعدد البروتوكولات**: توجيه موحد لـ HTTP وgRPC وWebSocket وGraphQL
-- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، التخزين الكائني (S3/MinIO)
+- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، التخزين الكائني (S3/MinIO)
 
 ### مقارنة مفاهيم Kratos
 
@@ -160,7 +160,7 @@
 
 > جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
 
-> **اصطلاح تسمية البنّاءين**: crates قوائم الرسائل (`ecat-mq-*`) تستخدم `connect` كبنّاء أساسي موحد (مثل `KafkaMq::connect(brokers)` و`MqttMq::connect(url)`)، وتوفر أيضًا `from_config` للتحميل من الإعدادات؛ معظم crates خلفيات البيانات (`ecat-data-*`) تستخدم `new` كبنّاء أساسي، مع استثناءات: `ecat-data-redis` / `ecat-data-sqlx` تحافظان على `connect`، و`ecat-data-mongodb` / `ecat-data-s3` توفران `from_config` فقط. هذا اصطلاح قائم ولا يُفرض توحيده (لتجنب التغييرات الكاسرة)؛ يمكن تقييم التوحيد في نافذة 3.0.
+> **اصطلاح تسمية البنّاءين**: crates قوائم الرسائل (`ecat-mq-*`) تستخدم `connect` كبنّاء أساسي موحد (مثل `KafkaMq::connect(brokers)` و`MqttMq::connect(url)`)، وتوفر أيضًا `from_config` للتحميل من الإعدادات؛ معظم crates خلفيات البيانات (`ecat-data-*`) تستخدم `new` كبنّاء أساسي، مع استثناءات: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` تحافظان على `connect`، و`ecat-data-mongodb` / `ecat-data-s3` توفران `from_config` فقط. هذا اصطلاح قائم ولا يُفرض توحيده (لتجنب التغييرات الكاسرة)؛ يمكن تقييم التوحيد في نافذة 3.0.
 
 ### مثال على إعداد قاعدة البيانات
 

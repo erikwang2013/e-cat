@@ -99,7 +99,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 - **Pelacakan terdistribusi**: span permintaan, injeksi/ekstraksi trace_id
 - **Klien gRPC**: GrpcClient terintegrasi dengan service discovery dan load balancing
 - **Multi-protokol**: HTTP, gRPC, WebSocket, GraphQL dengan routing terpadu
-- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), object storage (S3/MinIO)
+- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), object storage (S3/MinIO)
 
 ### Pemetaan Konsep Kratos
 
@@ -160,7 +160,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 
 > Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
 
-> **Konvensi penamaan konstruktor**: konstruktor utama crate message queue (`ecat-mq-*`) terpadu sebagai `connect` (mis. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), juga menyediakan `from_config` untuk memuat dari konfigurasi; sebagian besar konstruktor utama crate backend data (`ecat-data-*`) adalah `new`, dengan pengecualian: `ecat-data-redis` / `ecat-data-sqlx` tetap menggunakan `connect`, `ecat-data-mongodb` / `ecat-data-s3` hanya menyediakan `from_config`. Ini adalah konvensi yang sudah ada, tidak dipaksakan untuk diseragamkan (menghindari perubahan yang merusak); dapat dievaluasi untuk diseragamkan di jendela 3.0.
+> **Konvensi penamaan konstruktor**: konstruktor utama crate message queue (`ecat-mq-*`) terpadu sebagai `connect` (mis. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), juga menyediakan `from_config` untuk memuat dari konfigurasi; sebagian besar konstruktor utama crate backend data (`ecat-data-*`) adalah `new`, dengan pengecualian: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` tetap menggunakan `connect`, `ecat-data-mongodb` / `ecat-data-s3` hanya menyediakan `from_config`. Ini adalah konvensi yang sudah ada, tidak dipaksakan untuk diseragamkan (menghindari perubahan yang merusak); dapat dievaluasi untuk diseragamkan di jendela 3.0.
 
 ### Contoh Konfigurasi Database
 

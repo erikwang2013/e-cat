@@ -6,7 +6,7 @@
 
 **Versi:** 2.4.2  
 **Tanggal:** 2026-08-01  
-**Jumlah crate:** 55 · Semua perencanaan telah selesai
+**Jumlah crate:** 56 · Semua perencanaan telah selesai
 
 ---
 
@@ -51,7 +51,7 @@
 
 ## Penilaian
 
-**e-cat telah mencapai kematangan siap produksi.** 47 crate mencakup tumpukan lengkap microservice: transport → middleware → service discovery → konfigurasi → keamanan → data → pesan → observabilitas → DevOps → alat API. Sisa 3 kesenjangan adalah optimasi beban kerja kecil, tanpa kekurangan struktural.
+**e-cat telah mencapai kematangan siap produksi.** 56 crate mencakup tumpukan lengkap microservice: transport → middleware → service discovery → konfigurasi → keamanan → data → pesan → observabilitas → DevOps → alat API. Sisa 3 kesenjangan adalah optimasi beban kerja kecil, tanpa kekurangan struktural.
 
 ## Cakupan Backend Data (16 buah)
 
@@ -102,5 +102,5 @@ Perubahan fondasi terkait:
 | Observabilitas | Metrik pool ke `ecat-metrics`, pemeriksaan kesehatan pool ke `ecat-health`, kueri lambat ke `ecat-tracing` (semua opt-in feature) | ✅ Selesai (batch 4; feature `metrics` / `health` / `tracing` nonaktif secara default) |
 
 **Perubahan yang merusak**: pemisahan trait + tanda tangan `SqlxClient::from_pool` + penghapusan
-`AnyPool` — ketiganya sudah diterapkan di branch `feat/orm-mssql` (batch 1, belum dirilis);
-saat rilis, versi workspace 3.0.3 → **4.0.0**.
+`AnyPool` — ketiganya sudah dirilis di **v4.0.0**. Batch ini (peningkatan pool dan observabilitas)
+dirilis sebagai **v5.0.0**, karena varian baru `RdbmsError::NoAvailableReplica` bersifat merusak.

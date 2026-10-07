@@ -99,7 +99,7 @@ API-first подход к разработке, плагинная архите�
 - **Распределённая трассировка**: span запросов, инъекция/извлечение trace_id
 - **gRPC-клиент**: GrpcClient с интеграцией service discovery и балансировки нагрузки
 - **Мультипротокол**: единая маршрутизация HTTP, gRPC, WebSocket, GraphQL
-- **Мульти-источники данных**: RDBMS (SQLite/PG/MySQL/TiDB), кэш (Redis/Memcached), поиск (OpenSearch/Elasticsearch), графы (Neo4j/NebulaGraph/ArangoDB), временные ряды (InfluxDB/IoTDB/QuestDB/TDengine), документы (MongoDB), объектное хранилище (S3/MinIO)
+- **Мульти-источники данных**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), кэш (Redis/Memcached), поиск (OpenSearch/Elasticsearch), графы (Neo4j/NebulaGraph/ArangoDB), временные ряды (InfluxDB/IoTDB/QuestDB/TDengine), документы (MongoDB), объектное хранилище (S3/MinIO)
 
 ### Сопоставление концепций Kratos
 
@@ -160,7 +160,7 @@ API-first подход к разработке, плагинная архите�
 
 > Все бэкенды данных абстрагированы через единый trait (`RdbmsClient` для транзакций, `SqlExecutor` для выполнения и диалекта / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); подключайте нужный contrib crate по необходимости. Каждый бэкенд предоставляет структуру `XxxConfig` (`#[derive(Deserialize)]`) для загрузки параметров подключения из JSON/YAML-конфигурации.
 
-> **Соглашение об именовании конструкторов**: у crate-ов сообщений (`ecat-mq-*`) главный конструктор — `connect` (например, `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), плюс `from_config` для загрузки из конфигурации; у бэкендов данных (`ecat-data-*`) большинство главных конструкторов — `new`, исключения: `ecat-data-redis` / `ecat-data-sqlx` используют `connect`, `ecat-data-mongodb` / `ecat-data-s3` предоставляют только `from_config`. Это сложившееся соглашение, принудительно не унифицируется (во избежание ломающих изменений); в окне 3.0 может быть оценена унификация.
+> **Соглашение об именовании конструкторов**: у crate-ов сообщений (`ecat-mq-*`) главный конструктор — `connect` (например, `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), плюс `from_config` для загрузки из конфигурации; у бэкендов данных (`ecat-data-*`) большинство главных конструкторов — `new`, исключения: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` используют `connect`, `ecat-data-mongodb` / `ecat-data-s3` предоставляют только `from_config`. Это сложившееся соглашение, принудительно не унифицируется (во избежание ломающих изменений); в окне 3.0 может быть оценена унификация.
 
 ### Пример конфигурации баз данных
 
