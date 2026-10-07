@@ -1505,7 +1505,11 @@ dependencies = [
  "base64",
  "deadpool",
  "ecat-data",
+ "ecat-health",
+ "ecat-metrics",
  "ecat-tls",
+ "ecat-tracing",
+ "prometheus",
  "serde",
  "serde_json",
  "tiberius-ng",
@@ -1513,6 +1517,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1615,12 +1620,18 @@ dependencies = [
  "async-trait",
  "base64",
  "ecat-data",
+ "ecat-health",
+ "ecat-metrics",
  "ecat-tls",
+ "ecat-tracing",
+ "prometheus",
  "serde",
  "serde_json",
  "sqlx",
  "time",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

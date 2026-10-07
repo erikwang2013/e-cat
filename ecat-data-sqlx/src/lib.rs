@@ -1,11 +1,18 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod cell;
 mod config;
+#[cfg(feature = "health")]
+mod health;
 #[cfg(test)]
 mod live_tests;
+#[cfg(feature = "metrics")]
+mod metrics;
 mod pool;
 #[cfg(test)]
 mod tests;
+// **不**随 feature 门控：feature 关闭时 `timed` 是直通函数（见模块文档），
+// 这样每个调用点不必各写一次 `#[cfg]`。
+mod tracing;
 mod transaction;
 
 use async_trait::async_trait;
@@ -18,6 +25,10 @@ use std::time::Duration;
 use transaction::{MyTx, PgTx, SqTx};
 
 pub use config::{PoolParams, SqlxConfig};
+#[cfg(feature = "health")]
+pub use health::RdbmsHealthCheck;
+#[cfg(feature = "metrics")]
+pub use metrics::register_pool_metrics;
 pub use pool::{Pool, PoolGuard};
 
 fn percent_encode(s: &str) -> String {
@@ -43,7 +54,15 @@ fn with_auth_in_url(url: &str, username: &str, password: &str) -> String {
 
 /// sqlx 错误 → [`RdbmsError::Database`]。三路分派后每个方法都有三个分支，
 /// 统一走这里避免 6 处重复。
+///
+/// 也是「等连接超时」的唯一漏斗：`PoolTimedOut` 由 sqlx 在内部取用连接超时时
+/// 抛出，流经此处时记一笔（`metrics` feature 的
+/// `ecat_rdbms_pool_timeouts_total`）。
 fn db_err(e: sqlx::Error) -> RdbmsError {
+    #[cfg(feature = "metrics")]
+    if matches!(e, sqlx::Error::PoolTimedOut) {
+        metrics::count_pool_timeout();
+    }
     RdbmsError::Database(e.to_string())
 }
 
@@ -51,6 +70,9 @@ pub struct SqlxClient {
     pool: Pool,
     query_timeout: Option<Duration>,
     min_connections: u32,
+    /// 慢查询告警阈值；`None` = 不打。只有 `tracing` feature 会读它，
+    /// 但字段本身常驻 —— 否则配置项会随 feature 时有时无（见 [`SqlxConfig`]）。
+    slow_query: Option<Duration>,
 }
 
 impl SqlxClient {
@@ -65,6 +87,7 @@ impl SqlxClient {
             pool: Pool::connect(url, params).await?,
             query_timeout: params.query_timeout,
             min_connections: params.min_connections,
+            slow_query: params.slow_query,
         })
     }
 
@@ -107,7 +130,28 @@ impl SqlxClient {
             pool,
             query_timeout: None,
             min_connections: 0,
+            slow_query: None,
         }
+    }
+
+    /// 池本身（`metrics` feature 的 [`register_pool_metrics`] 要它）。
+    /// sqlx 的池内部是 `Arc`，克隆很轻。
+    pub fn pool(&self) -> &Pool {
+        &self.pool
+    }
+
+    /// 一次数据库调用的公共外壳：查询超时 + 慢查询告警。
+    /// 接在此处而不是各方法里，是为了两件事都只有一处定义。
+    async fn timed<F, T>(&self, sql: &str, fut: F) -> Result<T, RdbmsError>
+    where
+        F: std::future::Future<Output = Result<T, RdbmsError>>,
+    {
+        crate::tracing::timed(
+            self.slow_query,
+            sql,
+            run_with_timeout(self.query_timeout, fut),
+        )
+        .await
     }
 
     pub fn dialect(&self) -> Dialect {
@@ -143,7 +187,7 @@ impl SqlxClient {
 #[async_trait]
 impl SqlExecutor for SqlxClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let affected = match &self.pool {
                 Pool::Pg(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
                 Pool::My(p) => sqlx::query(sql).execute(p).await.map(|r| r.rows_affected()),
@@ -156,7 +200,7 @@ impl SqlExecutor for SqlxClient {
     }
 
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let rows = match &self.pool {
                 Pool::Pg(p) => sqlx::query(sql)
                     .fetch_all(p)
@@ -184,7 +228,7 @@ impl SqlExecutor for SqlxClient {
         sql: &str,
         params: &[serde_json::Value],
     ) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let affected = match &self.pool {
                 Pool::Pg(p) => {
                     let mut q = sqlx::query(sql);
@@ -261,7 +305,7 @@ impl SqlExecutor for SqlxClient {
         sql: &str,
         params: &[serde_json::Value],
     ) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let rows = match &self.pool {
                 Pool::Pg(p) => {
                     let mut q = sqlx::query(sql);

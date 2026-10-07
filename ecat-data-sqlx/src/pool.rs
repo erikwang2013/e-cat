@@ -7,7 +7,10 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 /// 三种原生池。方言由变体本身承载 —— 不再解析 URL 猜测。
-#[derive(Debug)]
+///
+/// `Clone`：sqlx 的池内部是 `Arc`，克隆只是多一个句柄（`metrics` feature 的
+/// collector 要长期持有池）。
+#[derive(Debug, Clone)]
 pub enum Pool {
     Pg(PgPool),
     My(MySqlPool),

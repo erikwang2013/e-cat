@@ -118,6 +118,7 @@ ecat-auth = { version = "4.1.0", path = "ecat-auth" }
 ecat-client = { version = "4.1.0", path = "ecat-client" }
 ecat-events = { version = "4.1.0", path = "ecat-events" }
 ecat-metrics = { version = "4.1.0", path = "ecat-metrics" }
+ecat-health = { version = "4.1.0", path = "ecat-health" }
 ecat-tracing = { version = "4.1.0", path = "ecat-tracing" }
 ecat-circuit-breaker = { version = "4.1.0", path = "ecat-circuit-breaker" }
 ecat-registry-consul = { version = "4.1.0", path = "ecat-registry-consul" }

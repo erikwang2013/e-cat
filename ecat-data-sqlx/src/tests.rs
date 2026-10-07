@@ -197,6 +197,7 @@ async fn from_config_without_auth_connects_and_queries() {
         idle_timeout_secs: None,
         max_lifetime_secs: None,
         query_timeout_secs: None,
+        slow_query_ms: None,
         test_before_acquire: None,
     };
     let client = SqlxClient::from_config(cfg).await.unwrap();
@@ -264,6 +265,7 @@ async fn from_config_with_empty_credentials_connects_plain() {
             idle_timeout_secs: None,
             max_lifetime_secs: None,
             query_timeout_secs: None,
+            slow_query_ms: None,
             test_before_acquire: None,
         };
         let client = SqlxClient::from_config(cfg).await.unwrap();

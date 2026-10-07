@@ -78,6 +78,11 @@ pub struct MssqlConfig {
     /// `0` = 禁用。
     #[serde(default)]
     pub query_timeout_secs: Option<u64>,
+    /// 慢查询告警阈值（毫秒）。未配置 = 1000；`0` = 不打告警。
+    ///
+    /// 只有 `tracing` feature 会读它 —— feature 关闭时本字段被解析但不生效。
+    #[serde(default)]
+    pub slow_query_ms: Option<u64>,
 }
 
 /// 池参数的解析结果（带默认值）。由 [`MssqlConfig::pool`] 产出。
@@ -88,6 +93,8 @@ pub struct MssqlParams {
     pub acquire_timeout: Duration,
     pub create_timeout: Duration,
     pub query_timeout: Option<Duration>,
+    /// 慢查询告警阈值（`tracing` feature）。`None` = 不打。
+    pub slow_query: Option<Duration>,
 }
 
 impl Default for MssqlParams {
@@ -99,6 +106,7 @@ impl Default for MssqlParams {
             acquire_timeout: Duration::from_secs(30),
             create_timeout: Duration::from_secs(30),
             query_timeout: Some(Duration::from_secs(30)),
+            slow_query: Some(Duration::from_secs(1)),
         }
     }
 }
@@ -157,6 +165,7 @@ impl MssqlConfig {
             acquire_timeout_secs: None,
             create_timeout_secs: None,
             query_timeout_secs: None,
+            slow_query_ms: None,
         })
     }
 
@@ -296,6 +305,7 @@ impl MssqlConfig {
                 .create_timeout_secs
                 .map_or(d.create_timeout, Duration::from_secs),
             query_timeout: self.query_timeout(),
+            slow_query: self.slow_query(),
         }
     }
 
@@ -305,6 +315,16 @@ impl MssqlConfig {
             None => Some(Duration::from_secs(30)),
             Some(0) => None,
             Some(s) => Some(Duration::from_secs(s)),
+        }
+    }
+
+    /// `0` 表示显式关闭慢查询告警；未配置时为 1 秒（与 [`Self::query_timeout`]
+    /// 同族语义：`0` 是「关」而不是「立刻全算慢」）。
+    pub fn slow_query(&self) -> Option<Duration> {
+        match self.slow_query_ms {
+            None => Some(Duration::from_secs(1)),
+            Some(0) => None,
+            Some(ms) => Some(Duration::from_millis(ms)),
         }
     }
 

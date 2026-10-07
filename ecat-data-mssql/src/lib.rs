@@ -18,13 +18,24 @@ mod bind;
 mod cell;
 mod client;
 mod config;
+#[cfg(feature = "health")]
+mod health;
 #[cfg(test)]
 mod live_tests;
+#[cfg(feature = "metrics")]
+mod metrics;
 mod pool;
 #[cfg(test)]
 mod tests;
+// **不**随 feature 门控：feature 关闭时 `timed` 是直通函数（见模块文档），
+// 这样每个调用点不必各写一次 `#[cfg]`。
+mod tracing;
 mod url_query;
 
 pub use client::MssqlClient;
 pub use config::{MssqlConfig, MssqlParams};
+#[cfg(feature = "health")]
+pub use health::RdbmsHealthCheck;
+#[cfg(feature = "metrics")]
+pub use metrics::register_pool_metrics;
 pub use pool::MssqlManager;

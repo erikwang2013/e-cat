@@ -38,6 +38,9 @@ pub struct MssqlClient {
     pool: Pool<MssqlManager>,
     query_timeout: Option<Duration>,
     min_connections: u32,
+    /// 慢查询告警阈值；`None` = 不打。只有 `tracing` feature 会读它，
+    /// 但字段本身常驻 —— 否则配置项会随 feature 时有时无（见 [`MssqlConfig`]）。
+    slow_query: Option<Duration>,
 }
 
 impl MssqlClient {
@@ -79,6 +82,7 @@ impl MssqlClient {
             pool,
             query_timeout: params.query_timeout,
             min_connections: params.min_connections,
+            slow_query: params.slow_query,
         })
     }
 
@@ -95,7 +99,28 @@ impl MssqlClient {
             pool,
             query_timeout: None,
             min_connections: 0,
+            slow_query: None,
         }
+    }
+
+    /// 池本身（`metrics` feature 的 `register_pool_metrics` 要它 ——
+    /// deadpool 的 `Pool` 内部是 `Arc`，克隆很轻）。
+    pub fn pool(&self) -> &Pool<MssqlManager> {
+        &self.pool
+    }
+
+    /// 一次数据库调用的公共外壳：查询超时 + 慢查询告警。
+    /// 接在此处而不是各方法里，是为了两件事都只有一处定义。
+    async fn timed<F, T>(&self, sql: &str, fut: F) -> Result<T, RdbmsError>
+    where
+        F: std::future::Future<Output = Result<T, RdbmsError>>,
+    {
+        crate::tracing::timed(
+            self.slow_query,
+            sql,
+            run_with_timeout(self.query_timeout, fut),
+        )
+        .await
     }
 
     /// 预热：取 `min_connections` 条连接再放回，服务启动后立刻处于就绪态。
@@ -124,7 +149,14 @@ impl MssqlClient {
 ///
 /// `Backend` 里装的本来就是本项目的错误（建连失败 / 探活失败），原样透出，
 /// 别把它降级成一句字符串。
-fn pool_err(e: PoolError<RdbmsError>) -> RdbmsError {
+///
+/// 也是「等连接超时」的唯一漏斗：`metrics` feature 的
+/// `ecat_rdbms_pool_timeouts_total` 在这里计数。
+pub(crate) fn pool_err(e: PoolError<RdbmsError>) -> RdbmsError {
+    #[cfg(feature = "metrics")]
+    if matches!(e, PoolError::Timeout(_)) {
+        crate::metrics::count_pool_timeout();
+    }
     match e {
         PoolError::Backend(e) => e,
         other => RdbmsError::Connection(other.to_string()),
@@ -163,7 +195,7 @@ fn rows_to_result(rows: Vec<tiberius::Row>) -> Result<Vec<Row>, RdbmsError> {
 #[async_trait]
 impl SqlExecutor for MssqlClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let mut conn = self.pool.get().await.map_err(pool_err)?;
             let result = conn.execute(sql, &[]).await.map_err(db_err)?;
             // `total()`：一批多条语句时把各条的行数加总（与 sqlx 的
@@ -174,7 +206,7 @@ impl SqlExecutor for MssqlClient {
     }
 
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let mut conn = self.pool.get().await.map_err(pool_err)?;
             let stream = conn.query(sql, &[]).await.map_err(db_err)?;
             // 惰性流必须读到流结束：否则语句没跑完、错误也不会浮现。
@@ -185,7 +217,7 @@ impl SqlExecutor for MssqlClient {
     }
 
     async fn execute_with(&self, sql: &str, params: &[Value]) -> Result<u64, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             // 先把 Value 物化成绑定值，再借出引用切片 —— 借用要活过
             // `execute` 的整条调用（见 `bind.rs` 的理由）。
             let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
@@ -199,7 +231,7 @@ impl SqlExecutor for MssqlClient {
     }
 
     async fn query_with(&self, sql: &str, params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
-        run_with_timeout(self.query_timeout, async {
+        self.timed(sql, async {
             let binds: Vec<Bind> = params.iter().map(Bind::from_json).collect();
             let refs = to_sql_refs(&binds);
 

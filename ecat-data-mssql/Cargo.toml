@@ -25,6 +25,22 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 base64 = "0.22"
+# 三个可观测性依赖都是 optional：默认不把 axum（ecat-metrics/ecat-health 的依赖）
+# 拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+ecat-health = { workspace = true, optional = true }
+ecat-tracing = { workspace = true, optional = true }
+# 手写 Collector 要 prometheus 的 proto 类型；版本与 ecat-metrics 保持一致。
+prometheus = { version = "0.13", optional = true }
+
+[features]
+# 三个都默认关闭（spec:717-718）。`tracing` 只多拉 ecat-tracing ——
+# `tracing` crate 本 crate 一直在用（pool.rs 的探活告警）。
+metrics = ["dep:ecat-metrics", "dep:prometheus"]
+health = ["dep:ecat-health"]
+tracing = ["dep:ecat-tracing"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+# 慢查询 warn 的捕获断言用（`MakeWriter`）。
+tracing-subscriber = { workspace = true }

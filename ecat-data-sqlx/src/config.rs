@@ -38,6 +38,11 @@ pub struct SqlxConfig {
     /// `0` = 禁用查询超时。
     #[serde(default)]
     pub query_timeout_secs: Option<u64>,
+    /// 慢查询告警阈值（毫秒）。未配置 = 1000；`0` = 不打告警。
+    ///
+    /// 只有 `tracing` feature 会读它 —— feature 关闭时本字段被解析但不生效。
+    #[serde(default)]
+    pub slow_query_ms: Option<u64>,
     /// 每次从池取连接是否先 ping。默认 `false`：sqlx 默认在**每次** acquire
     /// 都 ping（不论上次 ping 多近，见 sqlx issue #1743），在高频路径上是
     /// 一笔无谓往返。关掉后由 `max_lifetime` + 查询超时 + 首次使用报错兜底。
@@ -57,6 +62,8 @@ pub struct PoolParams {
     pub test_before_acquire: bool,
     /// 每条新连接建立后执行的会话初始化语句。
     pub session_init: Vec<String>,
+    /// 慢查询告警阈值（`tracing` feature）。`None` = 不打。
+    pub slow_query: Option<Duration>,
 }
 
 impl Default for PoolParams {
@@ -72,6 +79,7 @@ impl Default for PoolParams {
             query_timeout: Some(Duration::from_secs(30)),
             test_before_acquire: false,
             session_init: Vec::new(),
+            slow_query: Some(Duration::from_secs(1)),
         }
     }
 }
@@ -131,6 +139,7 @@ impl SqlxConfig {
             query_timeout: self.query_timeout(),
             test_before_acquire: self.test_before_acquire.unwrap_or(d.test_before_acquire),
             session_init: self.effective_session_init(),
+            slow_query: self.slow_query(),
         }
     }
 
@@ -140,6 +149,16 @@ impl SqlxConfig {
             None => Some(Duration::from_secs(30)),
             Some(0) => None,
             Some(s) => Some(Duration::from_secs(s)),
+        }
+    }
+
+    /// `0` 表示显式关闭慢查询告警；未配置时为 1 秒（与 [`Self::query_timeout`]
+    /// 同族语义：`0` 是「关」而不是「立刻全算慢」）。
+    pub fn slow_query(&self) -> Option<Duration> {
+        match self.slow_query_ms {
+            None => Some(Duration::from_secs(1)),
+            Some(0) => None,
+            Some(ms) => Some(Duration::from_millis(ms)),
         }
     }
 
@@ -172,6 +191,7 @@ mod tests {
         assert_eq!(p.query_timeout, Some(Duration::from_secs(30)));
         assert!(!p.test_before_acquire);
         assert!(cfg.session_init.is_none());
+        assert_eq!(p.slow_query, Some(Duration::from_secs(1)));
     }
 
     #[test]
@@ -224,6 +244,7 @@ mod tests {
             assert_eq!(a.query_timeout, b.query_timeout, "{url}");
             assert_eq!(a.test_before_acquire, b.test_before_acquire, "{url}");
             assert_eq!(a.session_init, b.session_init, "{url}");
+            assert_eq!(a.slow_query, b.slow_query, "{url}");
         }
     }
 
@@ -237,6 +258,21 @@ mod tests {
         let p = cfg.pool();
         assert_eq!(p.max_connections, 2);
         assert_eq!(p.min_connections, 2);
+    }
+
+    /// 慢查询阈值：未配置 1 秒、`0` 是「关」、给了就照给。
+    /// `0` 当作「立刻全算慢」的话，打开 feature 的瞬间日志就被淹没了。
+    #[test]
+    fn slow_query_ms_is_threshold_with_zero_meaning_off() {
+        let off: SqlxConfig =
+            serde_json::from_str(r#"{"url": "sqlite::memory:", "slow_query_ms": 0}"#).unwrap();
+        assert_eq!(off.slow_query(), None);
+        assert_eq!(off.pool().slow_query, None);
+
+        let on: SqlxConfig =
+            serde_json::from_str(r#"{"url": "sqlite::memory:", "slow_query_ms": 250}"#).unwrap();
+        assert_eq!(on.slow_query(), Some(Duration::from_millis(250)));
+        assert_eq!(on.pool().slow_query, Some(Duration::from_millis(250)));
     }
 
     /// `query_timeout_secs: 0` 是「禁用」而非「0 秒立刻超时」。

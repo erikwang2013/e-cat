@@ -53,6 +53,23 @@ fn pool_defaults_match_documented_values() {
     assert_eq!(p.acquire_timeout, Duration::from_secs(30));
     assert_eq!(p.create_timeout, Duration::from_secs(30));
     assert_eq!(p.query_timeout, Some(Duration::from_secs(30)));
+    assert_eq!(p.slow_query, Some(Duration::from_secs(1)));
+}
+
+/// 慢查询阈值：未配置 1 秒、`0` 是「关」、给了就照给（与 `SqlxConfig` 同约定）。
+/// 本结构体开了 `deny_unknown_fields`，字段名写错会直接报错 —— 这条同时钉住
+/// 「`slow_query_ms` 确实被解析」。
+#[test]
+fn slow_query_ms_is_threshold_with_zero_meaning_off() {
+    let off: MssqlConfig =
+        serde_json::from_str(r#"{"url": "mssql://h/db", "slow_query_ms": 0}"#).unwrap();
+    assert_eq!(off.slow_query(), None);
+    assert_eq!(off.pool().slow_query, None);
+
+    let on: MssqlConfig =
+        serde_json::from_str(r#"{"url": "mssql://h/db", "slow_query_ms": 250}"#).unwrap();
+    assert_eq!(on.slow_query(), Some(Duration::from_millis(250)));
+    assert_eq!(on.pool().slow_query, Some(Duration::from_millis(250)));
 }
 
 /// `query_timeout_secs: 0` = 禁用（与 `SqlxConfig` 同约定）。
