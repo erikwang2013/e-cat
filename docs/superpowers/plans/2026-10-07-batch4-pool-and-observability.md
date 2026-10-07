@@ -567,3 +567,35 @@ cargo clippy --workspace --all-targets -- -D warnings; echo "rc=$?"
 | 7 | **`RdbmsError::NoAvailableReplica` 的破坏性影响已 grep 排清** | Task 3 必读 |
 
 **本批不做**（留批次 5）：14 个后端的超时/熔断/指标铺开、HTTP 类的并发上限、MongoDB 池配置暴露。
+
+---
+
+## 执行记录（2026-10-07）
+
+闸门在版本 bump 后跑（`5.0.0`），5 步全绿：
+
+| 步骤 | 结果 |
+|---|---|
+| `cargo test --workspace` | rc=0 · **1096 passed / 0 failed / 4 ignored**（判据 1：≥1076 ✓） |
+| `cargo test --workspace --doc` | rc=0 · 4 passed |
+| `cargo fmt --all -- --check` | rc=0 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | rc=0 |
+| `cargo test -p ecat-data-sqlx -p ecat-data-mssql --all-features` | rc=0 · 126 passed（发布树里这两个 feature 默认关，故单跑） |
+
+判据 2 用 `#[test]`/`#[tokio::test]` 标注的函数名逐条比对验证：重构前 12 个一个不少，新增 3 个（`1fb7ab0` 的 `state()` 测试），12 → 15。
+判据 7：`RdbmsError` 无 `#[non_exhaustive]`，仓内 30+ 处用法全为 `matches!`/构造，无穷举 `match`，破坏性只作用于下游（已进 CHANGELOG）。
+
+### ⚠️ 判据 4 的实测出入（未达标，本批未碰）
+
+判据写「每个源文件 < 500 行」。实测**有 5 个存量违规文件**，均**未被本批改动**（逐字节行数前后相同）：
+
+| 文件 | 行数 |
+|---|---|
+| `ecat-security/src/lib.rs` | 737 |
+| `ecat-registry-consul/src/lib.rs` | 710 |
+| `ecat-transport-http/src/lib.rs` | 524 |
+| `ecat-cli/src/main.rs` | 519 |
+| `ecat-graphql/src/lib.rs` | 517 |
+
+括号里只点名了 `ecat-circuit-breaker` 那个 546 行的违规 —— 写计划时**误以为那是唯一的**。该违规本批已修（现最大 265 行），**批次 4 自己改动的文件全部 < 500 行**。
+上述 5 个属既有技术债，发布前不动（改它们会让刚跑绿的全量闸门作废、需重跑约 1 小时）。
