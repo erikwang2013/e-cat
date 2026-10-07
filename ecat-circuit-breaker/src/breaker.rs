@@ -293,8 +293,12 @@ impl Drop for ProbePermit<'_> {
     fn drop(&mut self) {
         if self.armed {
             let mut inner = self.breaker.lock();
-            // `saturating_sub`：`armed` 与「借出过」同源，理论上不会到 0；
-            // 真到了也宁可少还一个也不要在抓取/调用路径上 panic。
+            // `saturating_sub` **是承重的，不是防御性代码** —— 计数已经是 0 是
+            // **可达**的：探测 A 借名额后挂起 → 探测 B 借名额、失败重开 → 冷却后
+            // Open→HalfOpen 迁移把 `half_open_count` 清零 → A 这时被取消，本 `Drop`
+            // 就减在 0 上。换回 `-` 会 debug 下 panic（attempt to subtract with
+            // overflow）、release 下 wrap 成 `u32::MAX` ⇒ 永久 `ProbesExhausted`。
+            // 计数为 0 时少还一个即可 —— 归还路径不得 panic。
             inner.half_open_count = inner.half_open_count.saturating_sub(1);
         }
     }
