@@ -1,5 +1,69 @@
 # Changelog
 
+## [5.0.0] — 2026-10-07
+
+### ⚠️ 破坏性变更
+
+- **`ecat-data`：`RdbmsError` 新增 `NoAvailableReplica` 变体。**
+  副本全部熔断且 `RdbmsRouting::fallback_to_primary(false)` 时返回它。
+  该 enum **不是 `#[non_exhaustive]`**，因此**下游任何穷举 `match` 会编译失败** ——
+  这是本版进位主版本号的**唯一**理由。
+  （给它加 `#[non_exhaustive]` 降级不行：对已有的公开 enum 加该属性**本身**也是破坏性变更。）
+
+### Added
+
+- **`ecat-circuit-breaker` 抽出公开的熔断状态机**（批次 5「14 个后端出站韧性」的前置）：
+  - `Breaker` + `BreakerConfig` + `BreakerState` + `BreakerError`
+  - `Breaker::state()` —— 供调用方读熔断状态；**含冷却期的 `Open → HalfOpen` 转换**
+  - 原 tower 的 `CircuitBreakerLayer` / `CircuitBreakerService` 公开签名未变（内部改为委托 `Breaker`），
+    12 个既有测试**逐条**保持全绿
+  - 该 crate 从单文件 546 行拆为 4 个文件（原文件已超项目 500 行约定）
+- `ecat-data`：`CircuitBreakerExecutor<S>` —— 给任意 `SqlExecutor` 逐端点包一层熔断。
+  熔断打开时**内层一次都不被调用**；`dialect()` 不经熔断（纯本地判断）。
+- `ecat-data`：`RdbmsRouting` —— 读写分离（写落主、读落从轮询、`query_write` 落主、
+  事务落主且不经熔断），并**跳过熔断打开的副本**。
+  只做逐端点包熔断是不够的：从库挂掉后轮询仍会把 1/N 的读转过去靠熔断快速失败 ——
+  那不是故障隔离，是**稳定的 1/N 失败率**。`fallback_to_primary` 控制副本全不可用时降级还是报错。
+- `ecat-data-sqlx` / `ecat-data-mssql`：三个 **opt-in feature**（默认关闭，避免把 axum 拖进核心依赖树）：
+  - `metrics` —— `register_pool_metrics(backend, pool)`，四个指标
+    （`ecat_rdbms_pool_connections` / `_pool_timeouts_total` / `_query_timeout_total` /
+    `_transactions_leaked_total`）。后两个接既有的进程级计数 `QUERY_TIMEOUTS` /
+    `TRANSACTIONS_LEAKED` —— 把日志变成可告警的指标。
+  - `health` —— `RdbmsHealthCheck` 实现 `ecat_health::HealthCheck`（池连通性 `SELECT 1`）。
+  - `tracing` —— 超阈值 SQL 打 warn，阈值 `slow_query_ms` 可配；SQL 按**字符**截断
+    （不切半个 UTF-8），上限 `SQL_HEAD_CHARS = 200`。
+- `ecat`（聚合入口）：两个 opt-in feature `orm` / `mssql`，并补上对应重导出。
+
+### Fixed
+
+- `ecat-circuit-breaker`：`state()` 此前**不做冷却期转换** —— 而 `RdbmsRouting` 靠它跳过
+  `Open` 的端点，于是被跳过的端点永远没人调 `call`（转换在 `call` 里），
+  冷却期过后也不会被重新放行。后果不是「暂时少一个副本」，是**任何失败过的副本被永久排除**，
+  读能力单调缩水。现 `state()` 报告**有效**状态（冷却已过则报 `HalfOpen`）。
+
+### Docs
+
+- 修正多处**文档与代码矛盾**（均为既有问题，非本版引入）：
+  - TLS 教程里的 `tls: {}  # 保留字段` —— `SqlxConfig.tls` 实际是**配了就报错**
+    （批次 1 改的「响亮失败而非静默忽略」），照抄该 yaml 会启动失败。
+  - 「所有后端均支持 `tls` 字段」—— 两处反例：`ecat-data-sqlx` 配了报错、
+    `ecat-data-memcached` 声明了但**全 crate 无人读**（静默无效）。
+  - 生态规划里「三项破坏性变更尚未发布；3.0.3 → 4.0.0」—— v4.0.0 / v4.1.0 均已发布。
+  - README 的 crate 数（51 → 56）、`README.en.md` 标题的后端数（18 → 19）、
+    多数据源列表补 SQL Server、目录树删除两个不存在的目录。
+  - `docs/i18n/{id,en,es,fr,ja,pt,ru}` 的目录树注释为中文残留 → 各语言译文
+    （4.1.0 新增的行本就已翻译，旧 56 行是半截翻译）。
+- 新增 `docs/social-preview.png`（1280×640）。
+- 12 语言 README / 生态规划 / 数据库配置教程同步更新。
+
+### Known limitations
+
+- **`ecat-data-memcached` 的 `tls` 字段是死字段**：声明了但全 crate 无人读，配了静默无效。
+  与批次 1 修掉的 `SqlxConfig.tls` 同族，但改它是行为变更，留作独立任务。
+- **`ecat-data-clickhouse`（OLAP）未列入 README 的「多数据源」一行**（表内有），既有遗漏。
+- `RdbmsRouting` 的内置 `Endpoint` 会在调用方已用 `CircuitBreakerExecutor` 包装端点时**双重包装**。
+
+
 ## [4.1.0] — 2026-10-06
 
 ### Added
