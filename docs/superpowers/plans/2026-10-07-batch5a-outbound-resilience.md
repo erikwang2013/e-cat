@@ -10,6 +10,11 @@
 
 **设计依据:** `docs/superpowers/specs/2026-10-06-outbound-resilience-design.md` §1–§4、§6、§7.5、§8；写法与严格度参照 `docs/superpowers/plans/2026-10-07-batch4-pool-and-observability.md`。
 
+**本计划含 lead 落码前的两条追加裁决**（写在对应 Task 里，不另起章节）：
+
+- **追加 1（必须做）** → Task 2a Step 9-11：`Breaker` 的半开探测名额 **RAII 归还**。这是 **5.0.0 已发布到 crates.io 的真实缺陷**（任何外部取消都漏一个名额，`half_open_probes` 次之后永久锁死），与 5a 选哪个嵌套顺序无关。
+- **追加 2（可延后，有停下报 lead 的条件）** → Task 3：`ecat-data-sqlx` / `ecat-data-mssql` 的 `ecat_rdbms_*` 四个同名家族的撞名 —— 用「出入 11」那套共用 collector 修掉。
+
 ---
 
 ## ⚠️ 与 spec 的实测出入（**先读这节，不要按 spec 原文照做**）
@@ -23,7 +28,9 @@
 | spec §1 原文 | 「与批次 1 的 4.0.0 一同发布即可（`ecat-data` 尚未进入 4.0.0 发布窗口）」 |
 | 实测（2026-10-07） | `Cargo.toml:70` `version = "5.0.0"`；`git log` 显示 `4.1.0 → 5.0.0` 的 bump 已提交（`2ed667a`）。**4.0.0 与 5.0.0 都已发布** |
 
-**结论**：本次签名变更进**下一个版本 = 6.0.0**（`run_with_timeout` 签名变更 + `QUERY_TIMEOUTS` 删除都是破坏性的）。本批执行 bump（Task 7）—— 与批次 4 的先例一致（破坏性变更与 bump 同批），且 `main` 不能长期挂着「标着 5.0.0 的破坏性变更」。
+**结论**：本次签名变更进**下一个版本 = 6.0.0**（`run_with_timeout` 签名变更 + `QUERY_TIMEOUTS` 删除都是破坏性的）。本批执行 bump（Task 8）—— 与批次 4 的先例一致（破坏性变更与 bump 同批），且 `main` 不能长期挂着「标着 5.0.0 的破坏性变更」。
+
+bump 的**逐步做法与实测数**在 Task 8 Step 2-4：**38 个 `Cargo.toml`**（`[workspace.package]` 1 处 + 86 处内部 path 引用）+ `Cargo.lock` + **14 份 README**（根 `README.md`、`README.en.md` + `docs/i18n/{ar,bn,de,en,es,fr,hi,id,ja,ko,pt,ru}/README.md`，每份 2 处 = 28 处）。⚠️ **i18n 那 12 份是本仓库踩过的坑**（批次 4 漏过），Task 3 还会给 `ecat-metrics/Cargo.toml` 加 2 处，届时以 Step 2 的重新实测为准。
 
 ### 出入 2：调用点不是 16 个，是 **10 个生产 + 3 个测试 = 13 处**
 
@@ -83,7 +90,11 @@ self.breaker.call(|| run_with_timeout(kind, t, fut)).await.map_err(..)
 - 没有 future 被 drop ⇒ 半开探测名额不漏、不会锁死；
 - 语义同一句话说得清：**熔断器数的是「我们是否在预算内拿到一个可接受的答复」，超时就是「没有」。**
 
-> **需 lead 裁决。** 这一条**偏离已批准的 spec**。若 lead 裁决维持 spec 的顺序（超时在外），则**必须先修 `ecat-circuit-breaker`**：给半开探测名额加 RAII 归还（drop 时 `half_open_count -= 1`，成功/失败记录后 disarm），否则问题 2 会在 5b 被复制 11 份。问题 1 无解 —— 那正是该顺序的固有语义。**本计划按「熔断在外」展开。**
+> **已裁决（lead 逐条复核后）：按本计划的「熔断在外」展开。** lead 按源码逐条复核了上面三条依据（`:104-107` 名额先借、`:113` 的 await 是 drop 点、`:124-130` 的 record 在 await 之后、半开分支在 `count >= probes` 时提前 return），**三条全成立** —— spec §3 给的理由与它自己的代码相反，「超时在外」的固有语义（问题 1）无解。
+>
+> **问题 2 要单独修，这与选哪个顺序无关**：它不是「因为熔断在外才需要」。任何外部取消（`tokio::select!`、请求处理被 drop、调用方自己的超时层）都会漏掉一个半开探测名额，`half_open_probes` 次之后熔断器**永久停在 `HalfOpen`**（每次调用直接 `ProbesExhausted`，无路可退）。5.0.0 **已发布到 crates.io**，所以这条一并修 —— 见 **Task 2a Step 9-11「追加 1」**（先红后绿的证据链），5b 的 11 个后端因此不必各踩一次。
+>
+> **spec 原文与实测对照留在这里**（上面那三行 spec §3 的原文与 `spec 的理由`），将来翻 spec 的人需要看到它：**spec 说「若熔断在内，被超时掐断的调用仍会被记为一次待定/失败」，实测正好相反** —— 熔断在内时被掐断的调用**一次都不记**（`window.record` 在 await 之后）。别照着 spec 那句推断代码行为。
 
 ### 出入 5：`ecat_outbound_breaker_open_total` 在 `Breaker` 上**没有数据源**
 
@@ -124,6 +135,10 @@ spec §7.5 说它的 `_with` 方法「本就不支持（落到默认错误），
 
 批次 4 已加该列（`README.md:136-157`），且 `ClickHouse` / `QuestDB` 两行现在写着 `✅ 熔断` —— 那指的是「可被 `ecat_data::CircuitBreakerExecutor` 包装」，不是内置。5a 后 ClickHouse 变成**内置**，但表格另 16 行 5b 才动。**结论**：表格更新整体留给 5b（只改 2 行的表在 14 份 README 镜像间同步一次、5b 再同步一次，是白干一遍）。
 
+**5b 的硬约定（lead 点名，别漏）**：README 族 = 根 `README.md` + `README.en.md` + `docs/i18n/` 下的 **12** 个语言目录（`ar` `bn` `de` `en` `es` `fr` `hi` `id` `ja` `ko` `pt` `ru`）各一份 —— **共 14 份手写镜像**（不是生成的）。任何一处改动（版本号、crate 数、目录树、后端能力表）都要**同步全部 14 份**，漏一份就造出不一致。
+
+⚠️ **别与「数据库配置教程族 13 份」混**：那是根 1 + i18n **12**。i18n 侧一律 **12** 个语言目录 ——「14」只属于 README 族总数（`docs/i18n` 下**没有** `zh` 目录，简体中文就是根 `README.md`）。
+
 ### 出入 11：三个指标**必须**是全进程一份 collector，不能照抄批次 4 的「每 crate 一份」
 
 spec §4 只给了三个指标名与维度，没说 collector 放哪。批次 4 的先例是「collector 放在后端 crate 里、`metrics` feature 门控」（`ecat-data-sqlx/src/metrics.rs:1-17` 有完整说明）。**5a 不能照抄这一条**：
@@ -134,7 +149,9 @@ spec §4 只给了三个指标名与维度，没说 collector 放哪。批次 4 
 
 **结论**：三个 `ecat_outbound_*` 指标家族在 `ecat-metrics` 里**只建一份**（`src/outbound.rs`），各后端只往里挂自己的数据源（三个取值闭包）。依赖不加：`ecat-metrics` 现有 `prometheus` 已够，数据源用 `Box<dyn Fn>`，因此**不必**依赖 `ecat-circuit-breaker`（拖 tower）或 `ecat-data`（拖 tokio + async-trait）。每个后端只需 ~10 行注册代码，5b 复用 11 次。
 
-> **实测附注（不在 5a 范围，报给 lead）**：批次 4 的 `ecat-data-sqlx` 与 `ecat-data-mssql` 有**同一个潜在 bug** —— 两者的 `register_pool_metrics` 都建 `ecat_rdbms_*` 四个同名家族（`sqlx/src/metrics.rs:89-108`、`mssql/src/metrics.rs` 同构）。同时打开两个 metrics feature 时，先注册者的 `Registered` collector 独占 registry，后者静默消失。**5a 不修它**（改了要动两个已验收的 crate），但 lead 应知道它存在。
+> **实测附注 → 已升级为本批的「追加 2」（Task 3）**：批次 4 的 `ecat-data-sqlx` 与 `ecat-data-mssql` 有**同一个已发布的真实 bug** —— 两者的 `register_pool_metrics` 都建 `ecat_rdbms_*` 四个同名家族（`sqlx/src/metrics.rs:88-109`、`mssql/src/metrics.rs:93-140` 同构），而 `sqlx/src/metrics.rs:47-48` 那句注释「**这里的名字是本 crate 独占的**」**是错的** —— 它是那句 `let _ =` 的唯一理由，也正是这个 bug 活到今天的原因。同时打开两个 metrics feature 时，后注册者的 `register()` 拿到 `AlreadyReg` 被吞掉，**它的四个指标一条样本都不输出**（无报错、无日志；单 crate 测试全绿）。
+>
+> lead 裁决：**本批修，可延后**，用本节这套「collector 在 `ecat-metrics`、各 crate 只挂数据源」的同一模式 —— 做法与停下报 lead 的条件见 **Task 3**。
 
 ---
 
@@ -238,7 +255,18 @@ ecat-circuit-breaker/src/
 
 ecat-metrics/src/
   outbound.rs       新建：三个 ecat_outbound_* 指标的**全进程唯一** collector
-  lib.rs            加 mod outbound; + 重导出
+  rdbms.rs          新建（Task 3）：四个 ecat_rdbms_* 指标的**全进程唯一** collector
+                    —— 修批次 4 留下的撞名（同名家族被 AlreadyReg 顶掉）
+  lib.rs            加 mod outbound; / mod rdbms; + 重导出
+
+ecat-metrics/tests/
+  rdbms_shared_families.rs  新建（Task 3）：**跨 crate** 回归 —— 两个后端同进程时样本都不丢
+
+ecat-data-sqlx/src/
+  metrics.rs        改（Task 3）：不再自建 collector，改为往 ecat-metrics 挂数据源
+
+ecat-data-mssql/src/
+  metrics.rs        改（Task 3）：同上
 
 ecat-data-redis/src/
   lib.rs            RedisCache / RedisLock（变薄）+ 三个新字段 + guarded 外壳
@@ -253,7 +281,7 @@ ecat-data-clickhouse/src/
   metrics.rs        新建（feature = "metrics"）：同 redis 的三指标
 
 docs/superpowers/checklists/
-  backend-resilience-onboarding.md   新建：5b 的接入 checklist（Task 5 产出）
+  backend-resilience-onboarding.md   新建：5b 的接入 checklist（Task 6 产出）
 ```
 
 ---
@@ -606,12 +634,12 @@ git commit -m "feat(ecat-data): run_with_timeout 泛型化（BackendKind 维度 
 
 1. **`QUERY_TIMEOUTS` 是删不是留。** 留着它 = 公开一个永远不再增长的计数器。
 2. **`--features metrics` 那一步不能省。** 两个 `metrics.rs` 改动在默认构建里**根本不参与编译**，`cargo test -p ecat-data-sqlx` 全绿完全说明不了它们是对的。
-3. **`QUERY_TIMEOUTS` 的删除是破坏性变更**，Task 7 的 CHANGELOG 要点名。
+3. **`QUERY_TIMEOUTS` 的删除是破坏性变更**，Task 8 的 CHANGELOG 要点名。
 4. `ecat-data/Cargo.toml` **不需要**改 —— `ecat-errors` 与 `ecat-circuit-breaker` 都已是依赖。
 
 ---
 
-## Task 2: 基础设施 —— `opened_total()` / `BreakerState::code()` / `BreakerConfig` 反序列化 / 全进程共用的出站 collector
+## Task 2: 基础设施 —— `opened_total()` / `BreakerState::code()` / `BreakerConfig` 反序列化 / **半开名额 RAII** / 全进程共用的出站 collector
 
 **Files:**
 - Modify: `ecat-circuit-breaker/src/breaker.rs`
@@ -619,9 +647,9 @@ git commit -m "feat(ecat-data): run_with_timeout 泛型化（BackendKind 维度 
 - Create: `ecat-metrics/src/outbound.rs`
 - Modify: `ecat-metrics/src/lib.rs`
 
-**两个 crate、两次提交**（Step 1-8 = 2a，Step 9-14 = 2b）。四件事都是「两个试点后端都要用的公共件」，与 Redis / ClickHouse 无关，所以先做。理由见「出入 5」（`ecat_outbound_breaker_open_total` 没有数据源）与「出入 11」（三个指标必须全进程一份 collector）。
+**两个 crate、三次提交**（Step 1-8 = 2a 的只读计数与映射；Step 9-11 = 2a 的**半开名额 RAII 归还**（lead 追加 1）；Step 12-17 = 2b 的全进程共用出站 collector）。都是「两个试点后端都要用的公共件」，与 Redis / ClickHouse 无关，所以先做。理由见「出入 5」（`ecat_outbound_breaker_open_total` 没有数据源）、「出入 4 裁决段」（半开名额是真缺陷，5.0.0 已发布）与「出入 11」（三个指标必须全进程一份 collector）。
 
-`ecat-circuit-breaker` 部分**只加只读计数器与一个数值映射，不改状态机** —— 批次 4 的既有测试必须逐条保持全绿。
+`ecat-circuit-breaker` 部分**只加只读计数器、一个数值映射，以及 Step 9-11 的一处取消安全修复（半开名额 RAII 归还）** —— 不改状态迁移逻辑本身。批次 4 的既有测试必须逐条保持全绿。
 
 ### 2a：`ecat-circuit-breaker`
 
@@ -857,9 +885,179 @@ git add ecat-circuit-breaker
 git commit -m "feat(ecat-circuit-breaker): opened_total 计数、BreakerState::code 编码、BreakerConfig 可反序列化"
 ```
 
+- [ ] **Step 9: 半开探测名额的归还 —— 先写会红的测试（lead 追加 1）**
+
+**背景（源码级）**：`Breaker::call` 在 `HalfOpen` 分支**先借名额再 await** —— `breaker.rs:104-107` 的 `inner.half_open_count += 1` 在 `:113` 的 `let result = f().await;` **之前**；而名额的「用掉」只发生在 `:116-159` 的记录逻辑里，那在 await **之后**。于是**任何**外部取消都会让 future 在 `:113` 处被 drop，名额**有借无还**。
+
+**后果**：`half_open_probes`（默认 3）次被取消的探测之后，`:104` 的 `if inner.half_open_count >= self.config.half_open_probes` 恒成立 ⇒ 每次调用**立即**返回 `Err(BreakerError::ProbesExhausted)`，而 `state()` 永远停在 `HalfOpen`（没有任何路径能从 `HalfOpen` 退出而不经过一次成功/失败的记录）。**永久性故障，只能重启进程。**
+
+**这不是理论**：`tokio::time::timeout` / `select!` / 请求处理被 drop 全都是取消源，而 5a / 5b 正是要给每个后端套一层超时。
+
+先加测试，**确认它在修复前失败**：
+
+```rust
+    /// 被取消的探测**必须**归还名额。
+    ///
+    /// 借出名额（`breaker.rs:107`）在 `f().await`（`:113`）之前，而名额的用掉
+    /// （`:116-159` 的记录逻辑）在 await 之后 —— 中间的 future 一旦被 drop，
+    /// 名额就丢了。`half_open_probes` 次之后熔断器永久停在 `HalfOpen`
+    /// （每次调用直接 `ProbesExhausted`），**没有任何路径能恢复**。
+    ///
+    /// 这里用 `tokio::time::timeout` 制造 drop —— 它正是 5a / 5b 给每个后端
+    /// 套的那一层，也是线上最常见的取消源。
+    #[tokio::test]
+    async fn cancelled_half_open_probes_return_their_permit() {
+        let cfg = BreakerConfig {
+            open_duration: Duration::from_millis(20),
+            ..BreakerConfig::default()
+        };
+        let probes = cfg.half_open_probes;
+        let b = Breaker::new(cfg);
+
+        // 打满窗口的样本下限（5，见 `breaker.rs:134`）把熔断器打开。
+        let fail = || async { Err::<(), &str>("backend down") };
+        for _ in 0..5 {
+            let _ = b.call(fail).await;
+        }
+        assert_eq!(b.state(), BreakerState::Open);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+
+        // 借出名额后立刻取消，重复 `probes + 1` 次 —— 要比 `probes` 多一次：
+        // 冷却后的**第一次**调用只做 `Open → HalfOpen` 迁移（`breaker.rs:92-102`），
+        // 它**不借名额**，所以 `probes` 次取消只借走 `probes - 1` 个。
+        for _ in 0..(probes + 1) {
+            let hang = || async { std::future::pending::<Result<(), &str>>().await };
+            let _ = tokio::time::timeout(Duration::from_millis(5), b.call(hang)).await;
+        }
+
+        // 名额都还回来了 ⇒ 还能放行探测，且这次成功探测把熔断器关回去。
+        let ok = || async { Ok::<(), &str>(()) };
+        assert!(
+            b.call(ok).await.is_ok(),
+            "被取消的探测没归还名额 ⇒ 永久 ProbesExhausted"
+        );
+        assert_eq!(b.state(), BreakerState::Closed);
+    }
+```
+
+```bash
+cargo test -p ecat-circuit-breaker cancelled_half_open_probes 2>&1 | grep -E '^test |^test result|panicked|永久'
+```
+
+**这一步必须 FAILED**（`ProbesExhausted` 不是 `Ok`）。**记录输出** —— 那是这条修复存在的证据。⚠️ 若这里就绿了，说明取消路径没被真正覆盖（例如 `timeout` 没 drop 到内层 future），**停下来查，别往下走**。
+
+- [ ] **Step 10: 实现 `ProbePermit`（RAII 归还）**
+
+在 `BreakerError` 定义附近加：
+
+```rust
+/// 半开探测名额的 RAII 归还。
+///
+/// 名额在 `f().await` **之前**借出（`call` 的 `HalfOpen` 分支），用掉却在那之后的
+/// 记录逻辑里 —— 中间的 future 被 drop 就跑不到记录逻辑。本类型把「归还」挂到
+/// `Drop` 上，让取消路径自动还名额。
+///
+/// **不归还的后果**：`half_open_probes` 次被取消的探测之后，熔断器永久停在
+/// `HalfOpen`（每次调用立即 `ProbesExhausted`），只能靠重启进程恢复。
+struct ProbePermit<'a> {
+    breaker: &'a Breaker,
+    /// `false` = 探测已记入滑动窗口，名额算用掉了，`Drop` 不再归还。
+    armed: bool,
+}
+
+impl ProbePermit<'_> {
+    /// 探测已按成功/失败记入窗口 —— 撤销归还。
+    ///
+    /// **必须在记录之后调用**：提前 disarm 等于回到「有借无还」。
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ProbePermit<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let mut inner = self.breaker.lock();
+            // `saturating_sub`：`armed` 与「借出过」同源，理论上不会到 0；
+            // 真到了也宁可少还一个也不要在抓取/调用路径上 panic。
+            inner.half_open_count = inner.half_open_count.saturating_sub(1);
+        }
+    }
+}
+```
+
+`call` 的头部改成「借名额时一并取出 permit」：
+
+```rust
+        let permit = {
+            let mut inner = self.lock();
+            match inner.state {
+                BreakerState::Open => {
+                    if let Some(opened_at) = inner.opened_at {
+                        if opened_at.elapsed() >= self.config.open_duration {
+                            tracing::info!("circuit breaker: open → half-open");
+                            inner.state = BreakerState::HalfOpen;
+                            inner.half_open_count = 0;
+                        } else {
+                            return Err(BreakerError::Open);
+                        }
+                    }
+                    // 迁移这一跳不借名额（与原实现一致）。
+                    None
+                }
+                BreakerState::HalfOpen => {
+                    if inner.half_open_count >= self.config.half_open_probes {
+                        return Err(BreakerError::ProbesExhausted);
+                    }
+                    inner.half_open_count += 1;
+                    Some(ProbePermit {
+                        breaker: self,
+                        armed: true,
+                    })
+                }
+                BreakerState::Closed => None,
+            }
+        };
+```
+
+并在 `result.map_err(BreakerError::Inner)` **之前**（即 `:132-159` 的状态迁移 match 之后）加一句：
+
+```rust
+        // 探测已记录 ⇒ 名额归还的责任已由状态机承担，撤销 Drop 里的归还。
+        if let Some(permit) = permit {
+            permit.disarm();
+        }
+```
+
+⚠️ **别改状态迁移本身**：permit 只多归还一次名额，`state` / `window` / `opened_at` 的语义一个都不动。`disarm()` 的位置必须在记录之后 —— 放前面就等于没修。
+
+```bash
+cargo test -p ecat-circuit-breaker cancelled_half_open_probes 2>&1 | grep -E '^test |^test result'
+```
+
+**必须 PASSED。** 然后把 Step 9 记下的 RED 输出与这里的 GREEN 一起贴进「执行记录」。
+
+- [ ] **Step 11: 全量复核 + 空验收自证 + 提交**
+
+```bash
+cargo test -p ecat-circuit-breaker 2>&1 | grep -E '^test |^test result'
+```
+
+**与 Step 1 基线逐条比对**：既有测试名一个不少、全绿；总数 = Step 8 之后的值 **+1**。
+
+空验收自证：把 `ProbePermit::drop` 里的 `if self.armed { .. }` **整块注释掉**重跑 —— `cancelled_half_open_probes_return_their_permit` 必须 FAILED（这同时就是 5.0.0 线上缺陷的复现）。记录输出，还原。
+
+```bash
+cargo fmt --all
+cargo fmt --all -- --check; echo "fmt rc=$?"
+cargo clippy -p ecat-circuit-breaker --all-targets -- -D warnings; echo "clippy rc=$?"
+git add ecat-circuit-breaker
+git commit -m "fix(ecat-circuit-breaker): 半开探测名额 RAII 归还（future 被取消时不再永久锁死）"
+```
+
 ### 2b：`ecat-metrics` 全进程共用的出站 collector
 
-- [ ] **Step 9: 建 `ecat-metrics/src/outbound.rs`**
+- [ ] **Step 12: 建 `ecat-metrics/src/outbound.rs`**
 
 **⚠️ 先建文件、再在 `lib.rs` 加 `mod outbound;`**（假绿防线）。
 
@@ -1189,7 +1387,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 10: `ecat-metrics/src/lib.rs` 加声明与重导出**
+- [ ] **Step 13: `ecat-metrics/src/lib.rs` 加声明与重导出**
 
 ```rust
 mod outbound;
@@ -1198,7 +1396,7 @@ pub use outbound::{OutboundCounterFn, OutboundStateFn, register_outbound_metrics
 
 ⚠️ `mod outbound;` **必须有**（假绿防线）。漏了它 → 三条测试一条都不跑、`cargo test -p ecat-metrics` 照样绿。
 
-- [ ] **Step 11: 确认测试在跑 + 逐条比对**
+- [ ] **Step 14: 确认测试在跑 + 逐条比对**
 
 ```bash
 cargo test -p ecat-metrics 2>&1 | grep -E '^test |^test result'
@@ -1206,12 +1404,12 @@ cargo test -p ecat-metrics 2>&1 | grep -E '^test |^test result'
 
 **测试数必须 +3**（本 crate 之前没有 `outbound` 的测试）。**没多就是 `mod outbound;` 没加。**
 
-- [ ] **Step 12: 空验收自证（两条）**
+- [ ] **Step 15: 空验收自证（两条）**
 
 1. 把 `collect()` 里的 `(e.timeouts)()` 改成注册时算好的常量（如 `0.0`）→ **`metrics_are_read_live_at_scrape_time` 必须 FAILED**（快照型实现）。
 2. 把 `OUTBOUND.get_or_init(..)` 改成每次调用都 `registry().register(..)`（模拟「每 crate 一份」）→ **`multiple_backends_coexist_in_one_registry` 必须 FAILED**（第二个注册者拿 `AlreadyReg`）。记录输出，还原。
 
-- [ ] **Step 13: 依赖检查 —— 本任务不该新增任何依赖**
+- [ ] **Step 16: 依赖检查 —— 本任务不该新增任何依赖**
 
 ```bash
 git diff ecat-metrics/Cargo.toml
@@ -1219,7 +1417,7 @@ git diff ecat-metrics/Cargo.toml
 
 **期望：无输出。** 数据源是 `Box<dyn Fn>`，所以 `ecat-metrics` 不需要 `ecat-circuit-breaker` 也不需要 `ecat-data`。有 diff 说明设计跑偏了。
 
-- [ ] **Step 14: 行数复核 + 闸门 + 提交**
+- [ ] **Step 17: 行数复核 + 闸门 + 提交**
 
 ```bash
 find ecat-metrics/src -name '*.rs' -exec awk 'END{if(NR>500) print FILENAME": "NR}' {} \;
@@ -1237,11 +1435,618 @@ git commit -m "feat(ecat-metrics): 出站三指标的全进程唯一 collector�
 1. **`opened_total` 的两处 +1 都不能漏。** 只加 Closed 分支那一处，半开重新打开就不计数 —— 而那正是「后端恢复失败」的信号。
 2. **`BreakerConfig` 的 `Default` 与 serde `default_*` 必须同源**，否则配置省略字段与代码默认值会分叉。Step 8 的测试把守这一点。
 3. **三个指标家族只能有一份 collector。** 这是本任务存在的理由（出入 11）；后续任何「给某个后端单独加一个 collector」的想法都是在重建 `AlreadyReg` 那个坑。
-4. **`ecat-metrics` 不新增依赖**（Step 13 会把关）。一旦有人为了方便收 `Arc<Breaker>`，就会把 tower 与 tokio 拖进这个基础 crate。
+4. **`ecat-metrics` 不新增依赖**（Step 16 会把关）。一旦有人为了方便收 `Arc<Breaker>`，就会把 tower 与 tokio 拖进这个基础 crate。
+5. **半开名额的归还只能挂在 `Drop` 上**（Step 9-11）。不要试图在 `call` 的返回路径上写 `half_open_count -= 1` —— future 被 drop 时**根本没有返回路径**，那正是这个缺陷的成因。`disarm()` 必须在记录之后调用。
 
 ---
 
-## Task 3: `ecat-data-redis` —— 超时 + 熔断 + 指标
+## Task 3: 修 `ecat_rdbms_*` 同名家族顶掉（**lead 追加 2**，可延后）
+
+**Files:**
+- Create: `ecat-metrics/src/rdbms.rs`（四个家族的全进程唯一 collector）
+- Modify: `ecat-metrics/src/lib.rs`（`mod rdbms;` + 重导出）
+- Modify: `ecat-metrics/Cargo.toml`（**只加 `[dev-dependencies]`**，不动 `[dependencies]`）
+- Create: `ecat-metrics/tests/rdbms_shared_families.rs`（**跨 crate** 回归测试）
+- Modify: `ecat-data-sqlx/src/metrics.rs`（不再自建 collector，改挂数据源）
+- Modify: `ecat-data-mssql/src/metrics.rs`（同上）
+
+**这是已发布代码里的真实缺陷**（与 Redis / ClickHouse 无关）：两个后端 crate 各建一份 `ecat_rdbms_*` 四个同名家族的 collector，而 `ecat-metrics/src/lib.rs:12` 的 `REGISTRY` 是**全进程一个**；`prometheus::Registry` 按「指标名 + 常量标签」去重 ⇒ 两个 `metrics` feature 同时打开时，**后注册者的 `register()` 拿到 `AlreadyReg`，被 `let _ =` 吞掉，它的四个指标一条样本都不输出**（无报错、无日志）。`ecat-data-sqlx/src/metrics.rs:47-48` 那句「这里的名字是本 crate 独占的」**是错的** —— 它是那句 `let _ =` 的唯一理由，也是这个 bug 活到今天的原因。
+
+**修法 = 「出入 11」给 `ecat_outbound_*` 定的同一套**：collector 在 `ecat-metrics` 里只建一份，各 crate 只挂数据源（`Box<dyn Fn>`）。
+
+**明确不动**（已发布的遥测契约）：`register_pool_metrics(backend, pool)` 的签名、四个指标名、HELP 文本、标签名与语义。两个后端 crate 的 `[dependencies]` / `[features]` 也**不动** —— 改完 `prometheus` 会变成未使用的直接依赖，但删它属于「换注册方式」之外（见文末「本批发现但不修」）。
+
+> ### ⚠️ 停下报 lead 的条件（lead 裁决原文：「不要硬推」）
+>
+> 本任务**可延后**。实施中若发现要动**公开 API**、或超出「换注册方式」的范围 —— 例如：
+> 1. Step 2 的 dev-dependency 环解析不了；
+> 2. 需要改 `Pool` / `MssqlManager` 的可见性才能写出取数闭包；
+> 3. 需要新增**非 dev** 依赖；
+> 4. 需要动那四个指标的名字 / 标签语义才能修；
+>
+> —— **停下来报 lead**，把发现写清楚，整体推迟到 5b。**不修也比改坏已验收的 crate 强。**
+
+- [ ] **Step 1: 基线（两个 crate 的**测试名**，不是只记总数）**
+
+```bash
+cargo test -p ecat-data-sqlx --features metrics 2>&1 | grep -E '^test |^test result'
+cargo test -p ecat-data-mssql --features metrics 2>&1 | grep -E '^test |^test result'
+```
+
+- [ ] **Step 2: 回归测试的落点 —— 先确认 dev-dep 环能解析**
+
+回归测试**必须**跑在「两个 crate 链进**同一个测试二进制**」的地方 —— 单 crate 的 `cargo test -p ecat-data-sqlx --features metrics` 永远看不到另一个 crate 的注册，**它在两边都是绿的**（这就是缺陷活到今天的原因）。
+
+**主方案**：落在 `ecat-metrics/tests/rdbms_shared_families.rs`（不变量属于 registry，`ecat-metrics` 是 registry 的 owner）。代价是引入一个 **dev-dependency 环**（`ecat-metrics` →dev→ `ecat-data-sqlx` →dep(metrics)→ `ecat-metrics`）：
+
+```toml
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+# 跨 crate 回归：两个后端必须在**同一个测试二进制**里才有意义
+# （见 tests/rdbms_shared_families.rs 的模块文档）。dev-dependencies 不参与
+# 正常构建图，所以这个环是合法的；但本仓库没有先例 —— 先验证一次。
+ecat-data-sqlx = { workspace = true, features = ["metrics"] }
+# ecat-data-mssql 不在 workspace.dependencies 表里，直写 path + version
+# （与 ecat/Cargo.toml:22 同款）。
+ecat-data-mssql = { version = "5.0.0", path = "../ecat-data-mssql", features = ["metrics"] }
+```
+
+```bash
+cargo metadata --format-version=1 --offline > /dev/null; echo "rc=$?"
+```
+
+**rc=0 才继续。** 非 0（环被拒 / 解析失败）⇒ 走**回退方案**：
+
+> **回退**：同一个测试文件原样搬到 `ecat-data-mssql/tests/rdbms_shared_families.rs`，`ecat-data-mssql/Cargo.toml` 只加一行 dev-dep（**无环**：mssql 不依赖 sqlx）：
+>
+> ```toml
+> [dev-dependencies]
+> ecat-data-sqlx = { workspace = true, features = ["metrics"] }
+> ```
+>
+> 测试正文**一字不改**（它只用两个 crate 的公开 API）。把这次偏离记进「执行记录」。
+
+⚠️ 那个 `version = "5.0.0"` 会被 Task 8 的 bump 一起改（`sed` 覆盖所有 `*Cargo.toml`）—— 但它是**新增的一处**，所以 Task 8 Step 2 的实测数会变成 **39 个文件 / 88 处**（本计划写作时是 38 / 87）。以 Step 2 的实测为准。
+
+- [ ] **Step 3: 写回归测试（**先写，必须 FAILED**）**
+
+`ecat-metrics/tests/rdbms_shared_families.rs`（回退方案就放到 mssql 的 `tests/` 下）：
+
+```rust
+//! 跨 crate 回归：**同一个进程里**两个 RDBMS 后端各自注册后，四个
+//! `ecat_rdbms_*` 家族必须都在，且**两组 backend 标签的样本都能取到**。
+//!
+//! 为什么必须放在一个测试二进制里：这正是缺陷的触发条件。单 crate 的
+//! `cargo test -p ecat-data-sqlx --features metrics` 永远看不到另一个 crate
+//! 的注册，所以它在两边都是绿的 —— 只有两个都链进来才复现。
+//!
+//! 两个池都不需要真库：sqlite 走 `sqlite::memory:`（进程内），MSSQL 走 deadpool
+//! 的惰性建连（建池不连库）。
+
+use ecat_data_mssql::MssqlClient;
+use ecat_data_sqlx::SqlxClient;
+
+const FAMILIES: [&str; 4] = [
+    "ecat_rdbms_pool_connections",
+    "ecat_rdbms_pool_timeouts_total",
+    "ecat_rdbms_query_timeout_total",
+    "ecat_rdbms_transactions_leaked_total",
+];
+
+#[tokio::test]
+async fn both_backends_keep_their_samples_in_one_process() {
+    let sqlx = SqlxClient::connect("sqlite::memory:").await.unwrap();
+    let mssql = MssqlClient::connect("mssql://sa:pw@127.0.0.1:1433/db")
+        .await
+        .unwrap();
+
+    ecat_data_sqlx::register_pool_metrics("regression-sqlx", sqlx.pool());
+    ecat_data_mssql::register_pool_metrics("regression-mssql", mssql.pool());
+
+    let text = ecat_metrics::metrics_text();
+
+    for family in FAMILIES {
+        for backend in ["regression-sqlx", "regression-mssql"] {
+            assert!(
+                text.contains(&format!("{family}{{backend=\"{backend}\"")),
+                "缺 {family}{{backend=\"{backend}\"}} —— 后注册者的整份 collector                  被 AlreadyReg 顶掉了。实际输出:\n{text}"
+            );
+        }
+    }
+}
+```
+
+（`ecat_rdbms_pool_connections` 的标签是 `backend` **+ `state`**，实际行是 `...{backend="x",state="idle"}` —— 前缀匹配对它同样成立。四个家族统一用「家族 + backend」前缀，是为了让断言只依赖这两层语义。）
+
+```bash
+cargo test -p ecat-metrics --test rdbms_shared_families 2>&1 | tail -40
+```
+
+**这一步必须 FAILED。** 现在两个 crate 各有一份同名 collector，后注册的那份整份拿 `AlreadyReg`，**它的两个 backend 断言必挂**。**记录输出** —— 记下**挂的是哪一组 backend 标签**（它同时告诉你谁先注册）。这是本任务存在的证据。
+
+- [ ] **Step 4: `ecat-metrics/src/rdbms.rs`（四个家族的全进程唯一 collector）**
+
+```rust
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+
+//! 四个 `ecat_rdbms_*` 家族的**全进程唯一** collector（与 feature 无关）。
+//!
+//! 与 [`crate::outbound`] 同一个理由（见 `outbound.rs` 的模块文档与「出入 11」）：
+//! `crate::registry()` 是全进程一个 `Registry`，而 `Registry` 按「指标名 + 常量
+//! 标签」去重 —— **每个后端 crate 各建一份同名 collector，只会剩先注册的那份**，
+//! 后注册者的四个指标一条样本都不输出（`register()` 返回 `AlreadyReg`，调用方
+//! 通常 `let _ =` 掉）。批次 4 的 `ecat-data-sqlx` / `ecat-data-mssql` 正是这样
+//! 互相顶掉的（Task 3 修的就是它）。
+//!
+//! 所以这里只建一份 collector，各后端把**取数闭包**挂进来。指标名、HELP、
+//! 标签名与语义与批次 4 完全一致 —— 那是**已发布的遥测契约**。
+//!
+//! 为什么不直接收 `&Pool`：那会让 `ecat-metrics` 依赖 sqlx / deadpool，把两个
+//! 重型驱动拖进这个基础 crate。`Box<dyn Fn>` 只要求调用方在自己的闭包里捕获池。
+
+use prometheus::core::{Collector, Desc};
+use prometheus::proto::{Counter, Gauge, LabelPair, Metric, MetricFamily, MetricType};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
+/// 取连接池的 `(idle, active)`。
+///
+/// 两个数**一起**返回（而不是两个闭包）：它们是同一次池状态读取的两个投影，
+/// 分开取会在并发下读到不同瞬间的池，产出 `idle + active > size` 的假样本。
+pub type RdbmsConnectionsFn = Box<dyn Fn() -> (u64, u64) + Send + Sync>;
+
+/// 读一个进程级计数器的当前值。
+pub type RdbmsCounterFn = Box<dyn Fn() -> u64 + Send + Sync>;
+
+/// 把一个后端的数据源挂到全进程唯一的 collector 上。
+///
+/// `backend` 是标签值（`"primary"` / `"replica-1"` 之类）。同一个 `backend` 重复
+/// 注册**替换**（不叠加）：同一标签出现两份样本会被抓取端判为重复。
+pub fn register_rdbms_metrics(
+    backend: &'static str,
+    connections: RdbmsConnectionsFn,
+    pool_timeouts: RdbmsCounterFn,
+    query_timeouts: RdbmsCounterFn,
+    transactions_leaked: RdbmsCounterFn,
+) {
+    let rdbms = RDBMS.get_or_init(|| {
+        let rdbms = Arc::new(Rdbms::new());
+        // 与 ecat-metrics 自己的注册同款：AlreadyReg 只可能是名字撞车，而这里的
+        // 名字是全仓独占的（本函数是这四个家族唯一的写入口）。
+        let _ = crate::registry().register(Box::new(Registered(Arc::clone(&rdbms))));
+        rdbms
+    });
+    rdbms.add(Entry {
+        backend,
+        connections,
+        pool_timeouts,
+        query_timeouts,
+        transactions_leaked,
+    });
+}
+
+/// 真正注册进 registry 的那层壳。
+///
+/// 不能直接 `impl Collector for Arc<Rdbms>`：`Arc` 是外部类型，孤儿规则不允许
+/// （E0117）。包一层自有类型即可，内部仍是同一个 [`Rdbms`]。
+struct Registered(Arc<Rdbms>);
+
+impl Collector for Registered {
+    fn desc(&self) -> Vec<&Desc> {
+        self.0.descs.iter().collect()
+    }
+
+    fn collect(&self) -> Vec<MetricFamily> {
+        self.0.collect()
+    }
+}
+
+static RDBMS: OnceLock<Arc<Rdbms>> = OnceLock::new();
+
+/// 一个 backend 的数据源。
+struct Entry {
+    backend: &'static str,
+    connections: RdbmsConnectionsFn,
+    pool_timeouts: RdbmsCounterFn,
+    query_timeouts: RdbmsCounterFn,
+    transactions_leaked: RdbmsCounterFn,
+}
+
+struct Rdbms {
+    entries: Mutex<Vec<Entry>>,
+    descs: [Desc; 4],
+}
+
+impl Rdbms {
+    fn new() -> Self {
+        Self {
+            entries: Mutex::new(Vec::new()),
+            descs: [
+                desc(
+                    "ecat_rdbms_pool_connections",
+                    "Connections in the RDBMS connection pool",
+                    &["backend", "state"],
+                ),
+                desc(
+                    "ecat_rdbms_pool_timeouts_total",
+                    "Total RDBMS pool acquire timeouts",
+                    &["backend"],
+                ),
+                desc(
+                    "ecat_rdbms_query_timeout_total",
+                    "Total RDBMS query timeouts",
+                    &["backend"],
+                ),
+                desc(
+                    "ecat_rdbms_transactions_leaked_total",
+                    "Total RDBMS transactions dropped without commit or rollback",
+                    &["backend"],
+                ),
+            ],
+        }
+    }
+
+    fn add(&self, entry: Entry) {
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        match entries.iter_mut().find(|e| e.backend == entry.backend) {
+            Some(slot) => *slot = entry,
+            None => entries.push(entry),
+        }
+    }
+}
+
+impl Collector for Rdbms {
+    fn desc(&self) -> Vec<&Desc> {
+        self.descs.iter().collect()
+    }
+
+    fn collect(&self) -> Vec<MetricFamily> {
+        let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        let mut connections = Vec::with_capacity(entries.len() * 2);
+        let mut pool_timeouts = Vec::with_capacity(entries.len());
+        let mut query_timeouts = Vec::with_capacity(entries.len());
+        let mut leaked = Vec::with_capacity(entries.len());
+
+        // 闭包在这里被调 —— 取数发生在**抓取时**，不是注册时。
+        for e in entries.iter() {
+            let backend = e.backend;
+            let (idle, active) = (e.connections)();
+            connections.push(gauge(
+                labels(&[("backend", backend), ("state", "idle")]),
+                count(idle),
+            ));
+            connections.push(gauge(
+                labels(&[("backend", backend), ("state", "active")]),
+                count(active),
+            ));
+            pool_timeouts.push(counter(labels(&[("backend", backend)]), count((e.pool_timeouts)())));
+            query_timeouts.push(counter(
+                labels(&[("backend", backend)]),
+                count((e.query_timeouts)()),
+            ));
+            leaked.push(counter(
+                labels(&[("backend", backend)]),
+                count((e.transactions_leaked)()),
+            ));
+        }
+
+        vec![
+            family(
+                "ecat_rdbms_pool_connections",
+                "Connections in the RDBMS connection pool",
+                MetricType::GAUGE,
+                connections,
+            ),
+            family(
+                "ecat_rdbms_pool_timeouts_total",
+                "Total RDBMS pool acquire timeouts",
+                MetricType::COUNTER,
+                pool_timeouts,
+            ),
+            family(
+                "ecat_rdbms_query_timeout_total",
+                "Total RDBMS query timeouts",
+                MetricType::COUNTER,
+                query_timeouts,
+            ),
+            family(
+                "ecat_rdbms_transactions_leaked_total",
+                "Total RDBMS transactions dropped without commit or rollback",
+                MetricType::COUNTER,
+                leaked,
+            ),
+        ]
+    }
+}
+
+fn count(v: u64) -> f64 {
+    v as f64
+}
+
+fn desc(name: &str, help: &str, labels: &[&str]) -> Desc {
+    Desc::new(
+        name.to_string(),
+        help.to_string(),
+        labels.iter().map(|l| (*l).to_string()).collect(),
+        HashMap::new(),
+    )
+    .expect("指标名与标签名合法")
+}
+
+fn labels(pairs: &[(&str, &str)]) -> Vec<LabelPair> {
+    pairs
+        .iter()
+        .map(|(name, value)| {
+            let mut l = LabelPair::default();
+            l.set_name((*name).to_string());
+            l.set_value((*value).to_string());
+            l
+        })
+        .collect()
+}
+
+fn gauge(labels: Vec<LabelPair>, value: f64) -> Metric {
+    let mut m = Metric::default();
+    m.set_label(labels.into());
+    let mut g = Gauge::default();
+    g.set_value(value);
+    m.set_gauge(g);
+    m
+}
+
+fn counter(labels: Vec<LabelPair>, value: f64) -> Metric {
+    let mut m = Metric::default();
+    m.set_label(labels.into());
+    let mut c = Counter::default();
+    c.set_value(value);
+    m.set_counter(c);
+    m
+}
+
+fn family(name: &str, help: &str, kind: MetricType, metrics: Vec<Metric>) -> MetricFamily {
+    let mut f = MetricFamily::default();
+    f.set_name(name.to_string());
+    f.set_help(help.to_string());
+    f.set_field_type(kind);
+    f.set_metric(metrics.into());
+    f
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// 抓取后按 `指标名{backend="..."` 找样本值。找不到是 None —— 断言「压根没
+    /// 出现」与「值不对」是两码事，测试要能分开报。
+    fn sample(text: &str, prefix: &str) -> Option<f64> {
+        text.lines()
+            .find(|l| l.starts_with(prefix) && !l.starts_with('#'))
+            .and_then(|l| l.rsplit(' ').next())
+            .and_then(|v| v.parse().ok())
+    }
+
+    /// 取数闭包是**抓取时**调用的 —— 注册时快照一次的实现会停在旧值上。
+    /// 各用例用**互不相同**的 backend 标签：本模块的静态量与 registry 都是进程级的。
+    #[test]
+    fn metrics_are_read_live_at_scrape_time() {
+        static IDLE: AtomicU64 = AtomicU64::new(7);
+        register_rdbms_metrics(
+            "rdbms-live-test",
+            Box::new(move || (IDLE.load(Ordering::Relaxed), 0u64)),
+            Box::new(|| 0u64),
+            Box::new(|| 0u64),
+            Box::new(|| 0u64),
+        );
+
+        let read = || {
+            sample(
+                &crate::metrics_text(),
+                "ecat_rdbms_pool_connections{backend=\"rdbms-live-test\",state=\"idle\"}",
+            )
+        };
+        assert_eq!(read(), Some(7.0));
+        IDLE.store(9, Ordering::Relaxed);
+        assert_eq!(read(), Some(9.0), "注册时快照的实现会停在上一次的值");
+    }
+
+    /// 多个 backend 共存时**谁都不丢** —— 这是本模块存在的唯一理由
+    /// （「每 crate 一份 collector」的老做法在这里必红）。
+    #[test]
+    fn multiple_backends_coexist_in_one_registry() {
+        for (backend, base) in [("rdbms-multi-a", 1u64), ("rdbms-multi-b", 4u64)] {
+            register_rdbms_metrics(
+                backend,
+                Box::new(move || (base, 0u64)),
+                Box::new(move || base),
+                Box::new(move || base),
+                Box::new(move || base),
+            );
+        }
+
+        let text = crate::metrics_text();
+        for backend in ["rdbms-multi-a", "rdbms-multi-b"] {
+            for family in [
+                "ecat_rdbms_pool_connections",
+                "ecat_rdbms_pool_timeouts_total",
+                "ecat_rdbms_query_timeout_total",
+                "ecat_rdbms_transactions_leaked_total",
+            ] {
+                assert!(
+                    text.contains(&format!("{family}{{backend=\"{backend}\"")),
+                    "缺 {family}{{backend=\"{backend}\"}}，实际输出:\n{text}"
+                );
+            }
+        }
+    }
+
+    /// 同一个 backend 重复注册**替换**而不是叠加：同一标签出现两份样本会被抓取端判为重复。
+    #[test]
+    fn same_backend_registration_replaces_instead_of_duplicating() {
+        for value in [1u64, 2u64] {
+            register_rdbms_metrics(
+                "rdbms-dup-test",
+                Box::new(move || (value, 0u64)),
+                Box::new(move || value),
+                Box::new(move || value),
+                Box::new(move || value),
+            );
+        }
+
+        let text = crate::metrics_text();
+        let hits = text
+            .lines()
+            .filter(|l| l.contains("backend=\"rdbms-dup-test\""))
+            .count();
+        assert_eq!(hits, 5, "2 条 gauge（idle/active）+ 3 条 counter，一份不少一份不多:\n{text}");
+    }
+}
+```
+
+- [ ] **Step 5: `ecat-metrics/src/lib.rs` 挂 `mod` + 重导出 + **假绿防线**
+
+```rust
+mod rdbms;
+pub use rdbms::{RdbmsConnectionsFn, RdbmsCounterFn, register_rdbms_metrics};
+```
+
+⚠️ `mod rdbms;` **必须有** —— 漏了它 → 三条测试一条都不跑、`cargo test -p ecat-metrics` 照样绿。
+
+```bash
+cargo test -p ecat-metrics 2>&1 | grep -E '^test |^test result'
+```
+
+**单元测试数必须 +3。**
+
+- [ ] **Step 6: `ecat-data-sqlx/src/metrics.rs` 改挂数据源**
+
+把 `:19-237`（`use crate::pool::Pool;` 到 `fn family` 结束）整体替换为下面这段 —— **`POOL_TIMEOUTS` 与 `count_pool_timeout` 原样保留**（`db_err` 还在调 `count_pool_timeout`，测试也在读 `POOL_TIMEOUTS`），`Registered` / `Pools` / 六个私有 helper 全删：
+
+```rust
+use crate::pool::Pool;
+use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 取连接的累计超时次数（[`count_pool_timeout`] 递增）。
+///
+/// 不复用 [`QUERY_TIMEOUTS`]：那个数的是**查询**超时（连接已经拿到手），这里数的是
+/// **等连接**超时 —— 前者查慢查询、后者查池容量，混成一个指标会同时丢掉两条线索。
+static POOL_TIMEOUTS: AtomicU64 = AtomicU64::new(0);
+
+/// 记一次「等连接超时」。由 `db_err` 在见到 `sqlx::Error::PoolTimedOut` 时调用。
+pub(crate) fn count_pool_timeout() {
+    POOL_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// 注册池指标。`backend` 是标签值（`"primary"` / `"replica-1"` 之类）。
+///
+/// 幂等：重复调用只是多挂一个被观测的池；同一个 `backend` 重复注册则覆盖
+/// （避免同一标签出现两份样本）。
+///
+/// **四个家族的全进程唯一 collector 在 `ecat_metrics`**（`ecat-metrics/src/rdbms.rs`）：
+/// 本函数只把本 crate 的取数闭包挂上去。早期版本在这里自建 collector —— 那会与
+/// `ecat-data-mssql` 的同名家族互相顶掉（`Registry` 只留先注册的那一份，
+/// 后者的四个指标静默消失）。
+pub fn register_pool_metrics(backend: &'static str, pool: &Pool) {
+    // `Pool` 内部是 `Arc`，克隆只是多一个句柄；闭包要 `'static`，所以按值捕获。
+    let pool = pool.clone();
+    ecat_metrics::register_rdbms_metrics(
+        backend,
+        // 一次读取同时给出两个投影：分两次读会在并发下出现 idle + active > size。
+        Box::new(move || {
+            let idle = u64::from(pool.idle());
+            let size = u64::from(pool.size());
+            (idle, size.saturating_sub(idle))
+        }),
+        Box::new(count_pool_timeout),
+        // 三个 counter 都是**进程级**的，与具体池无关 —— 每个 backend 各出一份
+        // 同样的值（spec:726 的既定接法，不是缺陷）。
+        Box::new(|| QUERY_TIMEOUTS.load(Ordering::Relaxed)),
+        Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
+    );
+}
+```
+
+模块文档（`:3-17`）末段改一句：把「手写 [`Collector`]」换成「取数闭包挂在 `ecat_metrics` 的唯一 collector 上」。
+
+```bash
+cargo test -p ecat-data-sqlx --features metrics 2>&1 | grep -E '^test |^test result'
+```
+
+**与 Step 1 基线逐条比对**：测试名一个不少、全绿。⚠️ **下面那个 `#[cfg(test)] mod tests` 一个字都不用改**（它只用 `register_pool_metrics` / `POOL_TIMEOUTS` / `sample` / `assert_bracketed`）—— 需要改它才通过的话，说明公开行为变了，**停下报 lead**。
+
+- [ ] **Step 7: `ecat-data-mssql/src/metrics.rs` 改挂数据源**
+
+同样的删法：把 `:3-20`（模块文档）、`:22-29`（`use`）、`:43-58`（`register_pool_metrics`）、`:60-74`（`Registered`）、`:86-254`（`POOLS` / `Pools` / `impl Pools` / `Collector for Pools` / 六个私有 helper，到 `fn family` 结束 —— 后面 `:255` 就是 `#[cfg(test)]`）整体替换为下面这段，**保留** `POOL_TIMEOUTS` / `count_pool_timeout`（`:31-41`）与 `idle_active`（`:76-84`，含文档注释 —— 它的单元测试还要用）：
+
+```rust
+use crate::pool::MssqlManager;
+use deadpool::managed::Pool;
+use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// ...（这里放回原有的 POOL_TIMEOUTS 静态量、count_pool_timeout、idle_active，一字不改）
+
+/// 注册池指标。`backend` 是标签值（`"primary"` / `"replica-1"` 之类）。
+///
+/// 幂等：重复调用只是多挂一个被观测的池；同一个 `backend` 重复注册则覆盖
+/// （避免同一标签出现两份样本）。
+///
+/// **四个家族的全进程唯一 collector 在 `ecat_metrics`**（`ecat-metrics/src/rdbms.rs`）：
+/// 本函数只把本 crate 的取数闭包挂上去（同 `ecat-data-sqlx`）。早期版本在这里自建
+/// collector —— 与 sqlx 的同名家族互相顶掉，是 5.0.0 的已发布缺陷。
+pub fn register_pool_metrics(backend: &'static str, pool: &Pool<MssqlManager>) {
+    // deadpool 的 `Pool` 内部是 `Arc`，克隆很轻；闭包要 `'static`，按值捕获。
+    let pool = pool.clone();
+    ecat_metrics::register_rdbms_metrics(
+        backend,
+        // 一次 `status()` 同时给出两个投影：分两次读会在并发下出现
+        // idle + active > size 的假样本。
+        Box::new(move || idle_active(&pool.status())),
+        Box::new(count_pool_timeout),
+        Box::new(|| QUERY_TIMEOUTS.load(Ordering::Relaxed)),
+        Box::new(|| TRANSACTIONS_LEAKED.load(Ordering::Relaxed)),
+    );
+}
+```
+
+```bash
+cargo test -p ecat-data-mssql --features metrics 2>&1 | grep -E '^test |^test result'
+```
+
+**与 Step 1 基线逐条比对**：测试名一个不少、全绿（`idle_active_maps_deadpool_status` 也在里面）。
+
+- [ ] **Step 8: 跨 crate 回归测试转绿 + 空验收自证**
+
+```bash
+cargo test -p ecat-metrics --test rdbms_shared_families 2>&1 | grep -E '^test |^test result'
+```
+
+**必须 PASSED**（Step 3 是红的，这里是绿的 —— 这条红→绿就是本任务的验收）。
+
+空验收自证（**两条**）：
+
+1. 把 `register_rdbms_metrics` 里的 `RDBMS.get_or_init(..)` 改回「每次调用都 `crate::registry().register(..)`」（即每 crate 一份的老做法）→ `rdbms_shared_families` 必须重新 **FAILED**，且 `multiple_backends_coexist_in_one_registry` 也 FAILED。
+2. 把 `Rdbms::add` 的「找到同 backend 就替换」改成无条件 `push` → `same_backend_registration_replaces_instead_of_duplicating` 必须 FAILED。
+
+记录输出，还原。
+
+- [ ] **Step 9: 行数复核 + 闸门 + 提交**
+
+```bash
+find ecat-metrics/src ecat-metrics/tests ecat-data-sqlx/src ecat-data-mssql/src -name '*.rs' -exec awk 'END{if(NR>500) print FILENAME": "NR}' {} \;
+cargo fmt --all
+cargo fmt --all -- --check; echo "fmt rc=$?"
+cargo clippy -p ecat-metrics -p ecat-data-sqlx -p ecat-data-mssql --all-targets --all-features -- -D warnings; echo "clippy rc=$?"
+git add ecat-metrics ecat-data-sqlx/src/metrics.rs ecat-data-mssql/src/metrics.rs
+git commit -m "fix(ecat-metrics): ecat_rdbms_* 四指标全进程唯一 collector（修 sqlx/mssql 同名家族互相顶掉）"
+```
+
+> 交付物规模：`ecat-metrics/src/rdbms.rs` 约 330 行（含 3 条测试）、`tests/rdbms_shared_families.rs` 约 45 行；两个后端 crate 的 `metrics.rs` **各减约 120 行**（collector 搬走了，测试原样留着）。
+
+---
+
+## Task 4: `ecat-data-redis` —— 超时 + 熔断 + 指标
 
 **Files:**
 - Create: `ecat-data-redis/src/tests.rs`（`mod tests` 从 lib.rs 搬出并扩展）
@@ -1795,7 +2600,7 @@ git add ecat-data-redis
 git commit -m "feat(ecat-data-redis): 出站超时 + 熔断 + metrics feature，补多路复用能力边界文档"
 ```
 
-### ⚠️ Task 3 必读
+### ⚠️ Task 4 必读
 
 1. **`guarded` 一律「熔断在外、超时在内」**（出入 4）。若 lead 裁决维持 spec 顺序，这一节整体重写，且 `ecat-circuit-breaker` 要先修半开名额泄漏。
 2. **`0` = 禁用**，不是零超时。
@@ -1814,7 +2619,7 @@ git commit -m "feat(ecat-data-redis): 出站超时 + 熔断 + metrics feature，
 
 ---
 
-## Task 4: `ecat-data-clickhouse` —— 最难 case
+## Task 5: `ecat-data-clickhouse` —— 最难 case
 
 **Files:**
 - Create: `ecat-data-clickhouse/src/tsdb.rs`（`TsdbClient` 实现从 lib.rs 抽出）
@@ -2285,7 +3090,7 @@ cargo test -p ecat-data-clickhouse 2>&1 | grep -E '^test |^test result'
 
 - [ ] **Step 14: `src/metrics.rs`（feature 门控，薄）**
 
-与 Task 3 Step 12 **同构**：collector 在 `ecat-metrics`，本 crate 只挂数据源。**唯一差别**是本 crate 有**两条路径、两个超时维度**，所以超时指标出两份样本（一条 I/O 路径的失败不该被另一条的计数稀释）。
+与 Task 4 Step 12 **同构**：collector 在 `ecat-metrics`，本 crate 只挂数据源。**唯一差别**是本 crate 有**两条路径、两个超时维度**，所以超时指标出两份样本（一条 I/O 路径的失败不该被另一条的计数稀释）。
 
 `lib.rs` 加：
 
@@ -2314,7 +3119,7 @@ use ecat_data::{BackendKind, TIMEOUTS};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// 挂上 ClickHouse 的出站数据源。同 Task 3 Step 12，收熔断器而非整个 client。
+/// 挂上 ClickHouse 的出站数据源。同 Task 4 Step 12，收熔断器而非整个 client。
 pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
     register_one("clickhouse", BackendKind::Rdbms, Arc::clone(&breaker));
     register_one("clickhouse-tsdb", BackendKind::Tsdb, breaker);
@@ -2415,7 +3220,7 @@ git add ecat-data-clickhouse
 git commit -m "feat(ecat-data-clickhouse): 出站超时 + 熔断 + 并发上限 + metrics feature"
 ```
 
-### ⚠️ Task 4 必读
+### ⚠️ Task 5 必读
 
 1. **两个 `query` 同名**：`SqlExecutor::query` 与 `TsdbClient::query` 都在 `ClickhouseClient` 上。测试里调用必须写全路径（`ecat_data::SqlExecutor::query(&c, ..)`），否则编译器选哪个不明确。
 2. **`create_table` 不再单独包**（它在 `write` 的包装之内）。
@@ -2424,7 +3229,7 @@ git commit -m "feat(ecat-data-clickhouse): 出站超时 + 熔断 + 并发上限 
 
 ---
 
-## Task 5: 接入 checklist（**5b 的输入**）
+## Task 6: 接入 checklist（**5b 的输入**）
 
 **Files:**
 - Create: `docs/superpowers/checklists/backend-resilience-onboarding.md`
@@ -2439,7 +3244,7 @@ mkdir -p docs/superpowers/checklists
 
 **必须包含以下六节**（标题照抄，节内内容用**本批 Redis / ClickHouse 的真实验证结果**填，不要写成泛泛的注意事项）：
 
-1. `## 1. 加配置字段` —— `query_timeout_secs` / `breaker` / `max_concurrency` 三个字段的**逐字**声明 + `0 = 禁用` 转换函数 + 各自的行内 rustdoc。注明：`breaker` 字段依赖 `BreakerConfig: Deserialize`（Task 3 Step 5 加的）。
+1. `## 1. 加配置字段` —— `query_timeout_secs` / `breaker` / `max_concurrency` 三个字段的**逐字**声明 + `0 = 禁用` 转换函数 + 各自的行内 rustdoc。注明：`breaker` 字段依赖 `BreakerConfig: Deserialize`（Task 4 Step 5 加的）。
 2. `## 2. 包 run_with_timeout` —— **熔断在外、超时在内**的顺序，附一段说明（为什么不能反过来：卡死后端会打不开熔断器 + 半开名额泄漏）。给出 `guarded` 外壳的两个变体（`RdbmsError` / `ecat_errors::Error`）。
 3. `## 3. 加 Breaker 字段` —— 逐实例一个 `Arc<Breaker>`、`state()` 给路由用、`opened_total()` 给指标用、`guarded` 里闭包按需构造 future。
 4. `## 4. 注册指标` —— 三个指标名 + 维度 + 数据源表；**`collector` 在 `ecat-metrics`，本 crate 只写 ~15 行注册**（`[features] metrics = ["dep:ecat-metrics"]`，**不要**再各建 collector —— 会撞 `AlreadyReg`，见「出入 11」）；`backend` 标签值取**后端类别名**（`"redis"` / `"clickhouse"`；一个后端有两条 I/O 路径时按路径各出一份，如 `"clickhouse-tsdb"`）。附一句「为什么不能照抄批次 4 的每 crate 一份」。
@@ -2470,7 +3275,7 @@ git commit -m "docs(checklist): 出站韧性接入 checklist（5b 逐 crate 照�
 
 ---
 
-## Task 6: 文档（配置教程 + Redis 能力边界）
+## Task 7: 文档（配置教程 + Redis 能力边界）
 
 **Files:**
 - Modify: `docs/database-config-tutorial.md`
@@ -2530,13 +3335,13 @@ git commit -m "docs: 配置教程补 Redis/ClickHouse 的超时与熔断字段�
 
 ---
 
-## Task 7: CHANGELOG + 版本 6.0.0
+## Task 8: CHANGELOG + 版本 6.0.0
 
 **Files:**
 - Modify: `CHANGELOG.md`
-- Modify: `Cargo.toml`（workspace 版本）+ 37 个 crate 的内部 path 依赖引用
-- Modify: `Cargo.lock`
-- Modify: `README.md` / `README.en.md` + `docs/i18n/{12}/README.md`（各 2 处）
+- Modify: `Cargo.toml`（`[workspace.package]` 的版本行）+ 内部 path 依赖引用（**实测 38 个文件 / 86 处**；Task 3 会给 `ecat-metrics/Cargo.toml` 再加 2 处 ⇒ 39 / 88）
+- Modify: `Cargo.lock`（`cargo metadata` 重生成）
+- Modify: **14 份 README**（根 `README.md`、`README.en.md` + `docs/i18n/{ar,bn,de,en,es,fr,hi,id,ja,ko,pt,ru}/README.md`），**各 2 处 = 28 处**
 
 - [ ] **Step 1: CHANGELOG 加 6.0.0 段**
 
@@ -2546,27 +3351,50 @@ git commit -m "docs: 配置教程补 Redis/ClickHouse 的超时与熔断字段�
 
 新增：`BackendKind` / `TimeoutError` / `TIMEOUTS`、`map_breaker_error` 与 `breaker_error_to_backend_error` 公开、`Breaker::opened_total()` 与 `BreakerState::code()`、`BreakerConfig: Deserialize`、`ecat_metrics::register_outbound_metrics`（全进程唯一的出站 collector）、`RedisConfig` / `ClickhouseConfig` 三个新字段、`ecat-data-redis` 与 `ecat-data-clickhouse` 的 `metrics` feature 与 `ecat_outbound_*` 三个指标。
 
-- [ ] **Step 2: bump 前先核**
+- [ ] **Step 2: bump 前先核（**别信本计划的数，重新实测**）**
 
 ```bash
+echo "--- 含 5.0.0 的 Cargo.toml 文件数（写作时 38，Task 3 后 39）---"
+git ls-files '*Cargo.toml' | xargs grep -l '5\.0\.0' | wc -l
+echo "--- 5.0.0 出现总次数（写作时 87，Task 3 后 88）---"
+git ls-files '*Cargo.toml' | xargs grep -o '5\.0\.0' | wc -l
+echo "--- 非 ecat 开头的 5.0.0 行：必须只剩 workspace 版本行 ---"
 git ls-files '*Cargo.toml' | xargs grep -h '5\.0\.0' | grep -v '^ecat' | sort -u
+echo "--- README 族：必须是 14 / 28 ---"
+git ls-files 'README.md' 'README.en.md' 'docs/i18n/*/README.md' | wc -l
+git ls-files 'README.md' 'README.en.md' 'docs/i18n/*/README.md' | xargs grep -o '5\.0\.0' | wc -l
 ```
 
-**期望只剩一行** `version = "5.0.0"`（workspace 版本行）。若还有别的，说明有第三方依赖恰好也是 5.0.0，**停下来报给 lead**。
+**判读**（批次 4 的先例 + 本计划写作时的实测）：
+
+- 第三个命令**必须只剩一行** `version = "5.0.0"`（`[workspace.package]` 那行）。多出别的 ⇒ 有**第三方依赖**恰好是 5.0.0，下一步的 `sed` 会把它一起改掉 —— **停下来报 lead**。
+- 文件数 38 / 总次数 87 ⇒ **86 处是内部 path 依赖引用**（`ecat-data = { version = "5.0.0", path = "../ecat-data" }` 这种），加 `[workspace.package]` 1 处。
+- README 族 **14 份 × 2 = 28**。**漏 i18n 那 12 份是本仓库踩过的坑**（批次 4 漏过）—— 第三个数字不等于 28 就别往下走。
+- ⚠️ Task 3 会新增 2 处 `5.0.0`（`ecat-metrics/Cargo.toml` 的 dev-dep），所以执行时大概读到 **39 / 88**。**以你这次实测的数为准**。
 
 - [ ] **Step 3: bump 5.0.0 → 6.0.0**
 
 ```bash
+# Cargo.toml 里的 5.0.0 一律**带引号**（version = "5.0.0" / version = "5.0.0", path = ...），
+# 所以 sed 带上引号 —— 既精确命中版本号，也不会碰注释或 URL 里的裸 5.0.0。
 git ls-files '*Cargo.toml' | xargs sed -i 's/"5\.0\.0"/"6.0.0"/g'
+# README 里是 `v5.0.0` / `5.0.0` 混排（表格与正文），不带引号。
 sed -i 's/5\.0\.0/6.0.0/g' README.md README.en.md docs/i18n/*/README.md
-cargo metadata --format-version=1 --offline > /dev/null; echo "rc=$?"
 ```
 
-（实测：`Cargo.toml` 里 5.0.0 共 **87 处**、README 系 **14 份 × 2 处**。）
-
-- [ ] **Step 4: `cargo metadata` 会顺带重生成 `Cargo.lock`**
+复核（四条**都要**对，数字与 Step 2 对齐）：
 
 ```bash
+git ls-files '*Cargo.toml' | xargs grep -o '5\.0\.0' | wc -l     # 期望 0
+git ls-files '*Cargo.toml' | xargs grep -o '6\.0\.0' | wc -l     # 期望 == Step 2 的总次数
+grep -rc '5\.0\.0' README.md README.en.md docs/i18n/*/README.md  # 期望每份都是 0（14 行）
+git diff --stat | tail -1                                          # 期望 ~39 个 Cargo.toml + 14 份 README 的改动面
+```
+
+- [ ] **Step 4: `cargo metadata` 重生成 `Cargo.lock`（**必须在 bump 之后跑**）**
+
+```bash
+cargo metadata --format-version=1 --offline > /dev/null; echo "rc=$?"
 git diff --stat Cargo.lock
 ```
 
@@ -2579,10 +3407,10 @@ cargo test --workspace; echo "rc=$?"
 cargo test --workspace --doc 2>&1 | grep -E '^test result'; echo "rc=${PIPESTATUS[0]}"
 cargo fmt --all -- --check; echo "rc=$?"
 cargo clippy --workspace --all-targets -- -D warnings; echo "rc=$?"
-cargo test -p ecat-data-redis -p ecat-data-clickhouse -p ecat-data-sqlx -p ecat-data-mssql --all-features 2>&1 | grep -E '^test result'
+cargo test -p ecat-data-redis -p ecat-data-clickhouse -p ecat-data-sqlx -p ecat-data-mssql -p ecat-metrics --all-features 2>&1 | grep -E '^test result'
 ```
 
-**最后一条不能省**：三个 `metrics` feature 默认关，`cargo test --workspace` 用的是 feature **并集**（批次 3 的教训），但 `--all-features` 才是把两个新 metrics 模块真正编进来的那一次。
+**最后一条不能省**：三个 `metrics` feature 默认关，`cargo test --workspace` 用的是 feature **并集**（批次 3 的教训），但 `--all-features` 才是把两个新 metrics 模块真正编进来的那一次。`-p ecat-metrics` 也在里面 —— **Task 3 的跨 crate 回归测试（`tests/rdbms_shared_families.rs`）只有在两个后端的 metrics feature 同时开时才真正生效**，而 `--all-features` 正是那个条件。
 
 - [ ] **Step 6: 提交**
 
@@ -2598,28 +3426,34 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 
 | # | 判据 | 验证 |
 |---|---|---|
-| 1 | `cargo test --workspace` 全绿，测试数 ≥ 1096（批次 4 末值）+ 本批新增 | Task 7 Step 5 |
+| 1 | `cargo test --workspace` 全绿，测试数 ≥ 1096（批次 4 末值）+ 本批新增 | Task 8 Step 5 |
 | 2 | **13 个 `run_with_timeout` 调用点全部迁移**（实测数，非 spec 的 16） | `rg -n 'run_with_timeout\(' --type rust \| wc -l` 与 Task 1 Step 1 基线比对 |
 | 3 | `QUERY_TIMEOUTS` 在仓内**零残留**（除 CHANGELOG 的历史段） | `rg 'QUERY_TIMEOUTS' --type rust` 输出为空 |
 | 4 | **两个 `metrics.rs` 消费者在 `--features metrics` 下编译并测试通过** | Task 1 Step 8 最后一条 |
-| 5 | Redis 与 ClickHouse 各有**一条真超时**测试（断言 `DeadlineExceeded` / `Timeout`） | Task 3 Step 9、Task 4 Step 11 |
+| 5 | Redis 与 ClickHouse 各有**一条真超时**测试（断言 `DeadlineExceeded` / `Timeout`） | Task 4 Step 9、Task 5 Step 11 |
 | 6 | Redis 与 ClickHouse 各有**一条真熔断**测试（断言 `Open` **且** 快速返回的时间判据） | 同上 |
-| 7 | `TIMEOUTS` 分维度互不串（`Cache`/`Tsdb`/`Rdbms` 各一条断言） | Task 1 Step 2 + Task 4 Step 11 |
-| 8 | ClickHouse 并发上限可验证（N+1 并发、峰值 ≤ N） | Task 4 Step 11 |
-| 9 | `_with` 方法与 `transaction()` **不**触发熔断（两条把守测试） | Task 4 Step 11 |
-| 10 | 每个源文件 < 500 行（含新建的 `tests.rs` / `tsdb.rs` / `metrics.rs` / `resilience.rs` / `outbound.rs`） | 各 Task 的行数复核 |
-| 11 | `cargo clippy --workspace --all-targets -- -D warnings` rc=0 | Task 7 Step 5 |
-| 12 | checklist 落在 `docs/superpowers/checklists/backend-resilience-onboarding.md`，八节齐 | Task 5 Step 2 |
-| 13 | `database-config-tutorial.md` ×13 都含 `query_timeout_secs`，且**没有** `enabled` 这个不存在的字段 | Task 6 Step 4 + `grep -c 'enabled' docs/database-config-tutorial.md` |
-| 14 | 既有用户代码零改动：所有新字段都有默认值，`new()` / `connect()` 也拿到全部能力 | Task 3/4 的构造器步骤 |
-| 15 | **三个 `ecat_outbound_*` 指标只注册一份 collector**，多后端共存时不丢样本 | Task 2 Step 12 的 `multiple_backends_coexist_in_one_registry` |
-| 16 | 文档里写下的每个配置字段都真实存在于 `serde` 结构体上（无凭空字段） | Task 6 Step 1 的 ⚠️ + Task 7 Step 5 的 clippy |
+| 7 | `TIMEOUTS` 分维度互不串（`Cache`/`Tsdb`/`Rdbms` 各一条断言） | Task 1 Step 2 + Task 5 Step 11 |
+| 8 | ClickHouse 并发上限可验证（N+1 并发、峰值 ≤ N） | Task 5 Step 11 |
+| 9 | `_with` 方法与 `transaction()` **不**触发熔断（两条把守测试） | Task 5 Step 11 |
+| 10 | 每个源文件 < 500 行（含新建的 `tests.rs` / `tsdb.rs` / `metrics.rs` / `resilience.rs` / `outbound.rs` / `rdbms.rs` / `rdbms_shared_families.rs`） | 各 Task 的行数复核 |
+| 11 | `cargo clippy --workspace --all-targets -- -D warnings` rc=0 | Task 8 Step 5 |
+| 12 | checklist 落在 `docs/superpowers/checklists/backend-resilience-onboarding.md`，八节齐 | Task 6 Step 2 |
+| 13 | `database-config-tutorial.md` ×13 都含 `query_timeout_secs`，且**没有** `enabled` 这个不存在的字段 | Task 7 Step 4 + `grep -c 'enabled' docs/database-config-tutorial.md` |
+| 14 | 既有用户代码零改动：所有新字段都有默认值，`new()` / `connect()` 也拿到全部能力 | Task 4/5 的构造器步骤 |
+| 15 | **三个 `ecat_outbound_*` 指标只注册一份 collector**，多后端共存时不丢样本 | Task 2 Step 15 的 `multiple_backends_coexist_in_one_registry` |
+| 16 | 文档里写下的每个配置字段都真实存在于 `serde` 结构体上（无凭空字段） | Task 7 Step 1 的 ⚠️ + Task 8 Step 5 的 clippy |
+| **17** | **（追加 1）半开探测名额在 future 被取消时归还** —— `ProbesExhausted` 不再永久锁死；5.0.0 的缺陷有红→绿证据 | Task 2a Step 9 的 RED + Step 10 的 GREEN + Step 11 的空验收自证 |
+| **18** | **（追加 2）四个 `ecat_rdbms_*` 家族在两个 `metrics` feature 同时开启时样本都不丢**，且指标名/HELP/标签语义一字未改 | Task 3 Step 3 的 RED + Step 8 的 GREEN + `git diff` 里四个名字无改动 |
 
 **本批不做**（留 5b）：其余 10 个 HTTP 后端 + MongoDB 池配置；README 后端表；按实例（而非后端类别）的指标维度；延迟直方图；重试。
 
 **本批不做，且是判断不是遗漏**：Redis 多路复用换连接池（spec §6）、`RedisLock` 的 `DistributedLock` 路径（出入 9）、`ecat-middleware` 的 tower 层、Memcached。
 
-**本批发现但不修（报给 lead）**：`ecat-data-sqlx` 与 `ecat-data-mssql` 的 `ecat_rdbms_*` 四个指标 **有同一个撞名问题**（两者的 `register_pool_metrics` 注册同名 collector，同时开启 `metrics` feature 时后注册者静默消失）。修它要动两个批次 4 已验收的 crate，不在 5a 范围；「出入 11」的共用 collector 方案是它的现成解法。
+**本批发现但不修（报给 lead）**：
+
+- `ecat-data-sqlx` / `ecat-data-mssql` 的 `ecat_rdbms_*` 撞名 —— **已由 lead 裁决升级为 Task 3（追加 2），本批修**，不列在此处（原判断是「不在 5a 范围」，lead 推翻）。
+- 两个后端 crate 的 `[features] metrics = ["dep:ecat-metrics", "dep:prometheus"]` 里，`dep:prometheus` 在 Task 3 之后**变成未使用的直接依赖**（collector 搬去 `ecat-metrics` 了）。**本批不删**：feature 列表是对外可见的，删它超出「换注册方式」的范围。留作 5b 或独立清理。
+- 5b 的 10 个 HTTP 后端若各自 `metrics.rs` 自建 collector，会**原样复制**这个坑 —— 接入 checklist（Task 6）的第一节就是这条。
 
 ---
 
@@ -2629,6 +3463,8 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 
 | 步骤 | 结果 |
 |---|---|
+| 追加 1 的 RED 输出（Task 2a Step 9） | |
+| 追加 2 的 RED 输出（Task 3 Step 3） | |
 | `cargo test --workspace` | |
 | `cargo test --workspace --doc` | |
 | `cargo fmt --all -- --check` | |
