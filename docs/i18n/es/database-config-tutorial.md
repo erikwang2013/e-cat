@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | Reciclado de conexiones inactivas |
 | `max_lifetime_secs` | `u64` | `1800` | Vida máxima de una conexión |
 | `query_timeout_secs` | `u64` | `30` | Timeout por consulta; **0 = deshabilitado** |
+| `slow_query_ms` | `u64` | `1000` | Umbral de aviso de consulta lenta (ms); sin configurar = 1000, **0 = desactivado** (solo feature `tracing`) |
 | `test_before_acquire` | `bool` | `false` | Hacer ping antes de entregar la conexión |
 | `session_init` | `string[]` | Según dialecto | Sentencias de inicialización de sesión para cada conexión nueva |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // llamar una vez al arrancar
 ```
 
 Por qué hace falta: sqlx mantiene `min_connections` **de forma asíncrona en una tarea de fondo**, así que el retorno de `connect()` no garantiza que el pool esté lleno — la primera oleada de peticiones competiría con la tarea de fondo.
+
+#### Features de observabilidad (`metrics` / `health` / `tracing`)
+
+Las tres features están **desactivadas por defecto** (para no arrastrar axum — dependencia de `ecat-metrics` / `ecat-health` — al árbol de dependencias del núcleo); actívalas según necesidad. `ecat-data-mssql` ofrece las mismas tres.
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: tras registrarlo, el endpoint /metrics suma cuatro métricas —
+// ecat_rdbms_pool_connections (gauge, con state="idle"/"active"),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (todas counter, con etiqueta backend)
+register_pool_metrics("primary", db.pool());
+
+// health: sonda de conectividad SELECT 1, registrada en el readyz de /health
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+La feature `tracing` emite un warn cuando una consulta supera `slow_query_ms` (tiempo transcurrido + el SQL recortado a los primeros 200 caracteres). Ese campo solo lo lee esta feature: sin ella se sigue parseando, pero no tiene efecto.
 
 #### Hora y fecha: siempre RFC3339 UTC
 

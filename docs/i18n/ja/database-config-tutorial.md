@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | アイドル接続の回収 |
 | `max_lifetime_secs` | `u64` | `1800` | 接続の最長生存時間 |
 | `query_timeout_secs` | `u64` | `30` | クエリ単位のタイムアウト；**0 = 無効** |
+| `slow_query_ms` | `u64` | `1000` | スロークエリ警告のしきい値（ミリ秒）。未設定 = 1000、**0 = 出さない**（`tracing` feature のみ） |
 | `test_before_acquire` | `bool` | `false` | 接続を渡す前に ping するか |
 | `session_init` | `string[]` | ダイアレクト依存 | 新しい接続ごとのセッション初期化ステートメント |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // 起動時に一度だけ呼び出す
 ```
 
 必要な理由：sqlx の `min_connections` は**バックグラウンドタスクが非同期に維持**するため、`connect()` が返った時点で作成済みとは限りません —— 起動後の最初のリクエスト群がバックグラウンドタスクと競合します。
+
+#### 可観測性 feature（`metrics` / `health` / `tracing`）
+
+3 つの feature は**既定で無効**（`ecat-metrics` / `ecat-health` の依存である axum をコアの依存ツリーに入れないため）で、必要なときだけ有効にします。`ecat-data-mssql` も同じ 3 つを提供します。
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics：登録すると /metrics エンドポイントに 4 つの指標が追加されます ——
+// ecat_rdbms_pool_connections（gauge、state="idle"/"active" 付き）、
+// ecat_rdbms_pool_timeouts_total、ecat_rdbms_query_timeout_total、
+// ecat_rdbms_transactions_leaked_total（いずれも counter、backend ラベル付き）
+register_pool_metrics("primary", db.pool());
+
+// health：SELECT 1 の疎通プローブ。 /health の readyz に登録します
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+`tracing` feature はクエリが `slow_query_ms` を超えたときに warn を出します（所要時間 + 先頭 200 文字に切り詰めた SQL）。このフィールドを読むのはこの feature だけです —— 無効時もパースはされますが、効果はありません。
 
 #### 時間と日付：RFC3339 UTC に統一
 

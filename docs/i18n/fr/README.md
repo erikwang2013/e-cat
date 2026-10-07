@@ -134,27 +134,29 @@ Il offre une expérience de développement API-first, une architecture de compos
 
 ## Bases de données prises en charge
 
-| Catégorie | Base de données | Crate | Statut |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implémenté |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implémenté |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implémenté |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implémenté |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| Cache | Redis | `ecat-data-redis` | ✅ Implémenté |
-| Recherche | OpenSearch | `ecat-data-opensearch` | ✅ Implémenté |
-| Recherche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implémenté |
-| Cache | Memcached | `ecat-data-memcached` | ⚠️ Implémentation en mémoire (non destinée à la production, ne pas utiliser pour un cache persistant) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implémenté |
-| Graphe | Neo4j | `ecat-data-neo4j` | ✅ API REST |
-| Graphe | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST |
-| Graphe | ArangoDB | `ecat-data-arangodb` | ✅ API REST |
-| Séries temporelles | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP |
-| Séries temporelles | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST |
-| Séries temporelles | QuestDB | `ecat-data-questdb` | ✅ API HTTP |
-| Séries temporelles | TDengine | `ecat-data-tdengine` | ✅ API REST |
-| Documents | MongoDB | `ecat-data-mongodb` | ✅ Pilote natif |
-| Stockage d'objets | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| Catégorie | Base de données | Crate | Statut | Timeout/disjoncteur |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + disjoncteur |
+| Cache | Redis | `ecat-data-redis` | ✅ Implémenté | — |
+| Recherche | OpenSearch | `ecat-data-opensearch` | ✅ Implémenté | — |
+| Recherche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implémenté | — |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ Implémentation en mémoire (non destinée à la production, ne pas utiliser pour un cache persistant) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implémenté | ✅ disjoncteur |
+| Graphe | Neo4j | `ecat-data-neo4j` | ✅ API REST | — |
+| Graphe | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST | — |
+| Graphe | ArangoDB | `ecat-data-arangodb` | ✅ API REST | — |
+| Séries temporelles | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP | — |
+| Séries temporelles | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST | — |
+| Séries temporelles | QuestDB | `ecat-data-questdb` | ✅ API HTTP | ✅ disjoncteur |
+| Séries temporelles | TDengine | `ecat-data-tdengine` | ✅ API REST | — |
+| Documents | MongoDB | `ecat-data-mongodb` | ✅ Pilote natif | — |
+| Stockage d'objets | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **Timeout/disjoncteur** : Timeout = le délai d'expiration des requêtes `query_timeout_secs` (30 s par défaut, `0` = désactivé ; configurable aujourd'hui uniquement sur sqlx / mssql) ; disjoncteur = `ecat_data::CircuitBreakerExecutor` (enveloppe n'importe quel backend `SqlExecutor`). La séparation lecture/écriture s'appuie sur `ecat_data::RdbmsRouting` : les écritures vont au primaire, les lectures sont réparties en tourniquet sur les réplicas en **ignorant celles dont le disjoncteur est ouvert** ; si aucune réplica n'est disponible, repli sur le primaire par défaut, ou `RdbmsError::NoAvailableReplica` avec `fallback_to_primary(false)`.
 
 > Tous les backends de données sont abstraits via des traits unifiés (`RdbmsClient` pour les transactions, `SqlExecutor` pour l'exécution et le dialecte / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) ; il suffit d'importer le crate contrib correspondant. Chaque backend fournit une structure `XxxConfig` (`#[derive(Deserialize)]`) qui permet de charger les informations de connexion depuis un fichier de configuration JSON/YAML.
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-Features par défaut = `http+grpc` ; utilisez `--no-default-features --features <composant>` pour alléger l'arbre de dépendances. Liste complète des features : `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+Features par défaut = `http+grpc` ; utilisez `--no-default-features --features <composant>` pour alléger l'arbre de dépendances. Liste complète des features : `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### Middleware
 

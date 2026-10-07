@@ -134,27 +134,29 @@ API-first подход к разработке, плагинная архите�
 
 ## Поддерживаемые базы данных
 
-| Категория | База данных | Crate | Статус |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Реализовано |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Реализовано |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Реализовано |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Реализовано |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| Кэш | Redis | `ecat-data-redis` | ✅ Реализовано |
-| Поиск | OpenSearch | `ecat-data-opensearch` | ✅ Реализовано |
-| Поиск | Elasticsearch | `ecat-data-elasticsearch` | ✅ Реализовано |
-| Кэш | Memcached | `ecat-data-memcached` | ⚠️ Реализация в памяти (не для продакшена, не использовать для постоянного кэша) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Реализовано |
-| Граф | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| Граф | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| Граф | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| Врем. ряды | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| Врем. ряды | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| Врем. ряды | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| Врем. ряды | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| Документы | MongoDB | `ecat-data-mongodb` | ✅ Нативный драйвер |
-| Объекты | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| Категория | База данных | Crate | Статус | Таймаут/Circuit Breaker |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Таймаут + Circuit Breaker |
+| Кэш | Redis | `ecat-data-redis` | ✅ Реализовано | — |
+| Поиск | OpenSearch | `ecat-data-opensearch` | ✅ Реализовано | — |
+| Поиск | Elasticsearch | `ecat-data-elasticsearch` | ✅ Реализовано | — |
+| Кэш | Memcached | `ecat-data-memcached` | ⚠️ Реализация в памяти (не для продакшена, не использовать для постоянного кэша) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Реализовано | ✅ Circuit Breaker |
+| Граф | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| Граф | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| Граф | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| Врем. ряды | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| Врем. ряды | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| Врем. ряды | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Circuit Breaker |
+| Врем. ряды | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| Документы | MongoDB | `ecat-data-mongodb` | ✅ Нативный драйвер | — |
+| Объекты | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **Таймаут/Circuit Breaker**: Таймаут = таймаут запроса `query_timeout_secs` (по умолчанию 30 с, `0` = отключено; настраивается пока только для sqlx / mssql); предохранитель = `ecat_data::CircuitBreakerExecutor` (оборачивает любой бэкенд `SqlExecutor`). Разделение чтения/записи — `ecat_data::RdbmsRouting`: запись идёт в primary, чтение по кругу в реплики с **пропуском реплик с открытым предохранителем**; если ни одна реплика недоступна, по умолчанию идёт деградация на primary, а с `fallback_to_primary(false)` возвращается `RdbmsError::NoAvailableReplica`.
 
 > Все бэкенды данных абстрагированы через единый trait (`RdbmsClient` для транзакций, `SqlExecutor` для выполнения и диалекта / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); подключайте нужный contrib crate по необходимости. Каждый бэкенд предоставляет структуру `XxxConfig` (`#[derive(Deserialize)]`) для загрузки параметров подключения из JSON/YAML-конфигурации.
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-Features по умолчанию = `http+grpc`; используйте `--no-default-features --features <компонент>` для урезания дерева зависимостей. Полный список features: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+Features по умолчанию = `http+grpc`; используйте `--no-default-features --features <компонент>` для урезания дерева зависимостей. Полный список features: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### Middleware
 

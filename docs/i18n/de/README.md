@@ -134,27 +134,29 @@ Client-Anfrage
 
 ## Unterstützte Datenbanken
 
-| Kategorie | Datenbank | Crate | Status |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implementiert |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implementiert |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementiert |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementiert |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| Cache | Redis | `ecat-data-redis` | ✅ Implementiert |
-| Suche | OpenSearch | `ecat-data-opensearch` | ✅ Implementiert |
-| Suche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementiert |
-| Cache | Memcached | `ecat-data-memcached` | ⚠️ Speicherimplementierung (nicht produktionsreif, nicht für persistenten Cache verwenden) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementiert |
-| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST-API |
-| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST-API |
-| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST-API |
-| Zeitreihen | InfluxDB | `ecat-data-influxdb` | ✅ HTTP-API |
-| Zeitreihen | Apache IoTDB | `ecat-data-iotdb` | ✅ REST-API |
-| Zeitreihen | QuestDB | `ecat-data-questdb` | ✅ HTTP-API |
-| Zeitreihen | TDengine | `ecat-data-tdengine` | ✅ REST-API |
-| Dokumente | MongoDB | `ecat-data-mongodb` | ✅ Nativ-Treiber |
-| Objektspeicher | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| Kategorie | Datenbank | Crate | Status | Timeout/Circuit Breaker |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + Circuit Breaker |
+| Cache | Redis | `ecat-data-redis` | ✅ Implementiert | — |
+| Suche | OpenSearch | `ecat-data-opensearch` | ✅ Implementiert | — |
+| Suche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementiert | — |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ Speicherimplementierung (nicht produktionsreif, nicht für persistenten Cache verwenden) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementiert | ✅ Circuit Breaker |
+| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST-API | — |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST-API | — |
+| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST-API | — |
+| Zeitreihen | InfluxDB | `ecat-data-influxdb` | ✅ HTTP-API | — |
+| Zeitreihen | Apache IoTDB | `ecat-data-iotdb` | ✅ REST-API | — |
+| Zeitreihen | QuestDB | `ecat-data-questdb` | ✅ HTTP-API | ✅ Circuit Breaker |
+| Zeitreihen | TDengine | `ecat-data-tdengine` | ✅ REST-API | — |
+| Dokumente | MongoDB | `ecat-data-mongodb` | ✅ Nativ-Treiber | — |
+| Objektspeicher | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **Timeout/Circuit Breaker**: Timeout = das Abfrage-Timeout `query_timeout_secs` (Standard 30 s, `0` = deaktiviert; derzeit nur bei sqlx / mssql konfigurierbar); Circuit Breaker = `ecat_data::CircuitBreakerExecutor` (umschließt jedes `SqlExecutor`-Backend). Für die Lese-/Schreibtrennung dient `ecat_data::RdbmsRouting`: Schreibvorgänge gehen an das Primary, Lesevorgänge per Round-Robin an die Replicas und **überspringen Replicas mit offenem Circuit Breaker**; ist keine Replica verfügbar, wird standardmäßig auf das Primary zurückgefallen, mit `fallback_to_primary(false)` stattdessen `RdbmsError::NoAvailableReplica`.
 
 > Alle Daten-Backends sind über einheitliche Traits abstrahiert (`RdbmsClient` für Transaktionen, `SqlExecutor` für Ausführung und Dialekt / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); die jeweiligen Contrib-Crates werden nach Bedarf eingebunden. Jedes Backend stellt eine `XxxConfig`-Struktur (`#[derive(Deserialize)]`) bereit, die das Laden der Verbindungsinformationen aus JSON-/YAML-Konfigurationsdateien unterstützt.
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-Standard-Features = `http+grpc`; mit `--no-default-features --features <Komponente>` lässt sich der Abhängigkeitsbaum schlank halten. Vollständige Feature-Liste: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+Standard-Features = `http+grpc`; mit `--no-default-features --features <Komponente>` lässt sich der Abhängigkeitsbaum schlank halten. Vollständige Feature-Liste: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### Middleware
 

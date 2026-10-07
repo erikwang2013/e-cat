@@ -134,27 +134,29 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 
 ## সমর্থিত ডেটাবেস
 
-| ক্যাটাগরি | ডেটাবেস | Crate | অবস্থা |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ বাস্তবায়িত |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| ক্যাশ | Redis | `ecat-data-redis` | ✅ বাস্তবায়িত |
-| সার্চ | OpenSearch | `ecat-data-opensearch` | ✅ বাস্তবায়িত |
-| সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত |
-| ক্যাশ | Memcached | `ecat-data-memcached` | ⚠️ মেমরি-ভিত্তিক (প্রোডাকশন নয়, স্থায়ী ক্যাশের জন্য ব্যবহার করবেন না) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ বাস্তবায়িত |
-| গ্রাফ | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| গ্রাফ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| গ্রাফ | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| টাইম-সিরিজ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| টাইম-সিরিজ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| টাইম-সিরিজ | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| টাইম-সিরিজ | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার |
-| অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| ক্যাটাগরি | ডেটাবেস | Crate | অবস্থা | টাইমআউট/সার্কিট ব্রেকার |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| ক্যাশ | Redis | `ecat-data-redis` | ✅ বাস্তবায়িত | — |
+| সার্চ | OpenSearch | `ecat-data-opensearch` | ✅ বাস্তবায়িত | — |
+| সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত | — |
+| ক্যাশ | Memcached | `ecat-data-memcached` | ⚠️ মেমরি-ভিত্তিক (প্রোডাকশন নয়, স্থায়ী ক্যাশের জন্য ব্যবহার করবেন না) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ বাস্তবায়িত | ✅ সার্কিট ব্রেকার |
+| গ্রাফ | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| গ্রাফ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| গ্রাফ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| টাইম-সিরিজ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| টাইম-সিরিজ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| টাইম-সিরিজ | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ সার্কিট ব্রেকার |
+| টাইম-সিরিজ | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার | — |
+| অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **টাইমআউট/সার্কিট ব্রেকার**: টাইমআউট = কোয়েরি টাইমআউট `query_timeout_secs` (ডিফল্ট ৩০ সেকেন্ড, `0` = নিষ্ক্রিয়; আপাতত শুধু sqlx / mssql-এ কনফিগারযোগ্য); সার্কিট ব্রেকার = `ecat_data::CircuitBreakerExecutor` (যেকোনো `SqlExecutor` ব্যাকএন্ড মোড়ানো যায়)। রিড/রাইট বিভাজনে `ecat_data::RdbmsRouting`: লেখা প্রাইমারিতে, পড়া রেপ্লিকাগুলোতে পালাক্রমে, এবং **যে রেপ্লিকার সার্কিট ব্রেকার খোলা তা এড়িয়ে যাওয়া হয়**; কোনো রেপ্লিকা না থাকলে ডিফল্টভাবে প্রাইমারিতে অবনমন, আর `fallback_to_primary(false)` হলে `RdbmsError::NoAvailableReplica` ফেরে।
 
 > সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-ডিফল্ট features = `http+grpc`; `--no-default-features --features <কম্পোনেন্ট>` দিয়ে ডিপেন্ডেন্সি ট্রি কমানো যায়। সম্পূর্ণ feature তালিকা: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`।
+ডিফল্ট features = `http+grpc`; `--no-default-features --features <কম্পোনেন্ট>` দিয়ে ডিপেন্ডেন্সি ট্রি কমানো যায়। সম্পূর্ণ feature তালিকা: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`।
 
 ### মিডলওয়্যার
 

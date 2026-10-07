@@ -134,27 +134,29 @@
 
 ## قواعد البيانات المدعومة
 
-| الفئة | قاعدة البيانات | Crate | الحالة |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ مُنفَّذ |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ مُنفَّذ |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ مُنفَّذ |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ مُنفَّذ |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| التخزين المؤقت | Redis | `ecat-data-redis` | ✅ مُنفَّذ |
-| البحث | OpenSearch | `ecat-data-opensearch` | ✅ مُنفَّذ |
-| البحث | Elasticsearch | `ecat-data-elasticsearch` | ✅ مُنفَّذ |
-| التخزين المؤقت | Memcached | `ecat-data-memcached` | ⚠️ تنفيذ في الذاكرة (غير مناسب للإنتاج، لا تستخدمه للتخزين المؤقت الدائم) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ مُنفَّذ |
-| الرسوم البيانية | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| الرسوم البيانية | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| الرسوم البيانية | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| السلاسل الزمنية | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| السلاسل الزمنية | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| السلاسل الزمنية | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| السلاسل الزمنية | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| المستندات | MongoDB | `ecat-data-mongodb` | ✅ مشغّل أصلي |
-| التخزين الكائني | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| الفئة | قاعدة البيانات | Crate | الحالة | المهلة/قاطع الدائرة |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ المهلة + قاطع الدائرة |
+| التخزين المؤقت | Redis | `ecat-data-redis` | ✅ مُنفَّذ | — |
+| البحث | OpenSearch | `ecat-data-opensearch` | ✅ مُنفَّذ | — |
+| البحث | Elasticsearch | `ecat-data-elasticsearch` | ✅ مُنفَّذ | — |
+| التخزين المؤقت | Memcached | `ecat-data-memcached` | ⚠️ تنفيذ في الذاكرة (غير مناسب للإنتاج، لا تستخدمه للتخزين المؤقت الدائم) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ مُنفَّذ | ✅ قاطع الدائرة |
+| الرسوم البيانية | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| الرسوم البيانية | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| الرسوم البيانية | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| السلاسل الزمنية | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| السلاسل الزمنية | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| السلاسل الزمنية | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ قاطع الدائرة |
+| السلاسل الزمنية | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| المستندات | MongoDB | `ecat-data-mongodb` | ✅ مشغّل أصلي | — |
+| التخزين الكائني | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **المهلة/قاطع الدائرة**: المهلة = مهلة الاستعلام `query_timeout_secs` (الافتراضي 30 ثانية، `0` = معطّل؛ قابل للضبط حاليًا في sqlx / mssql فقط)؛ قاطع الدائرة = `ecat_data::CircuitBreakerExecutor` (يغلّف أي خلفية `SqlExecutor`). فصل القراءة/الكتابة يستخدم `ecat_data::RdbmsRouting`: الكتابة إلى الأساسي، والقراءة بالتناوب على النسخ المتماثلة مع **تخطي النسخ التي قاطع دائرتها مفتوح**؛ وعند تعذّر أي نسخة يتم افتراضيًا الرجوع إلى الأساسي، ومع `fallback_to_primary(false)` يُعاد `RdbmsError::NoAvailableReplica`.
 
 > جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
 
@@ -427,7 +429,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-الميزات الافتراضية = `http+grpc`؛ استخدم `--no-default-features --features <component>` لتقليص شجرة التبعيات. قائمة الميزات الكاملة: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+الميزات الافتراضية = `http+grpc`؛ استخدم `--no-default-features --features <component>` لتقليص شجرة التبعيات. قائمة الميزات الكاملة: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### الوسائط
 

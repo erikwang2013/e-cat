@@ -134,27 +134,29 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 
 ## समर्थित डेटाबेस
 
-| श्रेणी | डेटाबेस | Crate | स्थिति |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ लागू |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ लागू |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ लागू |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ लागू |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| कैश | Redis | `ecat-data-redis` | ✅ लागू |
-| खोज | OpenSearch | `ecat-data-opensearch` | ✅ लागू |
-| खोज | Elasticsearch | `ecat-data-elasticsearch` | ✅ लागू |
-| कैश | Memcached | `ecat-data-memcached` | ⚠️ मेमोरी कार्यान्वयन (प्रोडक्शन नहीं, स्थायी कैश के लिए उपयोग न करें) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ लागू |
-| ग्राफ | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| ग्राफ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| ग्राफ | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| टाइम-सीरीज़ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| टाइम-सीरीज़ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| टाइम-सीरीज़ | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| टाइम-सीरीज़ | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| दस्तावेज़ | MongoDB | `ecat-data-mongodb` | ✅ नेटिव ड्राइवर |
-| ऑब्जेक्ट स्टोरेज | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| श्रेणी | डेटाबेस | Crate | स्थिति | टाइमआउट/सर्किट ब्रेकर |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ लागू | ✅ टाइमआउट + सर्किट ब्रेकर |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ लागू | ✅ टाइमआउट + सर्किट ब्रेकर |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ लागू | ✅ टाइमआउट + सर्किट ब्रेकर |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ लागू | ✅ टाइमआउट + सर्किट ब्रेकर |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ टाइमआउट + सर्किट ब्रेकर |
+| कैश | Redis | `ecat-data-redis` | ✅ लागू | — |
+| खोज | OpenSearch | `ecat-data-opensearch` | ✅ लागू | — |
+| खोज | Elasticsearch | `ecat-data-elasticsearch` | ✅ लागू | — |
+| कैश | Memcached | `ecat-data-memcached` | ⚠️ मेमोरी कार्यान्वयन (प्रोडक्शन नहीं, स्थायी कैश के लिए उपयोग न करें) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ लागू | ✅ सर्किट ब्रेकर |
+| ग्राफ | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| ग्राफ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| ग्राफ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| टाइम-सीरीज़ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| टाइम-सीरीज़ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| टाइम-सीरीज़ | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ सर्किट ब्रेकर |
+| टाइम-सीरीज़ | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| दस्तावेज़ | MongoDB | `ecat-data-mongodb` | ✅ नेटिव ड्राइवर | — |
+| ऑब्जेक्ट स्टोरेज | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **टाइमआउट/सर्किट ब्रेकर**: टाइमआउट = क्वेरी टाइमआउट `query_timeout_secs` (डिफ़ॉल्ट 30 सेकंड, `0` = अक्षम; फ़िलहाल केवल sqlx / mssql में कॉन्फ़िगर करने योग्य); सर्किट ब्रेकर = `ecat_data::CircuitBreakerExecutor` (किसी भी `SqlExecutor` बैकएंड को लपेट सकता है)। पढ़ने/लिखने का पृथक्करण `ecat_data::RdbmsRouting` से होता है: लेखन प्राइमरी पर, पठन रेप्लिकाओं पर बारी-बारी, और **खुले सर्किट ब्रेकर वाली रेप्लिकाएँ छोड़ दी जाती हैं**; कोई रेप्लिका उपलब्ध न हो तो डिफ़ॉल्ट रूप से प्राइमरी पर डिग्रेड होता है, और `fallback_to_primary(false)` पर `RdbmsError::NoAvailableReplica` लौटता है।
 
 > सभी डेटा बैकएंड एकीकृत trait एब्स्ट्रैक्शन (`RdbmsClient` ट्रांज़ैक्शन के लिए, `SqlExecutor` निष्पादन और डायलेक्ट के लिए / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) के माध्यम से उपलब्ध हैं, आवश्यकता अनुसार संबंधित contrib crate आयात करें। प्रत्येक बैकएंड एक `XxxConfig` स्ट्रक्चर (`#[derive(Deserialize)]`) प्रदान करता है, जो JSON/YAML कॉन्फ़िगरेशन फ़ाइल से कनेक्शन जानकारी लोड करने का समर्थन करता है।
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-डिफ़ॉल्ट features = `http+grpc`; `--no-default-features --features <घटक>` से निर्भरता ट्री हल्का करें। पूर्ण feature सूची: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`।
+डिफ़ॉल्ट features = `http+grpc`; `--no-default-features --features <घटक>` से निर्भरता ट्री हल्का करें। पूर्ण feature सूची: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`।
 
 ### मिडलवेयर
 

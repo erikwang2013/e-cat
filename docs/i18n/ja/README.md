@@ -134,27 +134,29 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 
 ## 対応データベース
 
-| カテゴリ | データベース | Crate | ステータス |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 実装済み |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 実装済み |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 実装済み |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 実装済み |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| キャッシュ | Redis | `ecat-data-redis` | ✅ 実装済み |
-| 検索 | OpenSearch | `ecat-data-opensearch` | ✅ 実装済み |
-| 検索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 実装済み |
-| キャッシュ | Memcached | `ecat-data-memcached` | ⚠️ メモリ実装（非本番用、永続キャッシュには使用しないでください） |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 実装済み |
-| グラフ | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| グラフ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| グラフ | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| 時系列 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| 時系列 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| 時系列 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| 時系列 | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| ドキュメント | MongoDB | `ecat-data-mongodb` | ✅ ネイティブドライバ |
-| オブジェクトストレージ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| カテゴリ | データベース | Crate | ステータス | タイムアウト/サーキットブレーカー |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ タイムアウト + サーキットブレーカー |
+| キャッシュ | Redis | `ecat-data-redis` | ✅ 実装済み | — |
+| 検索 | OpenSearch | `ecat-data-opensearch` | ✅ 実装済み | — |
+| 検索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 実装済み | — |
+| キャッシュ | Memcached | `ecat-data-memcached` | ⚠️ メモリ実装（非本番用、永続キャッシュには使用しないでください） | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 実装済み | ✅ サーキットブレーカー |
+| グラフ | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| グラフ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| グラフ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| 時系列 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| 時系列 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| 時系列 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ サーキットブレーカー |
+| 時系列 | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| ドキュメント | MongoDB | `ecat-data-mongodb` | ✅ ネイティブドライバ | — |
+| オブジェクトストレージ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **タイムアウト/サーキットブレーカー**：タイムアウト = クエリタイムアウト `query_timeout_secs`（既定 30 秒、`0` = 無効。設定できるのは現在 sqlx / mssql のみ）；サーキットブレーカー = `ecat_data::CircuitBreakerExecutor`（任意の `SqlExecutor` バックエンドを包めます）。読み書き分離は `ecat_data::RdbmsRouting`：書き込みはプライマリ、読み取りはレプリカをラウンドロビンし、**サーキットブレーカーが開いているレプリカはスキップ**します。全レプリカが使用不可なら既定でプライマリに降格し、`fallback_to_primary(false)` なら `RdbmsError::NoAvailableReplica` を返します。
 
 > すべてのデータバックエンドは統一 trait 抽象（`RdbmsClient` はトランザクション、`SqlExecutor` は実行とダイアレクト / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）を通じて利用でき、必要に応じて対応する contrib crate を導入します。各バックエンドは `XxxConfig` 構造体（`#[derive(Deserialize)]`）を提供し、JSON/YAML 設定ファイルから接続情報をロードできます。
 
@@ -427,7 +429,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-デフォルト features = `http+grpc`；`--no-default-features --features <コンポーネント>` で依存ツリーを削減できます。完全な feature リスト：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`。
+デフォルト features = `http+grpc`；`--no-default-features --features <コンポーネント>` で依存ツリーを削減できます。完全な feature リスト：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`。
 
 ### ミドルウェア
 

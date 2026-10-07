@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | Daur ulang koneksi menganggur |
 | `max_lifetime_secs` | `u64` | `1800` | Masa hidup maksimum koneksi |
 | `query_timeout_secs` | `u64` | `30` | Timeout per kueri; **0 = nonaktif** |
+| `slow_query_ms` | `u64` | `1000` | Ambang peringatan kueri lambat (ms); tidak diisi = 1000, **0 = mati** (hanya feature `tracing`) |
 | `test_before_acquire` | `bool` | `false` | Ping dulu sebelum koneksi diberikan |
 | `session_init` | `string[]` | Sesuai dialek | Pernyataan inisialisasi sesi untuk setiap koneksi baru |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // panggil sekali saat start
 ```
 
 Kenapa perlu: sqlx memelihara `min_connections` **secara asinkron lewat tugas latar belakang**, jadi kembalinya `connect()` tidak menjamin pool sudah penuh — gelombang permintaan pertama akan berlomba dengan tugas latar belakang itu.
+
+#### Feature observabilitas (`metrics` / `health` / `tracing`)
+
+Ketiga feature **nonaktif secara default** (agar axum — dependensi `ecat-metrics` / `ecat-health` — tidak masuk ke pohon dependensi inti); aktifkan sesuai kebutuhan. `ecat-data-mssql` menyediakan ketiganya juga.
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: setelah didaftarkan, endpoint /metrics bertambah empat metrik —
+// ecat_rdbms_pool_connections (gauge, dengan state="idle"/"active"),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (semuanya counter, berlabel backend)
+register_pool_metrics("primary", db.pool());
+
+// health: probe konektivitas SELECT 1, didaftarkan ke readyz /health
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+Feature `tracing` menulis warn ketika kueri melewati `slow_query_ms` (waktu tempuh + SQL yang dipotong 200 karakter pertama). Field ini hanya dibaca oleh feature tersebut — saat feature mati tetap diparsing, tetapi tidak berefek.
 
 #### Waktu dan tanggal: seragam RFC3339 UTC
 

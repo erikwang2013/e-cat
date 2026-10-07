@@ -2,6 +2,8 @@
 
 > **更新（2026-08-07, v2.3.3）**: 剩余缺口 #1「mTLS 接入 transport」已完成——`HttpServer::tls` / `GrpcServer::tls` 基于 tokio-rustls / tonic rustls 真实生效（支持 CA 校验与强制客户端证书）；缺口 #2（Redis 限流）、#3（GitLab CI）此前已随 v2.3.0 完成。规划所列缺口至此全部落地。
 
+> **更新（2026-10-07, v4.2.0）**: v4.0 规划全部落地 —— `ecat-orm` / `ecat-orm-derive`、`ecat-data-mssql`、池增强（`CircuitBreakerExecutor` / `RdbmsRouting`）与可观测性三 feature（`metrics` / `health` / `tracing`）均已实现。
+
 **版本:** 2.4.2  
 **日期:** 2026-08-01  
 **crate 总数:** 55 · 全部规划已完成
@@ -51,11 +53,12 @@
 
 **e-cat 已达到生产可用成熟度。** 47 个 crate 涵盖微服务全栈：传输 → 中间件 → 服务发现 → 配置 → 安全 → 数据 → 消息 → 可观测 → DevOps → API 工具。剩余 3 项缺口为小工作量优化，无结构性缺失。
 
-## 数据后端覆盖（15 个）
+## 数据后端覆盖（16 个）
 
 | 类别 | 数据库 | Crate | 驱动方式 |
 |------|--------|-------|----------|
 | RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx（官方异步驱动） |
+| RDBMS | SQL Server | `ecat-data-mssql` | tiberius-ng + deadpool（TDS 驱动 + 连接池） |
 | 缓存 | Redis | `ecat-data-redis` | redis-rs（官方驱动） |
 | 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产） |
 | 文档 | MongoDB | `ecat-data-mongodb` | mongodb（官方驱动） |
@@ -75,8 +78,7 @@
 
 ## v4.0 规划（2026-10-05）— 完整 ORM 与 SQL Server
 
-> 状态：**进行中**。批次 1（`SqlExecutor` 拆分 + 原生池）已完成并合入分支
-> `feat/orm-mssql`；ORM、SQL Server 与池增强仍待实施。下表标注了各项当前进度。
+> 状态：**已完成**（v4.2.0）。ORM、SQL Server、池增强与可观测性均已落地，见下表。
 > 完整设计见 [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](superpowers/specs/2026-10-05-orm-and-mssql-design.md)。
 
 补齐两项结构性缺口：
@@ -87,7 +89,7 @@
    **天然覆盖全部 RDBMS 后端**。
 2. **SQL Server 后端**：sqlx 主库无 MSSQL 驱动（0.7 前移除，重写未发布），
    新增 `ecat-data-mssql`（`tiberius-ng` 0.13 + `deadpool` 0.13）——
-   数据后端**目标**从 15 个增至 **16 个**（当前仍为 15 个，SQL Server 未落地）。
+   数据后端从 15 个增至 **16 个**（`ecat-data-mssql`）。
 
 连带的地基改动：
 
@@ -95,8 +97,8 @@
 |---|---|---|
 | `ecat-data-sqlx` 弃用 `AnyPool` 改原生池 | 修复时间类型限制（不再需要 CAST 绕过）、去掉驱动安装 panic 面、启用 statement cache | ✅ 已完成（批次 1，`PgPool`/`MySqlPool`/`SqlitePool` 三路原生池） |
 | `ecat-data` 拆 `SqlExecutor` supertrait | 事务内可执行 SQL（当前 `Transaction` 只能 commit/rollback），为 ORM 与读写分离提供基础 | ✅ 已完成（批次 1） |
-| 连接池增强 | 查询超时、`warm_up()` 预热、智能 recycle、熔断（复用 `ecat-circuit-breaker`）、读写分离 `RdbmsRouting` | 🚧 部分：查询超时与 `warm_up()` 已完成；熔断与读写分离待批次 4 |
-| 可观测性 | 池指标接 `ecat-metrics`、池探活接 `ecat-health`、慢查询接 `ecat-tracing`（均为 opt-in feature） | ❌ 未做（批次 4） |
+| 连接池增强 | 查询超时、`warm_up()` 预热、智能 recycle、熔断（复用 `ecat-circuit-breaker`）、读写分离 `RdbmsRouting` | ✅ 已完成（批次 4 —— 查询超时与 `warm_up()` 见批次 1；`CircuitBreakerExecutor` 与 `RdbmsRouting` 见批次 4） |
+| 可观测性 | 池指标接 `ecat-metrics`、池探活接 `ecat-health`、慢查询接 `ecat-tracing`（均为 opt-in feature） | ✅ 已完成（批次 4；`metrics` / `health` / `tracing` 三个 feature 默认关闭） |
 
 **破坏性变更**：trait 拆分 + `SqlxClient::from_pool` 签名 + 移除 `AnyPool`——三项均已在分支
 `feat/orm-mssql` 上落地（批次 1，尚未发布）；发布时 workspace 版本 3.0.3 → **4.0.0**。

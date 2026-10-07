@@ -2,6 +2,8 @@
 
 > **업데이트 (2026-08-07, v2.3.3)**: 남은 격차 #1「mTLS transport 연동」완료 — `HttpServer::tls` / `GrpcServer::tls`가 tokio-rustls / tonic rustls 기반으로 실제 동작(CA 검증과 클라이언트 인증서 강제 지원); 격차 #2(Redis rate limit), #3(GitLab CI)은 이전에 v2.3.0과 함께 완료. 계획에 명시된 격차가 이로써 전부 구현되었습니다.
 
+> **업데이트(2026-10-07, v4.2.0)**: v4.0 계획이 모두 완료되었습니다 — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, 풀 강화(`CircuitBreakerExecutor` / `RdbmsRouting`), 관측성 3개 feature(`metrics` / `health` / `tracing`)가 모두 구현되었습니다.
+
 **버전:** 2.4.2  
 **날짜:** 2026-08-01  
 **crate 총수:** 55 · 모든 계획 완료
@@ -51,11 +53,12 @@
 
 **e-cat은 프로덕션 사용 가능한 성숙도에 도달했습니다.** 47개 crate가 마이크로서비스 풀스택을 커버합니다: 전송 → 미들웨어 → 서비스 디스커버리 → 설정 → 보안 → 데이터 → 메시지 → 관측성 → DevOps → API 도구. 남은 3개 격차는 소규모 작업량 최적화이며, 구조적 결함은 없습니다.
 
-## 데이터 백엔드 커버리지 (15개)
+## 데이터 백엔드 커버리지 (16개)
 
 | 카테고리 | 데이터베이스 | Crate | 드라이버 방식 |
 |------|--------|-------|----------|
 | RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx (공식 비동기 드라이버) |
+| RDBMS | SQL Server | `ecat-data-mssql` | tiberius-ng + deadpool (TDS 드라이버 + 커넥션 풀) |
 | 캐시 | Redis | `ecat-data-redis` | redis-rs (공식 드라이버) |
 | 캐시 | Memcached | `ecat-data-memcached` | ⚠️ 메모리 구현 (비프로덕션) |
 | 문서 | MongoDB | `ecat-data-mongodb` | mongodb (공식 드라이버) |
@@ -75,9 +78,7 @@
 
 ## v4.0 계획 (2026-10-05) — 완전한 ORM과 SQL Server
 
-> 상태: **진행 중**. 배치 1(`SqlExecutor` 분리 + 네이티브 풀)은 완료되어 브랜치
-> `feat/orm-mssql`에 병합되었습니다. ORM, SQL Server, 풀 강화는 아직 남아 있습니다.
-> 각 항목의 현재 진행 상황은 아래 표에 표시했습니다.
+> 상태: **완료**(v4.2.0). ORM, SQL Server, 풀 강화, 관측성이 모두 구현되었습니다(아래 표 참조).
 > 전체 설계는 [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md) 참조.
 
 두 가지 구조적 격차를 채웁니다:
@@ -88,8 +89,8 @@
    마이그레이션) + `ecat-orm-derive`를 추가합니다. 통합 `SqlExecutor` trait 위에 구축되어
    **모든 RDBMS 백엔드를 자연스럽게 커버합니다**.
 2. **SQL Server 백엔드**: sqlx 본류에는 MSSQL 드라이버가 없습니다(0.7 이전 제거, 재작성 미공개).
-   v4.0에서 `ecat-data-mssql`(`tiberius-ng` 0.13 + `deadpool` 0.13)을 추가합니다——
-   데이터 백엔드는 **목표** 기준 15개에서 **16개**로(현재는 여전히 15개, SQL Server는 아직 미포함).
+   v4.0에서 `ecat-data-mssql`(`tiberius-ng` 0.13 + `deadpool` 0.13)을 추가했습니다——
+   데이터 백엔드는 15개에서 **16개**로 늘었습니다(`ecat-data-mssql`).
 
 관련 기반 변경:
 
@@ -97,8 +98,8 @@
 |---|---|---|
 | `ecat-data-sqlx`가 `AnyPool`을 버리고 네이티브 풀로 전환 | 시간 타입 제한 수정(더 이상 CAST 우회 불필요), 드라이버 설치 panic 표면 제거, statement cache 활성화 | ✅ 완료(배치 1, `PgPool`/`MySqlPool`/`SqlitePool` 3종 네이티브 풀) |
 | `ecat-data`가 `SqlExecutor` supertrait 분리 | 트랜잭션 내부에서 SQL 실행 가능(현재 `Transaction`은 commit/rollback만). ORM과 읽기/쓰기 분리의 기반 | ✅ 완료(배치 1) |
-| 커넥션 풀 강화 | 쿼리 타임아웃, `warm_up()` 웜업, 지능형 recycle, 서킷 브레이커(`ecat-circuit-breaker` 재사용), 읽기/쓰기 분리 `RdbmsRouting` | 🚧 부분: 쿼리 타임아웃과 `warm_up()` 완료; 서킷 브레이커와 읽기/쓰기 분리는 배치 4 대기 |
-| 관측성 | 풀 메트릭을 `ecat-metrics`로, 풀 헬스 체크를 `ecat-health`로, 슬로우 쿼리를 `ecat-tracing`으로(모두 opt-in feature) | ❌ 미착수(배치 4) |
+| 커넥션 풀 강화 | 쿼리 타임아웃, `warm_up()` 웜업, 지능형 recycle, 서킷 브레이커(`ecat-circuit-breaker` 재사용), 읽기/쓰기 분리 `RdbmsRouting` | ✅ 완료(배치 4 — 쿼리 타임아웃과 `warm_up()`은 배치 1, `CircuitBreakerExecutor`와 `RdbmsRouting`은 배치 4) |
+| 관측성 | 풀 메트릭을 `ecat-metrics`로, 풀 헬스 체크를 `ecat-health`로, 슬로우 쿼리를 `ecat-tracing`으로(모두 opt-in feature) | ✅ 완료(배치 4, `metrics` / `health` / `tracing` 3개 feature는 기본 비활성) |
 
 **호환성을 깨는 변경**: trait 분리 + `SqlxClient::from_pool` 시그니처 + `AnyPool` 제거——세 가지 모두
 브랜치 `feat/orm-mssql`에 반영됨(배치 1, 미출시); 릴리스 시 workspace 버전 3.0.3 → **4.0.0**.

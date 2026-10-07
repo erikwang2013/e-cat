@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | নিষ্ক্রিয় সংযোগ ফিরিয়ে নেওয়া |
 | `max_lifetime_secs` | `u64` | `1800` | সংযোগের সর্বোচ্চ আয়ু |
 | `query_timeout_secs` | `u64` | `30` | প্রতি কুয়েরিতে টাইমআউট; **0 = নিষ্ক্রিয়** |
+| `slow_query_ms` | `u64` | `1000` | স্লো কুয়েরি সতর্কতার থ্রেশহোল্ড (মিলিসেকেন্ড); সেট না থাকলে = 1000, **0 = বন্ধ** (শুধু `tracing` feature) |
 | `test_before_acquire` | `bool` | `false` | সংযোগ দেওয়ার আগে ping করা হবে কি না |
 | `session_init` | `string[]` | ডায়ালেক্ট অনুযায়ী | প্রতিটি নতুন সংযোগের সেশন ইনিশিয়ালাইজেশন স্টেটমেন্ট |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // শুরুর সময় একবার কল �
 ```
 
 কেন দরকার: sqlx `min_connections` **ব্যাকগ্রাউন্ড টাস্ক দিয়ে অ্যাসিঙ্ক্রোনাসভাবে** রক্ষণাবেক্ষণ করে, তাই `connect()` ফেরার সময় পুল ভরা আছে তার নিশ্চয়তা নেই — শুরুর পর অনুরোধের প্রথম ঢেউ ব্যাকগ্রাউন্ড টাস্কের সাথে দৌড়ে যাবে।
+
+#### অবজারভেবিলিটি feature (`metrics` / `health` / `tracing`)
+
+তিনটি feature **ডিফল্টে বন্ধ** (যাতে axum — `ecat-metrics` / `ecat-health`-এর নির্ভরতা — কোর নির্ভরতা ট্রিতে না ঢোকে); প্রয়োজনমতো চালু করুন। `ecat-data-mssql`-ও একই তিনটি দেয়।
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: নিবন্ধন করলে /metrics এন্ডপয়েন্টে চারটি মেট্রিক যোগ হয় —
+// ecat_rdbms_pool_connections (gauge, state="idle"/"active" সহ),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (সবই counter, backend লেবেলসহ)
+register_pool_metrics("primary", db.pool());
+
+// health: SELECT 1 সংযোগ পরীক্ষা, /health-এর readyz-এ নিবন্ধিত
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+`tracing` feature কুয়েরি `slow_query_ms` ছাড়ালে warn লেখে (ব্যয়িত সময় + প্রথম ২০০ অক্ষরে কাটা SQL)। এই ফিল্ড কেবল এই feature-ই পড়ে — বন্ধ থাকলেও পার্স হয়, তবে কার্যকর নয়।
 
 #### সময় ও তারিখ: একরূপে RFC3339 UTC
 

@@ -2,6 +2,8 @@
 
 > **Actualización (2026-08-07, v2.3.3)**: la brecha restante #1 «mTLS en transport» está completada: `HttpServer::tls` / `GrpcServer::tls` funcionan realmente con tokio-rustls / tonic rustls (soporte de verificación de CA y certificado de cliente obligatorio); las brechas #2 (límite de tasa con Redis) y #3 (GitLab CI) ya se completaron con v2.3.0. Con esto, todas las brechas del plan están implementadas.
 
+> **Actualización (2026-10-07, v4.2.0)**: el plan v4.0 está completado — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, las mejoras del pool (`CircuitBreakerExecutor` / `RdbmsRouting`) y las tres features de observabilidad (`metrics` / `health` / `tracing`) ya están implementados.
+
 **Versión:** 2.4.2  
 **Fecha:** 2026-08-01  
 **Total de crates:** 55 · toda la planificación completada
@@ -51,11 +53,12 @@
 
 **e-cat ha alcanzado la madurez de producción.** Los 47 crates cubren la pila completa de microservicios: transporte → middleware → descubrimiento de servicios → configuración → seguridad → datos → mensajería → observabilidad → DevOps → herramientas de API. Las 3 brechas restantes son optimizaciones de poco esfuerzo, sin carencias estructurales.
 
-## Cobertura de backends de datos (15)
+## Cobertura de backends de datos (16)
 
 | Categoría | Base de datos | Crate | Forma de driver |
 |------|--------|-------|----------|
 | RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx (driver asíncrono oficial) |
+| RDBMS | SQL Server | `ecat-data-mssql` | tiberius-ng + deadpool (driver TDS + pool de conexiones) |
 | Caché | Redis | `ecat-data-redis` | redis-rs (driver oficial) |
 | Caché | Memcached | `ecat-data-memcached` | ⚠️ implementación en memoria (no apta para producción) |
 | Documentos | MongoDB | `ecat-data-mongodb` | mongodb (driver oficial) |
@@ -75,9 +78,7 @@
 
 ## Plan v4.0 (2026-10-05) — ORM completo y SQL Server
 
-> Estado: **en curso**. El lote 1 (división de `SqlExecutor` + pools nativos) está completado y
-> fusionado en la rama `feat/orm-mssql`; el ORM, SQL Server y las mejoras del pool aún están
-> pendientes. El progreso actual de cada punto se marca a continuación.
+> Estado: **completado** (v4.2.0). El ORM, SQL Server, las mejoras del pool y la observabilidad ya están implementados — véase la tabla siguiente.
 > Diseño completo: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Quedan dos brechas estructurales por cerrar:
@@ -90,8 +91,7 @@ Quedan dos brechas estructurales por cerrar:
    RDBMS**.
 2. **Backend SQL Server**: el sqlx principal no tiene driver MSSQL (eliminado antes de 0.7,
    reescritura sin publicar); v4.0 añade `ecat-data-mssql` (`tiberius-ng` 0.13 + `deadpool` 0.13) —
-   los backends de datos **objetivo** de 15 a **16** (actualmente siguen siendo 15, SQL Server aún no
-   está incluido).
+   los backends de datos pasaron de 15 a **16** (`ecat-data-mssql`).
 
 Cambios de base asociados:
 
@@ -99,8 +99,8 @@ Cambios de base asociados:
 |---|---|---|
 | `ecat-data-sqlx` abandona `AnyPool` por pools nativos | Corrige las limitaciones de tipos temporales (ya no hace falta el rodeo con CAST), elimina la superficie de panic al instalar el driver, activa el statement cache | ✅ Completado (lote 1, pools nativos `PgPool`/`MySqlPool`/`SqlitePool`) |
 | `ecat-data` extrae el supertrait `SqlExecutor` | SQL ejecutable dentro de transacciones (`Transaction` actualmente solo hace commit/rollback); base para el ORM y la separación lectura/escritura | ✅ Completado (lote 1) |
-| Mejoras del pool de conexiones | Tiempo de espera de consulta, precalentamiento `warm_up()`, recycle inteligente, cortacircuitos (reutiliza `ecat-circuit-breaker`), separación lectura/escritura `RdbmsRouting` | 🚧 Parcial: tiempo de espera y `warm_up()` completados; cortacircuitos y separación lectura/escritura pendientes (lote 4) |
-| Observabilidad | Métricas del pool a `ecat-metrics`, sondas de salud del pool a `ecat-health`, consultas lentas a `ecat-tracing` (todas con feature opt-in) | ❌ No iniciado (lote 4) |
+| Mejoras del pool de conexiones | Tiempo de espera de consulta, precalentamiento `warm_up()`, recycle inteligente, cortacircuitos (reutiliza `ecat-circuit-breaker`), separación lectura/escritura `RdbmsRouting` | ✅ Completado (lote 4 — tiempo de espera y `warm_up()` en el lote 1; `CircuitBreakerExecutor` y `RdbmsRouting` en el lote 4) |
+| Observabilidad | Métricas del pool a `ecat-metrics`, sondas de salud del pool a `ecat-health`, consultas lentas a `ecat-tracing` (todas con feature opt-in) | ✅ Completado (lote 4; las features `metrics` / `health` / `tracing` están desactivadas por defecto) |
 
 **Cambios incompatibles**: división del trait + firma de `SqlxClient::from_pool` + eliminación de
 `AnyPool` — los tres ya están aplicados en la rama `feat/orm-mssql` (lote 1, aún no publicado);

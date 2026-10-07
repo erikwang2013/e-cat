@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | निष्क्रिय कनेक्शन की वापसी |
 | `max_lifetime_secs` | `u64` | `1800` | कनेक्शन का अधिकतम जीवनकाल |
 | `query_timeout_secs` | `u64` | `30` | प्रति क्वेरी टाइमआउट; **0 = अक्षम** |
+| `slow_query_ms` | `u64` | `1000` | स्लो क्वेरी चेतावनी सीमा (मिलीसेकंड); सेट न हो = 1000, **0 = बंद** (केवल `tracing` feature) |
 | `test_before_acquire` | `bool` | `false` | कनेक्शन देने से पहले ping करना है या नहीं |
 | `session_init` | `string[]` | डायलेक्ट अनुसार | हर नए कनेक्शन के लिए सेशन इनिशियलाइज़ेशन कथन |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // शुरू होते समय एक बार �
 ```
 
 क्यों ज़रूरी है: sqlx `min_connections` को **बैकग्राउंड टास्क द्वारा असिंक्रोनस रूप से** बनाए रखता है, इसलिए `connect()` लौटते समय यह गारंटी नहीं कि पूल भर चुका है — शुरू के बाद अनुरोधों की पहली लहर बैकग्राउंड टास्क से होड़ करेगी।
+
+#### अवलोकनीयता feature (`metrics` / `health` / `tracing`)
+
+तीनों feature **डिफ़ॉल्ट रूप से बंद** हैं (ताकि axum — जो `ecat-metrics` / `ecat-health` की निर्भरता है — कोर निर्भरता ट्री में न आए); आवश्यकता अनुसार चालू करें। `ecat-data-mssql` भी वही तीनों देता है।
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: रजिस्टर करने पर /metrics एंडपॉइंट में चार मेट्रिक्स जुड़ जाते हैं —
+// ecat_rdbms_pool_connections (gauge, state="idle"/"active" के साथ),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (सभी counter, backend लेबल सहित)
+register_pool_metrics("primary", db.pool());
+
+// health: SELECT 1 कनेक्टिविटी प्रोब, /health के readyz में पंजीकृत
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+`tracing` feature क्वेरी के `slow_query_ms` से अधिक होने पर warn लिखता है (लगा समय + पहले 200 अक्षरों तक काटा गया SQL)। यह फ़ील्ड केवल यही feature पढ़ता है — बंद रहने पर भी पार्स होता है, पर प्रभाव नहीं डालता।
 
 #### समय और दिनांक: एकरूप RFC3339 UTC
 

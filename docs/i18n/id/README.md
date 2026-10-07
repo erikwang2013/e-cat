@@ -134,27 +134,29 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 
 ## Database yang Didukung
 
-| Kategori | Database | Crate | Status |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Terimplementasi |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Terimplementasi |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Terimplementasi |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Terimplementasi |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| Cache | Redis | `ecat-data-redis` | ✅ Terimplementasi |
-| Pencarian | OpenSearch | `ecat-data-opensearch` | ✅ Terimplementasi |
-| Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi |
-| Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementasi memori (bukan produksi, jangan gunakan untuk cache persisten) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Terimplementasi |
-| Graf | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| Graf | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| Graf | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| Time-series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| Time-series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| Time-series | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| Time-series | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native |
-| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| Kategori | Database | Crate | Status | Timeout/pemutus sirkuit |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + pemutus sirkuit |
+| Cache | Redis | `ecat-data-redis` | ✅ Terimplementasi | — |
+| Pencarian | OpenSearch | `ecat-data-opensearch` | ✅ Terimplementasi | — |
+| Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi | — |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementasi memori (bukan produksi, jangan gunakan untuk cache persisten) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Terimplementasi | ✅ pemutus sirkuit |
+| Graf | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| Graf | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| Graf | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| Time-series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| Time-series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| Time-series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ pemutus sirkuit |
+| Time-series | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native | — |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **Timeout/pemutus sirkuit**: Timeout = timeout kueri `query_timeout_secs` (default 30 detik, `0` = nonaktif; saat ini hanya dapat dikonfigurasi pada sqlx / mssql); pemutus sirkuit = `ecat_data::CircuitBreakerExecutor` (membungkus backend `SqlExecutor` apa pun). Pemisahan baca/tulis memakai `ecat_data::RdbmsRouting`: tulis ke primary, baca bergiliran ke replika dan **melewati replika yang pemutus sirkuitnya terbuka**; bila tidak ada replika yang tersedia, default-nya turun ke primary, dan dengan `fallback_to_primary(false)` mengembalikan `RdbmsError::NoAvailableReplica`.
 
 > Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-Default features = `http+grpc`; gunakan `--no-default-features --features <komponen>` untuk mengecilkan pohon dependensi. Daftar feature lengkap: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+Default features = `http+grpc`; gunakan `--no-default-features --features <komponen>` untuk mengecilkan pohon dependensi. Daftar feature lengkap: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### Middleware
 

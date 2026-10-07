@@ -134,27 +134,29 @@ Ecat中文名：一只猫
 
 ## 支持的数据库
 
-| 类别 | 数据库 | Crate | 状态 |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 |
-| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 |
-| 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 |
-| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 |
-| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| 类别 | 数据库 | Crate | 状态 | 超时/熔断 |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ 超时 + 熔断 |
+| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 | — |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 | — |
+| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 | — |
+| 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 | ✅ 熔断 |
+| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 熔断 |
+| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 | — |
+| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **超时/熔断**：超时 = 查询超时 `query_timeout_secs`（默认 30 秒，`0` = 禁用；目前仅 sqlx / mssql 可配）；熔断 = `ecat_data::CircuitBreakerExecutor`（可包装任意 `SqlExecutor` 后端）。读写分离用 `ecat_data::RdbmsRouting`：写落主库、读落副本轮询，并**跳过已熔断的副本**；副本全不可用时默认降级读主，`fallback_to_primary(false)` 则报 `RdbmsError::NoAvailableReplica`。
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
@@ -426,7 +428,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-默认 features = `http+grpc`；使用 `--no-default-features --features <组件>` 可精简依赖树。完整 feature 列表：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`。
+默认 features = `http+grpc`；使用 `--no-default-features --features <组件>` 可精简依赖树。完整 feature 列表：`http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`。
 
 ### 中间件
 

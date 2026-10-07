@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | 空闲连接回收 |
 | `max_lifetime_secs` | `u64` | `1800` | 连接最长存活 |
 | `query_timeout_secs` | `u64` | `30` | 单次查询超时；**0 = 禁用** |
+| `slow_query_ms` | `u64` | `1000` | 慢查询告警阈值（毫秒）；未配置 = 1000，**0 = 不打**（仅 `tracing` feature） |
 | `test_before_acquire` | `bool` | `false` | 取连接时是否先 ping |
 | `session_init` | `string[]` | 按方言 | 每条新连接的会话初始化语句 |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // 启动时调用一次
 ```
 
 为什么需要：sqlx 的 `min_connections` 由**后台任务异步维护**，`connect()` 返回时不保证已建满 —— 启动后的第一波请求会与后台任务抢跑。
+
+#### 可观测性 feature（`metrics` / `health` / `tracing`）
+
+三个 feature **默认关闭**（避免把 axum —— `ecat-metrics` / `ecat-health` 的依赖 —— 拖进核心依赖树），按需开启。`ecat-data-mssql` 提供同样的三个。
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics：注册后 /metrics 端点自动多出四个指标 ——
+// ecat_rdbms_pool_connections（gauge，带 state="idle"/"active"）、
+// ecat_rdbms_pool_timeouts_total、ecat_rdbms_query_timeout_total、
+// ecat_rdbms_transactions_leaked_total（都是 counter，带 backend 标签）
+register_pool_metrics("primary", db.pool());
+
+// health：SELECT 1 连通性探针，注册到 /health 的 readyz
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+`tracing` feature 在查询超过 `slow_query_ms` 时打 warn（耗时 + 截断到前 200 字符的 SQL）。该字段只被这个 feature 读取 —— feature 关闭时仍会解析，但不生效。
 
 #### 时间与日期：统一 RFC3339 UTC
 

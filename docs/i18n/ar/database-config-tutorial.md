@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | تحرير الاتصالات الخاملة |
 | `max_lifetime_secs` | `u64` | `1800` | أقصى عمر للاتصال |
 | `query_timeout_secs` | `u64` | `30` | مهلة الاستعلام الواحد؛ **0 = تعطيل** |
+| `slow_query_ms` | `u64` | `1000` | عتبة تحذير الاستعلام البطيء (مللي ثانية)؛ غير مُعدّ = 1000، **0 = لا تحذير** (ميزة `tracing` فقط) |
 | `test_before_acquire` | `bool` | `false` | إجراء ping قبل تسليم الاتصال |
 | `session_init` | `string[]` | حسب اللهجة | عبارات تهيئة الجلسة لكل اتصال جديد |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // يُستدعى مرة واحدة عند بدء الت�
 ```
 
 لماذا نحتاجها: يحافظ sqlx على `min_connections` **بشكل غير متزامن عبر مهمة خلفية**، لذا لا يضمن رجوع `connect()` أن المجمّع قد امتلأ — أول موجة من الطلبات ستتسابق مع المهمة الخلفية.
+
+#### ميزات المراقبة (`metrics` / `health` / `tracing`)
+
+الميزات الثلاث **معطّلة افتراضيًا** (حتى لا يدخل axum — وهو تبعية `ecat-metrics` / `ecat-health` — إلى شجرة تبعيات النواة)؛ فعّلها حسب الحاجة. ويوفّر `ecat-data-mssql` الثلاث نفسها.
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: بعد التسجيل يضيف الطرف /metrics أربع مقاييس —
+// ecat_rdbms_pool_connections (gauge، مع state="idle"/"active")،
+// ecat_rdbms_pool_timeouts_total و ecat_rdbms_query_timeout_total
+// و ecat_rdbms_transactions_leaked_total (كلها counter، بعلامة backend)
+register_pool_metrics("primary", db.pool());
+
+// health: فحص اتصال SELECT 1، يُسجَّل في readyz لدى /health
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+تُصدر ميزة `tracing` تحذيرًا عندما يتجاوز الاستعلام `slow_query_ms` (الزمن المستغرق + SQL مقتطعًا إلى أول 200 حرف). هذا الحقل لا تقرأه سوى هذه الميزة — وعند تعطيلها يبقى يُحلَّل لكنه لا يؤثر.
 
 #### الوقت والتاريخ: RFC3339 UTC بشكل موحّد
 

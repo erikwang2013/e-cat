@@ -2,6 +2,8 @@
 
 > **Pembaruan (2026-08-07, v2.3.3)**: Sisa kesenjangan #1 "mTLS terhubung ke transport" telah selesai — `HttpServer::tls` / `GrpcServer::tls` benar-benar berfungsi berbasis tokio-rustls / tonic rustls (mendukung verifikasi CA dan pemaksaan sertifikat klien); kesenjangan #2 (rate limit Redis), #3 (CI GitLab) sebelumnya telah selesai bersama v2.3.0. Semua kesenjangan yang tercantum dalam perencanaan hingga saat ini telah diwujudkan.
 
+> **Pembaruan (2026-10-07, v4.2.0)**: rencana v4.0 sudah seluruhnya selesai — `ecat-orm` / `ecat-orm-derive`, `ecat-data-mssql`, peningkatan pool (`CircuitBreakerExecutor` / `RdbmsRouting`), dan tiga feature observabilitas (`metrics` / `health` / `tracing`) semuanya sudah diterapkan.
+
 **Versi:** 2.4.2  
 **Tanggal:** 2026-08-01  
 **Jumlah crate:** 55 · Semua perencanaan telah selesai
@@ -51,11 +53,12 @@
 
 **e-cat telah mencapai kematangan siap produksi.** 47 crate mencakup tumpukan lengkap microservice: transport → middleware → service discovery → konfigurasi → keamanan → data → pesan → observabilitas → DevOps → alat API. Sisa 3 kesenjangan adalah optimasi beban kerja kecil, tanpa kekurangan struktural.
 
-## Cakupan Backend Data (15 buah)
+## Cakupan Backend Data (16 buah)
 
 | Kategori | Database | Crate | Cara penggerak |
 |------|--------|-------|----------|
 | RDBMS | SQLite/PostgreSQL/MySQL/TiDB | `ecat-data-sqlx` | sqlx (driver asinkron resmi) |
+| RDBMS | SQL Server | `ecat-data-mssql` | tiberius-ng + deadpool (driver TDS + connection pool) |
 | Cache | Redis | `ecat-data-redis` | redis-rs (driver resmi) |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementasi memori (bukan produksi) |
 | Dokumen | MongoDB | `ecat-data-mongodb` | mongodb (driver resmi) |
@@ -75,9 +78,7 @@
 
 ## Rencana v4.0 (2026-10-05) — ORM Lengkap dan SQL Server
 
-> Status: **sedang berjalan**. Batch 1 (pemisahan `SqlExecutor` + pool native) telah selesai dan
-> digabungkan ke branch `feat/orm-mssql`; ORM, SQL Server, dan peningkatan pool masih tertunda.
-> Kemajuan setiap item ditandai di bawah ini.
+> Status: **selesai** (v4.2.0). ORM, SQL Server, peningkatan pool, dan observabilitas semuanya sudah diterapkan — lihat tabel di bawah.
 > Desain lengkap: [`docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md`](../../../docs/superpowers/specs/2026-10-05-orm-and-mssql-design.md).
 
 Dua kesenjangan struktural masih harus ditutup:
@@ -89,7 +90,7 @@ Dua kesenjangan struktural masih harus ditutup:
    mencakup semua backend RDBMS**.
 2. **Backend SQL Server**: sqlx utama tidak memiliki driver MSSQL (dihapus sebelum 0.7, penulisan ulang
    belum dirilis); v4.0 menambahkan `ecat-data-mssql` (`tiberius-ng` 0.13 + `deadpool` 0.13) —
-   backend data **target** dari 15 menjadi **16** (saat ini masih 15, SQL Server belum termasuk).
+   backend data bertambah dari 15 menjadi **16** (`ecat-data-mssql`).
 
 Perubahan fondasi terkait:
 
@@ -97,8 +98,8 @@ Perubahan fondasi terkait:
 |---|---|---|
 | `ecat-data-sqlx` beralih dari `AnyPool` ke pool native | Memperbaiki batasan tipe waktu (tidak lagi perlu akal-akalan CAST), menghilangkan permukaan panic saat pemasangan driver, mengaktifkan statement cache | ✅ Selesai (batch 1, tiga pool native `PgPool`/`MySqlPool`/`SqlitePool`) |
 | `ecat-data` memisahkan supertrait `SqlExecutor` | SQL dapat dijalankan di dalam transaksi (saat ini `Transaction` hanya bisa commit/rollback); dasar untuk ORM dan pemisahan baca/tulis | ✅ Selesai (batch 1) |
-| Peningkatan connection pool | Timeout kueri, pemanasan `warm_up()`, recycle cerdas, pemutus sirkuit (memakai ulang `ecat-circuit-breaker`), pemisahan baca/tulis `RdbmsRouting` | 🚧 Sebagian: timeout kueri dan `warm_up()` selesai; pemutus sirkuit dan pemisahan baca/tulis menunggu batch 4 |
-| Observabilitas | Metrik pool ke `ecat-metrics`, pemeriksaan kesehatan pool ke `ecat-health`, kueri lambat ke `ecat-tracing` (semua opt-in feature) | ❌ Belum dikerjakan (batch 4) |
+| Peningkatan connection pool | Timeout kueri, pemanasan `warm_up()`, recycle cerdas, pemutus sirkuit (memakai ulang `ecat-circuit-breaker`), pemisahan baca/tulis `RdbmsRouting` | ✅ Selesai (batch 4 — timeout kueri dan `warm_up()` di batch 1; `CircuitBreakerExecutor` dan `RdbmsRouting` di batch 4) |
+| Observabilitas | Metrik pool ke `ecat-metrics`, pemeriksaan kesehatan pool ke `ecat-health`, kueri lambat ke `ecat-tracing` (semua opt-in feature) | ✅ Selesai (batch 4; feature `metrics` / `health` / `tracing` nonaktif secara default) |
 
 **Perubahan yang merusak**: pemisahan trait + tanda tangan `SqlxClient::from_pool` + penghapusan
 `AnyPool` — ketiganya sudah diterapkan di branch `feat/orm-mssql` (batch 1, belum dirilis);

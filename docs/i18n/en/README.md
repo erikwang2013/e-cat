@@ -134,27 +134,29 @@ It offers an API-first development experience, a pluggable component architectur
 
 ## Supported Databases
 
-| Category | Database | Crate | Status |
-|------|--------|-------|------|
-| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implemented |
-| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implemented |
-| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented |
-| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented |
-| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng |
-| Cache | Redis | `ecat-data-redis` | ✅ Implemented |
-| Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented |
-| Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented |
-| Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory implementation (not for production, do not use for persistent caching) |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented |
-| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API |
-| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API |
-| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API |
-| Time series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API |
-| Time series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API |
-| Time series | QuestDB | `ecat-data-questdb` | ✅ HTTP API |
-| Time series | TDengine | `ecat-data-tdengine` | ✅ REST API |
-| Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver |
-| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls |
+| Category | Database | Crate | Status | Timeout/Breaker |
+|------|--------|-------|------|------|
+| RDBMS | SQLite | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
+| RDBMS | PostgreSQL | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
+| RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
+| RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
+| RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + Breaker |
+| Cache | Redis | `ecat-data-redis` | ✅ Implemented | — |
+| Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented | — |
+| Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented | — |
+| Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory implementation (not for production, do not use for persistent caching) | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented | ✅ Breaker |
+| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
+| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
+| Time series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
+| Time series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
+| Time series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Breaker |
+| Time series | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
+| Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver | — |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+
+> **Timeout/breaker**: timeout = the query timeout `query_timeout_secs` (default 30 s, `0` = disabled; currently configurable on sqlx / mssql only); breaker = `ecat_data::CircuitBreakerExecutor` (wraps any `SqlExecutor` backend). Read/write splitting uses `ecat_data::RdbmsRouting`: writes go to the primary, reads round-robin across replicas and **skip replicas whose breaker is open**; when no replica is available it falls back to the primary by default, or returns `RdbmsError::NoAvailableReplica` with `fallback_to_primary(false)`.
 
 > All data backends are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); import the corresponding contrib crate as needed. Each backend provides an `XxxConfig` struct (`#[derive(Deserialize)]`) that supports loading connection information from JSON/YAML config files.
 
@@ -428,7 +430,7 @@ use ecat::auth::JwtAuthLayer;            // feature "auth"
 use ecat::data::redis::RedisCache;       // feature "redis"
 ```
 
-Default features = `http+grpc`; use `--no-default-features --features <component>` to slim down the dependency tree. Full feature list: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis`.
+Default features = `http+grpc`; use `--no-default-features --features <component>` to slim down the dependency tree. Full feature list: `http` `grpc` `middleware` `auth` `client` `events` `metrics` `tracing` `circuit-breaker` `consul` `remote` `redis` `orm` `mssql`.
 
 ### Middleware
 

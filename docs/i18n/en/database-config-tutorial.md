@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | Reclaim idle connections after this |
 | `max_lifetime_secs` | `u64` | `1800` | Maximum lifetime of a connection |
 | `query_timeout_secs` | `u64` | `30` | Per-query timeout; **0 = disabled** |
+| `slow_query_ms` | `u64` | `1000` | Slow-query warn threshold (ms); unset = 1000, **0 = off** (`tracing` feature only) |
 | `test_before_acquire` | `bool` | `false` | Ping the connection before handing it out |
 | `session_init` | `string[]` | Per dialect | Session initialization statements for each new connection |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // call once at startup
 ```
 
 Why this is needed: sqlx maintains `min_connections` **asynchronously in a background task**, so `connect()` returning does not guarantee the pool is filled — the first wave of requests would race the background task.
+
+#### Observability features (`metrics` / `health` / `tracing`)
+
+All three features are **off by default** (keeping axum — a dependency of `ecat-metrics` / `ecat-health` — out of the core dependency tree); enable them as needed. `ecat-data-mssql` offers the same three.
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: once registered, the /metrics endpoint gains four metrics —
+// ecat_rdbms_pool_connections (gauge, with state="idle"/"active"),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (counters, labelled by backend)
+register_pool_metrics("primary", db.pool());
+
+// health: a SELECT 1 connectivity probe, registered on the /health readyz
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+The `tracing` feature logs a warn when a query exceeds `slow_query_ms` (elapsed time + the SQL truncated to its first 200 characters). That field is read only by this feature — it is still parsed when the feature is off, but has no effect.
 
 #### Time and date: RFC3339 UTC throughout
 

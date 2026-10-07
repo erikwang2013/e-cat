@@ -146,6 +146,7 @@ sql:
 | `idle_timeout_secs` | `u64` | `600` | Возврат простаивающих соединений |
 | `max_lifetime_secs` | `u64` | `1800` | Максимальное время жизни соединения |
 | `query_timeout_secs` | `u64` | `30` | Таймаут одного запроса; **0 = отключено** |
+| `slow_query_ms` | `u64` | `1000` | Порог предупреждения о медленных запросах (мс); не задан = 1000, **0 = выключено** (только feature `tracing`) |
 | `test_before_acquire` | `bool` | `false` | Пинговать соединение перед выдачей |
 | `session_init` | `string[]` | Зависит от диалекта | Инструкции инициализации сессии для каждого нового соединения |
 
@@ -182,6 +183,34 @@ db.warm_up().await?;   // вызвать один раз при старте
 ```
 
 Зачем это нужно: sqlx поддерживает `min_connections` **асинхронно, фоновой задачей**, поэтому возврат из `connect()` не гарантирует, что пул уже заполнен — первая волна запросов пойдёт наперегонки с фоновой задачей.
+
+#### Features наблюдаемости (`metrics` / `health` / `tracing`)
+
+Все три feature **по умолчанию выключены** (чтобы axum — зависимость `ecat-metrics` / `ecat-health` — не попадал в дерево зависимостей ядра); включайте по необходимости. `ecat-data-mssql` предоставляет те же три.
+
+```toml
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics", "health", "tracing"] }
+```
+
+```rust
+use std::sync::Arc;
+use ecat_data_sqlx::{RdbmsHealthCheck, SqlxClient, SqlxConfig, register_pool_metrics};
+use ecat_health::HealthRegistry;
+
+let db = SqlxClient::from_config(cfg).await?;
+
+// metrics: после регистрации на /metrics появляются четыре метрики —
+// ecat_rdbms_pool_connections (gauge, с state="idle"/"active"),
+// ecat_rdbms_pool_timeouts_total, ecat_rdbms_query_timeout_total,
+// ecat_rdbms_transactions_leaked_total (все counter, с меткой backend)
+register_pool_metrics("primary", db.pool());
+
+// health: проба доступности SELECT 1, регистрируется в readyz у /health
+let registry = HealthRegistry::new()
+    .with_check(RdbmsHealthCheck::new("sql", Arc::new(db)));
+```
+
+Feature `tracing` пишет warn, когда запрос превышает `slow_query_ms` (затраченное время + SQL, обрезанный до первых 200 символов). Это поле читает только данная feature — без неё оно по-прежнему разбирается, но не действует.
 
 #### Время и дата: единообразно RFC3339 UTC
 
