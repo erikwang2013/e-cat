@@ -2503,7 +2503,7 @@ pub use metrics::register_outbound_metrics;
 //! 注册者的样本静默消失。理由见批次 5a 的「出入 11」与 `ecat-metrics/src/outbound.rs`。
 
 use ecat_circuit_breaker::Breaker;
-use ecat_data::{BackendKind, TIMEOUTS};
+use ecat_data::{BackendKind, timeout_counter};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -2517,7 +2517,7 @@ pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
     let opened = Arc::clone(&breaker);
     ecat_metrics::register_outbound_metrics(
         "redis",
-        Box::new(|| TIMEOUTS[BackendKind::Cache as usize].load(Ordering::Relaxed)),
+        Box::new(|| timeout_counter(BackendKind::Cache).load(Ordering::Relaxed)),
         Box::new(move || opened.opened_total()),
         Box::new(move || breaker.state().code()),
     );
@@ -3115,7 +3115,7 @@ pub use metrics::register_outbound_metrics;
 //! 所以两份样本的值相同 —— 这是有意的，方便按 `backend` 分组时两条都看得到。
 
 use ecat_circuit_breaker::Breaker;
-use ecat_data::{BackendKind, TIMEOUTS};
+use ecat_data::{BackendKind, timeout_counter};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -3129,7 +3129,7 @@ fn register_one(backend: &'static str, kind: BackendKind, breaker: Arc<Breaker>)
     let opened = Arc::clone(&breaker);
     ecat_metrics::register_outbound_metrics(
         backend,
-        Box::new(move || TIMEOUTS[kind as usize].load(Ordering::Relaxed)),
+        Box::new(move || timeout_counter(kind).load(Ordering::Relaxed)),
         Box::new(move || opened.opened_total()),
         Box::new(move || breaker.state().code()),
     );
