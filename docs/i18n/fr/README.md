@@ -5,7 +5,7 @@
 
 Le nom chinois d'Ecat : une chatte (一只猫)
 
-**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 51 crates).
+**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crates).
 
 Il offre une expérience de développement API-first, une architecture de composants enfichables, une abstraction unifiée des middleware HTTP/gRPC, ainsi qu'une chaîne d'outils CLI complète. Les développeurs familiers avec Kratos peuvent démarrer sans difficulté, tout en tirant pleinement parti de la sécurité de typage, des abstractions à coût zéro et des performances extrêmes de Rust.
 

@@ -5,7 +5,7 @@
 
 Ecat's Chinese name: 一只猫 (literally "a cat")
 
-**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 51 crates).
+**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v3.0.2 · 56 crates).
 
 It offers an API-first development experience, a pluggable component architecture, a unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started seamlessly, while fully leveraging Rust's type safety, zero-cost abstractions, and extreme performance.
 
@@ -284,68 +284,68 @@ ORM section of the [API reference](api.md).
 
 ```
 e-cat/
-├── ecat/                       # 核心：App 生命周期
-├── ecat-transport/             # 传输抽象（Server trait）
-├── ecat-transport-http/        # axum 实现
-├── ecat-transport-grpc/        # tonic 实现
-├── ecat-middleware/            # tower::Layer 中间件
-├── ecat-protos/                # Protobuf 定义
-├── ecat-errors/                # 错误码体系
-├── ecat-metadata/              # 元数据传递
-├── ecat-encoding/              # 序列化抽象
-├── ecat-logging/               # tracing 集成
-├── ecat-registry/              # 服务注册发现
-├── ecat-config/                # 配置管理
-├── ecat-metrics/               # Prometheus 集成
-├── ecat-data/                  # 数据访问 trait
-├── ecat-security/              # 攻击检测（security-rust）
-├── ecat-cli/                   # CLI 工具
-├── ecat-health/                # 健康检查（/health /ready）
-├── ecat-auth/                  # 认证中间件（JWT / API Key）
-├── ecat-client/                # 服务间 HTTP 客户端
-├── ecat-circuit-breaker/       # 熔断器（Tower Layer）
-├── ecat-registry-consul/       # Consul 服务注册
-├── ecat-config-remote/         # Consul KV 远程配置
-├── ecat-data-redis/            # Redis 缓存实现
-├── ecat-mq/                    # 消息队列抽象
-├── ecat-events/                # 事件总线（本地 + 远程）
-├── ecat-testing/               # 集成测试工具
-├── ecat-openapi/               # OpenAPI spec 生成
-├── ecat-bench/                 # 性能基准
-├── ecat-tracing/               # 分布式追踪（trace_id 注入/提取）
-├── ecat-registry-etcd/         # etcd 服务注册
-├── ecat-mq-kafka/              # Kafka 消息队列适配
-├── ecat-data-opensearch/       # OpenSearch 搜索后端
-├── ecat-data-influxdb/         # InfluxDB 时序后端
+├── ecat/                       # Core: App lifecycle
+├── ecat-transport/             # Transport abstraction (Server trait)
+├── ecat-transport-http/        # axum implementation
+├── ecat-transport-grpc/        # tonic implementation
+├── ecat-middleware/            # tower::Layer middleware
+├── ecat-protos/                # Protobuf definitions
+├── ecat-errors/                # Error code system
+├── ecat-metadata/              # Metadata propagation
+├── ecat-encoding/              # Serialization abstraction
+├── ecat-logging/               # tracing integration
+├── ecat-registry/              # Service registry & discovery
+├── ecat-config/                # Configuration management
+├── ecat-metrics/               # Prometheus integration
+├── ecat-data/                  # Data access traits
+├── ecat-security/              # Attack detection (security-rust)
+├── ecat-cli/                   # CLI tooling
+├── ecat-health/                # Health checks (/health /ready)
+├── ecat-auth/                  # Auth middleware (JWT / API Key)
+├── ecat-client/                # Inter-service HTTP client
+├── ecat-circuit-breaker/       # Circuit breaker (Tower Layer)
+├── ecat-registry-consul/       # Consul service registry
+├── ecat-config-remote/         # Consul KV remote config
+├── ecat-data-redis/            # Redis cache backend
+├── ecat-mq/                    # Message queue abstraction
+├── ecat-events/                # Event bus (local + remote)
+├── ecat-testing/               # Integration test utilities
+├── ecat-openapi/               # OpenAPI spec generation
+├── ecat-bench/                 # Benchmarks
+├── ecat-tracing/               # Distributed tracing (trace_id inject/extract)
+├── ecat-registry-etcd/         # etcd service registry
+├── ecat-mq-kafka/              # Kafka message queue adapter
+├── ecat-data-opensearch/       # OpenSearch search backend
+├── ecat-data-influxdb/         # InfluxDB time-series backend
 ├── ecat-graphql/               # GraphQL endpoint
-├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
-├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-elasticsearch/    # Elasticsearch search backend
+├── ecat-data-clickhouse/       # ClickHouse OLAP backend
+├── ecat-data-sqlx/             # RDBMS backend (SQLite/PG/MySQL/TiDB)
 ├── ecat-data-mssql/            # SQL Server backend (tiberius-ng)
 ├── ecat-orm/                   # ORM: entity macro, query builder, migrations
 ├── ecat-orm-derive/            # #[derive(Entity)] derive macro
-├── ecat-data-memcached/        # Memcached 缓存后端（内存实现）
-├── ecat-data-neo4j/            # Neo4j 图后端
-├── ecat-data-nebulagraph/      # NebulaGraph 图后端
-├── ecat-data-arangodb/         # ArangoDB 图后端
-├── ecat-data-iotdb/            # IoTDB 时序后端
-├── ecat-data-questdb/          # QuestDB 时序后端
+├── ecat-data-memcached/        # Memcached cache backend (in-memory impl)
+├── ecat-data-neo4j/            # Neo4j graph backend
+├── ecat-data-nebulagraph/      # NebulaGraph graph backend
+├── ecat-data-arangodb/         # ArangoDB graph backend
+├── ecat-data-iotdb/            # IoTDB time-series backend
+├── ecat-data-questdb/          # QuestDB time-series backend
 ├── ecat-transport-ws/          # WebSocket transport
-├── ecat-versioning/            # API 版本路由
-├── ecat-tls/                   # TLS 证书配置与自动生成
+├── ecat-versioning/            # API version routing
+├── ecat-tls/                   # TLS certificate config & auto-generation
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
-├── ecat-lock/                  # 分布式锁抽象（Redis 实现）
-├── ecat-scheduler/             # tokio 定时任务调度
-├── ecat-tracing-otlp/          # OpenTelemetry OTLP 追踪导出
-├── ecat-data-tdengine/         # TDengine 时序后端
-├── ecat-data-mongodb/          # MongoDB 文档后端
-├── ecat-data-s3/               # S3 / MinIO 对象存储后端
-├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
-├── ecat-mq-mqtt/               # MQTT 消息后端
-├── ecat-mq-nats/               # NATS 消息后端
-├── config/                     # 配置示例文件
-├── docs/                       # 设计文档与生态规划
-└── examples/                   # 示例项目
+├── ecat-lock/                  # Distributed lock abstraction (Redis impl)
+├── ecat-scheduler/             # tokio scheduled task runner
+├── ecat-tracing-otlp/          # OpenTelemetry OTLP trace export
+├── ecat-data-tdengine/         # TDengine time-series backend
+├── ecat-data-mongodb/          # MongoDB document backend
+├── ecat-data-s3/               # S3 / MinIO object storage backend
+├── ecat-mq-rabbitmq/           # RabbitMQ message backend
+├── ecat-mq-mqtt/               # MQTT message backend
+├── ecat-mq-nats/               # NATS message backend
+├── config/                     # Sample configuration files
+├── docs/                       # Design docs & ecosystem roadmap
+└── examples/                   # Example projects
 ```
 
 ## Quick Start

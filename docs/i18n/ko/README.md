@@ -5,7 +5,7 @@
 
 Ecat 한국어 이름: 한 마리 고양이
 
-**한 마리 고양이**는 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3를 벤치마킹한 Rust 마이크로서비스 프레임워크입니다 (v3.0.2 · 51 crates).
+**한 마리 고양이**는 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3를 벤치마킹한 Rust 마이크로서비스 프레임워크입니다 (v3.0.2 · 56 crates).
 
 API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합된 HTTP/gRPC 미들웨어 추상화, 그리고 완비된 CLI 도구 체인을 제공합니다. Kratos에 익숙한 개발자가 매끄럽게 적응할 수 있으면서도, Rust의 타입 안전성, 제로 비용 추상화, 극한의 성능을 충분히 활용할 수 있습니다.
 
