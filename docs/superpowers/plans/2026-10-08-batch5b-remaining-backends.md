@@ -3586,9 +3586,17 @@ grep -c 'v6\.0\.0' config/databases.example.yaml                          # 记�
   `tokio::sync::Semaphore` 实现，许可取在**最外层**（排队中的请求还没碰后端，不该计入失败）。
 - `MongoConfig` 新增 `max_pool_size` / `min_pool_size`：并发背压交给**驱动连接池**
   （`mongodb` 3.8.0 默认上限 **10**，不是 100），本 crate **没有**信号量层。
-- 11 个 crate 各新增 `metrics` feature：把 `ecat_outbound_timeouts_total` /
+- 13 个 crate 各新增 `metrics` feature：把 `ecat_outbound_timeouts_total` /
   `ecat_outbound_breaker_opened_total` / `ecat_outbound_breaker_state` 挂进
   `ecat-metrics` 的共用 collector，标签 = **配置节名**（`"arangodb"` / `"mongodb"` / …）。
+  **`from_config` 构造即注册**（本批统一裁决）：`--features metrics` 下用户代码零变化，
+  不再需要手动调 `register_outbound_metrics`。覆盖 5b 的 11 个后端**加上 5a 的
+  `ecat-data-redis` / `ecat-data-clickhouse`**（后者此前同样只有再导出、无生产调用点）。
+  注意：同一配置节在**同一进程内建多个 client** 时，标签只有一份，**最后构造的那个生效**
+  —— 这是「标签 = 配置节名」的固有含义，需要区分实例请用不同配置节名。
+  （`ecat-data-sqlx` / `ecat-data-mssql` 的 `register_pool_metrics` **仍为显式调用**：
+  它的标签语义是**实例名**（`"primary"` / `"replica-1"`，见 `ecat-metrics/src/rdbms.rs:33-35`），
+  自动注册会替用户编一个名字、且读写分离下多个池会互相覆盖。）
 - QuestDB 的 `query_timeout_secs` / `breaker` 走 `RdbmsError` 路径（`RdbmsError::Timeout` /
   `RdbmsError::Connection("circuit breaker is open")`），与其余 10 个的
   `ecat_errors::Error`（`DeadlineExceeded` / `Unavailable`）不同 —— 它实现的是 `SqlExecutor`。
