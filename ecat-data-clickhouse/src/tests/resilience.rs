@@ -63,6 +63,7 @@ async fn query_times_out_with_timeout_error() {
 }
 
 /// `TsdbClient` 路径独立计维度 —— 一个 client 两条路径，别串到一个槽里。
+/// 判据是严格的：`Tsdb` 槽**恰好 +1**，且证人槽纹丝不动。
 #[tokio::test]
 async fn tsdb_path_counts_its_own_dimension() {
     let url = spawn_slow_clickhouse(Duration::from_secs(5), Arc::new(AtomicUsize::new(0))).await;
@@ -76,7 +77,14 @@ async fn tsdb_path_counts_its_own_dimension() {
         .await
         .expect_err("必须超时");
     assert_eq!(err.code, ErrorCode::DeadlineExceeded, "got: {err}");
-    assert!(TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst) > tsdb_before);
+    // 严格 `== +1`（而非 `>`）成立的前提：`Tsdb` 槽在**本测试二进制内只有一个写者**。
+    // metrics.rs 的用例已改成不推进它（见那里的说明）；谁要新增写 Tsdb 槽的用例，
+    // 先想清楚这条断言会不会被它的 +1 掩护成绿。
+    assert_eq!(
+        TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst),
+        tsdb_before + 1,
+        "Tsdb 路径必须恰好计一次 Tsdb 槽"
+    );
     assert_eq!(
         TIMEOUTS[BackendKind::Storage as usize].load(Ordering::SeqCst),
         witness_before,

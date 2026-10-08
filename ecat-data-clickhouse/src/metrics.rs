@@ -46,25 +46,38 @@ mod tests {
     /// **两个超时维度各出一份样本** —— 只注册 `"clickhouse"` 一个标签的实现
     /// 在这里红。两条路径的超时不该合成一个数：合成后就分不清是 SQL 慢还是
     /// 时序写入慢。
+    ///
+    /// **本用例只推进 `Rdbms` 槽、不推进 `Tsdb` 槽**：`Tsdb` 槽必须保持「本进程
+    /// 内只有一个写者」，resilience 的 `tsdb_path_counts_its_own_dimension` 才能
+    /// 断言严格 `== +1`（否则这里的 +1 会落进它的观测窗口，把误路由掩护成绿）。
+    /// 现读（live-read）只需在一条路径上验证：两份样本走同一个 collector、
+    /// 同一段注册代码，与路径数无关。
     #[tokio::test]
     async fn both_paths_publish_their_own_timeout_sample() {
         let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
         register_outbound_metrics(Arc::clone(&breaker));
 
-        // 两条路径各推进一格（通过 ecat-data 的静态量，绕开真实网络）。
+        // 推进一格（通过 ecat-data 的静态量，绕开真实网络）；tsdb 那份只查「样本存在」。
         TIMEOUTS[BackendKind::Rdbms as usize].fetch_add(1, Ordering::Relaxed);
-        TIMEOUTS[BackendKind::Tsdb as usize].fetch_add(1, Ordering::Relaxed);
 
         let text = ecat_metrics::metrics_text();
-        for backend in ["clickhouse", "clickhouse-tsdb"] {
-            let times = sample(
+        assert!(
+            sample(
                 &text,
-                &format!("ecat_outbound_timeouts_total{{backend=\"{backend}\"}}"),
-            );
-            assert!(
-                times.is_some_and(|v| v >= 1.0),
-                "缺 {backend} 的超时样本，实际输出:\n{text}"
-            );
+                r#"ecat_outbound_timeouts_total{backend="clickhouse"}"#
+            )
+            .is_some_and(|v| v >= 1.0),
+            "clickhouse 的样本应现读静态量（先 +1 再抓取），实际输出:\n{text}"
+        );
+        assert!(
+            sample(
+                &text,
+                r#"ecat_outbound_timeouts_total{backend="clickhouse-tsdb"}"#
+            )
+            .is_some(),
+            "缺 clickhouse-tsdb 的超时样本（只注册一个标签的实现在这里红），实际输出:\n{text}"
+        );
+        for backend in ["clickhouse", "clickhouse-tsdb"] {
             assert_eq!(
                 sample(
                     &text,
