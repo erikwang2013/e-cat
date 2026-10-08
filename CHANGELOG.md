@@ -29,9 +29,12 @@
     将来加第 8 个维度时**编译失败**，而不是运行期数错槽。
   - 泛型 `run_with_timeout(kind, timeout, fut)`：`None` = 禁用超时；
     `Some(Duration::ZERO)` = 立刻超时（**不是**禁用，别照抄本仓别处「`0` = 禁用」的惯例）。
-- `ecat-data`：`map_breaker_error` / `breaker_error_to_backend_error` 由 `pub(crate)`
-  改为公开 —— 熔断器错误的映射只有一套，Redis / ClickHouse 的包装层与 `RdbmsRouting`
-  复用同一套（两个错误类型都是外部类型，写不出统一的 `From`，故各一个函数）。
+- `ecat-data`：熔断器错误的映射公开 —— `map_breaker_error` 由 `pub(crate)` 改为 `pub`，
+  并新增 `breaker_error_to_backend_error`（`ecat_errors::Error` 侧的同一套语义）。
+  Redis / ClickHouse 的包装层与 `RdbmsRouting` 复用同一套：后端自身的错误**原样透出**，
+  熔断打开/探测耗尽时后端根本没被调用，报「连接不可用」。
+  分两个函数是因为 `RdbmsError`、`ecat_errors::Error` 与 `BreakerError` 都是外部类型，
+  写不出统一的 `From`（孤儿规则）。
 - `ecat-circuit-breaker`：
   - `Breaker::opened_total()` —— `Closed → Open` 的累计次数（半开探测失败重新打开也计入），
     供 `ecat_outbound_breaker_open_total`。用 `state()` 轮询猜测「开了几次」是错的
