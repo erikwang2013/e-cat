@@ -514,6 +514,17 @@ use std::time::Duration;
 /// 预算根本没机会累积到超时 —— 用例会以「parse error 而不是 DeadlineExceeded」
 /// 失败（Task 8 实测：`whole_call_budget…` 首跑 FAILED，改回 `{}` 后绿）。
 /// iotdb/ES 这类只看状态码的路径不受影响，所以这条**只在多请求预算用例里才咬人**。
+///
+/// **两种失败形态都要防（Task 8 / Task 10 各实测到一种）**：
+/// (a) **解析失败、立刻返回 Err** —— tdengine 的 `exec` 每批 `resp.json()`，空体让第一批
+///     在预算内就以 parse 错结束，用例报「parse error 而不是 DeadlineExceeded」；
+/// (b) **解析成功、静默给空结果** —— s3 的 `list` 每页解析 XML，空体经 `parse_list_xml`
+///     得「0 key、无 token」且**不报错**（`ecat-data-s3/src/xml.rs:56` `Ok(Event::Eof) => break`），
+///     翻页直接正常结束、`list` 返回 `Ok(vec![])` —— 用例会因为「没超时」而红，
+///     但更难看出是体的问题。
+/// ⇒ 多请求预算用例的 mock **一律回该后端能真正解析的体**（JSON 后端 `{}`；
+/// s3 的 list 回合法 `ListBucketResult`，见 Task 10 的 `spawn_paged`）。
+/// 这条与后端无关，与「这一步发 HTTP 吗、回了什么」有关。
 async fn spawn_slow_<crate>(delay: Duration, in_flight: Arc<AtomicUsize>) -> String {
     let app = axum::Router::new().fallback(move |_req: axum::http::Request<axum::body::Body>| {
         let in_flight = Arc::clone(&in_flight);
