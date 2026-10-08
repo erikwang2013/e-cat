@@ -1,9 +1,21 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, TsdbClient};
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
+use ecat_data::{
+    BackendKind, DataPoint, FieldValue, TsdbClient, breaker_error_to_backend_error,
+    run_with_timeout,
+};
 use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TdengineConfig {
@@ -14,6 +26,27 @@ pub struct TdengineConfig {
     pub database: Option<String>,
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次调用超时秒数。`0` = 禁用；未配置 = 30 秒。
+    ///
+    /// 这是**外层**预算，与 reqwest 自带的总超时（`from_config` 建的 client 有
+    /// 30 秒、`new` 没有）取先到者。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    ///
+    /// 熔断**默认开启** —— 保守阈值下只在持续失败时打开。**当前没有总开关**：
+    /// `BreakerConfig` 只有阈值字段，没有 `enabled`（不许写 `{"enabled": false}`：
+    /// 那是反序列化错误，或被 `#[serde(default)]` 静默吞掉后以为关掉了）。
+    /// 真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 pub struct TdengineClient {
@@ -22,6 +55,11 @@ pub struct TdengineClient {
     username: String,
     password: String,
     database: Option<String>,
+    query_timeout: Option<Duration>,
+    /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
+    breaker: Arc<Breaker>,
+    /// `None` = 不限并发（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 
 impl TdengineClient {
@@ -36,6 +74,9 @@ impl TdengineClient {
             username: username.into(),
             password: password.into(),
             database: None,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
         }
     }
 
@@ -48,9 +89,65 @@ impl TdengineClient {
             username: cfg.username,
             password: cfg.password,
             database: cfg.database,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            semaphore: match cfg.max_concurrency {
+                // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
+                // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
+                // —— `guarded` 的第一句就是 `permit().await`，超时层在它里面。
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
         })
     }
 
+    /// 本 client 的熔断器。`metrics` feature 注册指标时要读它的状态与打开次数。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
+    }
+
+    /// 一次出站调用的公共外壳：**许可 → 熔断 → 超时**。
+    ///
+    /// 这个顺序不能改：**超时若在外层，熔断器会对卡死的后端永久失明** ——
+    /// 超时触发时 `tokio::time::timeout` 会 drop 内层 future，而熔断器记失败的那句
+    /// 在 `f().await` **之后**，于是每次都只留下一次 drop、窗口里什么都不记，
+    /// 熔断器永远不打开（这正是本设计要防的头号场景）。详见批次 5a 计划的「出入 4」。
+    ///
+    /// 许可在最外：还在排队的请求**还没碰后端**，不该计入熔断失败、也不该被超时掐断。
+    ///
+    /// `kind` **写死**不收参数：本 crate 的两个 I/O 方法同属 `TsdbClient` 一个家族
+    /// （ClickHouse 收参数是因为它有 `SqlExecutor` / `TsdbClient` 两条**不同家族**的路径
+    /// 共用外壳）。多一个永不变化的入参就多一个填错的机会，
+    /// 而填错只是静默少数（`ecat-data/src/timeout.rs:15-35`），没有编译期保护。
+    ///
+    /// **壳的边界 = 公开方法**：`write` 的分块循环里每批各发一次 HTTP，所以**整个
+    /// 分块循环**在这一个壳内；私有的 `exec`（一次 POST + 解析）**不许再包一层** ——
+    /// 那会把一次 `write` 切成 N 个独立预算（墙钟上限随分批数放大），且熔断窗口被
+    /// 同一批数据记 N 次。判据：问「这一步发 HTTP 吗？」——
+    /// `whole_call_budget_covers_every_batch_in_write` 盯着这条。
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Tsdb, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "tdengine"))
+    }
+
+    /// 纯本地拼 URL，不发 I/O —— **不包 `guarded`**（半开态下会把探测名额
+    /// 以 `Ok` 白白消耗，见 `guarded` 的 rustdoc）。
     fn sql_url(&self) -> String {
         match &self.database {
             Some(db) => format!("{}/rest/sql/{}", self.base_url, percent_encode_segment(db)),
@@ -87,6 +184,15 @@ impl TdengineClient {
                 format!("tdengine parse: {e}"),
             )
         })
+    }
+}
+
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
     }
 }
 
@@ -159,250 +265,33 @@ const BATCH_SIZE: usize = 100;
 #[async_trait]
 impl TsdbClient for TdengineClient {
     async fn write(&self, points: &[DataPoint]) -> Result<(), Error> {
-        for chunk in points.chunks(BATCH_SIZE) {
-            let sql = chunk
-                .iter()
-                .map(point_to_insert)
-                .collect::<Vec<_>>()
-                .join("\n");
-            self.exec(&sql).await?;
-        }
-        Ok(())
+        // 整个分块循环**一个预算**：`exec` 是内部 helper（一次 HTTP），
+        // 它自己**不包** —— 包 `exec` 会把一次 `write` 切成 N 个独立预算，
+        // 墙钟上限随分批数放大，而且熔断窗口会被同一批数据记 N 次。
+        // （whole_call_budget_covers_every_batch_in_write 盯着这条。）
+        self.guarded(async {
+            for chunk in points.chunks(BATCH_SIZE) {
+                let sql = chunk
+                    .iter()
+                    .map(point_to_insert)
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.exec(&sql).await?;
+            }
+            Ok(())
+        })
+        .await
     }
 
     async fn query(&self, sql: &str) -> Result<serde_json::Value, Error> {
-        self.exec(sql).await
+        self.guarded(async { self.exec(sql).await }).await
     }
+
+    // `delete` 走 `TsdbClient` 的 trait 默认实现（`ecat-data/src/tsdb.rs:55`），
+    // **不包 `guarded`**：默认实现的「不支持」是**调用方的用法错**，不是后端故障。
+    // 包了之后 8 次「不支持」就会打开熔断器，之后**正常写入/查询全被拒绝**。守测试见
+    // `tests/resilience.rs::delete_default_does_not_trip_the_breaker`。
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::body::{Body, to_bytes};
-    use axum::extract::State;
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-    use axum::{Json, Router};
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Clone)]
-    struct CapturedRequest {
-        path: String,
-        headers: Vec<(String, String)>,
-        body: Vec<u8>,
-    }
-
-    impl CapturedRequest {
-        fn header(&self, name: &str) -> Option<&str> {
-            self.headers
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(name))
-                .map(|(_, v)| v.as_str())
-        }
-    }
-
-    type MockState = (Arc<Mutex<Vec<CapturedRequest>>>, u16, &'static str);
-
-    /// mock TDengine REST 端点（fallback 捕获任意路径）：捕获请求路径/头/体，
-    /// 按给定状态码与响应体应答（body 为空时返回成功 JSON），返回 mock base_url。
-    async fn spawn_mock(
-        captured: Arc<Mutex<Vec<CapturedRequest>>>,
-        status: u16,
-        body: &'static str,
-    ) -> String {
-        let app = Router::new()
-            .fallback(handle)
-            .with_state((captured, status, body));
-
-        async fn handle(
-            State((captured, status, body)): State<MockState>,
-            req: axum::http::Request<Body>,
-        ) -> axum::response::Response {
-            let path = req.uri().path().to_string();
-            let (parts, req_body) = req.into_parts();
-            let headers = parts
-                .headers
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.as_str().to_string(),
-                        v.to_str().unwrap_or_default().to_string(),
-                    )
-                })
-                .collect();
-            let req_body = to_bytes(req_body, usize::MAX).await.unwrap_or_default();
-            captured
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push(CapturedRequest {
-                    path,
-                    headers,
-                    body: req_body.to_vec(),
-                });
-            if body.is_empty() {
-                Json(serde_json::json!({"code": 0})).into_response()
-            } else {
-                (StatusCode::from_u16(status).unwrap(), Body::from(body)).into_response()
-            }
-        }
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}")
-    }
-
-    #[test]
-    fn config_deserializes() {
-        let cfg: TdengineConfig = serde_json::from_value(serde_json::json!({
-            "base_url": "http://localhost:6041",
-            "username": "root",
-            "password": "taosdata",
-            "database": "demo",
-        }))
-        .unwrap();
-        assert_eq!(cfg.database.as_deref(), Some("demo"));
-        assert!(cfg.tls.is_none());
-    }
-
-    #[test]
-    fn client_constructs() {
-        let _client = TdengineClient::new("http://localhost:6041", "root", "taosdata");
-    }
-
-    #[test]
-    fn sql_url_encodes_database_segment() {
-        let mut client = TdengineClient::new("http://localhost:6041", "root", "taosdata");
-        client.database = Some("my db/1".into());
-        assert_eq!(
-            client.sql_url(),
-            "http://localhost:6041/rest/sql/my%20db%2F1"
-        );
-    }
-
-    #[tokio::test]
-    async fn query_sends_sql_and_parses_result() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock(Arc::clone(&captured), 200, "").await;
-        let mut client = TdengineClient::new(base_url, "root", "taosdata");
-        client.database = Some("demo".into());
-        let result = client.query("SELECT * FROM meters").await.unwrap();
-        assert_eq!(result["code"], 0);
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 1);
-        let r = &reqs[0];
-        assert_eq!(r.path, "/rest/sql/demo");
-        // base64("root:taosdata")
-        assert_eq!(
-            r.header("authorization"),
-            Some("Basic cm9vdDp0YW9zZGF0YQ==")
-        );
-        let body: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
-        assert_eq!(body["sql"], "SELECT * FROM meters");
-    }
-
-    #[tokio::test]
-    async fn query_propagates_server_error() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock(Arc::clone(&captured), 500, "boom").await;
-        let client = TdengineClient::new(base_url, "root", "taosdata");
-        let err = client.query("SELECT 1").await.unwrap_err();
-        assert!(err.to_string().contains("boom"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn query_non_json_body_returns_parse_error() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock(Arc::clone(&captured), 200, "not json").await;
-        let client = TdengineClient::new(base_url, "root", "taosdata");
-        let err = client.query("SELECT 1").await.unwrap_err();
-        assert!(err.to_string().contains("tdengine parse"), "got: {err}");
-    }
-
-    #[test]
-    fn point_to_insert_flattens_tags_and_fields() {
-        let p = DataPoint::new("meters")
-            .with_tag("location", "beijing")
-            .with_field("voltage", FieldValue::Float(220.5))
-            .with_field("current", FieldValue::Int(3))
-            .with_field("online", FieldValue::Bool(true))
-            .with_field("note", FieldValue::String("ok".into()))
-            .with_timestamp(1_700_000_000_000);
-        let sql = point_to_insert(&p);
-        // tags 为列；timestamp 为数值；字符串列带引号；Float 无后缀；Int 无后缀
-        assert!(sql.starts_with("INSERT INTO \"meters\" ("), "got: {sql}");
-        assert!(sql.contains("\"location\""), "tag 列缺失: {sql}");
-        assert!(sql.contains("\"beijing\""), "tag 值缺失: {sql}");
-        assert!(sql.contains("voltage"), "field 列缺失: {sql}");
-        assert!(sql.contains("220.5"), "float 值缺失: {sql}");
-        assert!(sql.contains("\"ok\""), "字符串值缺失: {sql}");
-        assert!(sql.contains("1700000000000"), "时间戳缺失: {sql}");
-        assert!(sql.ends_with(")"));
-
-        let online = DataPoint::new("m")
-            .with_field("flag", FieldValue::Bool(false))
-            .with_field("ratio", FieldValue::Float(0.1))
-            .with_field("delta", FieldValue::Int(-5));
-        let sql2 = point_to_insert(&online);
-        assert!(sql2.contains("false"), "bool false 缺失: {sql2}");
-        assert!(sql2.contains("0.1"), "float 缺失: {sql2}");
-        assert!(sql2.contains("-5"), "负 int 缺失: {sql2}");
-    }
-
-    #[test]
-    fn point_to_insert_escapes_quotes_and_backslashes() {
-        let p = DataPoint::new("a\"b\\c")
-            .with_tag("k\"1", "v\\1")
-            .with_field("s", FieldValue::String("say \"hi\" \\ done".into()));
-        let sql = point_to_insert(&p);
-        // 双引号转义为 \"，反斜杠转义为 \\；注入载荷不得逃出字面量
-        assert!(sql.contains("\"a\\\"b\\\\c\""), "表名转义失败: {sql}");
-        assert!(sql.contains("\"k\\\"1\""), "tag 键转义失败: {sql}");
-        assert!(
-            sql.contains("say \\\"hi\\\" \\\\ done"),
-            "字符串值转义失败: {sql}"
-        );
-    }
-
-    #[test]
-    fn point_to_insert_missing_timestamp_uses_now() {
-        let p = DataPoint::new("m").with_field("v", FieldValue::Int(1));
-        let sql = point_to_insert(&p);
-        assert!(sql.contains("VALUES (now"), "无时间戳应落 now: {sql}");
-    }
-
-    #[test]
-    fn point_to_insert_no_tags_or_fields_keeps_ts_column() {
-        let p = DataPoint::new("m").with_timestamp(5);
-        let sql = point_to_insert(&p);
-        assert_eq!(sql, "INSERT INTO \"m\" (ts) VALUES (5)");
-    }
-
-    #[tokio::test]
-    async fn write_chunks_into_batches_of_100() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock(Arc::clone(&captured), 200, "").await;
-        let client = TdengineClient::new(base_url, "root", "taosdata");
-        let points: Vec<DataPoint> = (0..250)
-            .map(|i| {
-                DataPoint::new("m")
-                    .with_tag("i", i.to_string())
-                    .with_field("v", FieldValue::Int(i))
-            })
-            .collect();
-        client.write(&points).await.unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 3, "250 点应分 3 批（100+100+50）");
-        for (idx, r) in reqs.iter().enumerate() {
-            let body: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
-            let sql = body["sql"].as_str().unwrap();
-            let lines = sql.lines().count();
-            let expected = if idx < 2 { 100 } else { 50 };
-            assert_eq!(lines, expected, "第 {} 批行数", idx + 1);
-        }
-    }
-}
+mod tests;
