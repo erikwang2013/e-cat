@@ -296,6 +296,20 @@ trap 'cp -f "$BAK" "$F"; cmp -s "$BAK" "$F" && echo RESTORED_OK' EXIT TERM INT
 `trap ... EXIT TERM INT` 让「被 kill 也还原」成立 —— 比「跑完记得还原」可靠一个量级，
 因为后者假设脚本能跑完。**跑完仍要 `cmp` + md5 自证**（`trap` 是保险，不是证据）。
 
+⚠️ **但 `trap` 挡不住 SIGKILL**（2026-10-08 实测）：框架的 TaskStop / `kill -9` 直接杀进程组，
+`trap` 根本不响 —— 当天 `ecat-data-arangodb/src/lib.rs` 就这样第二次停在红态，靠
+`/var/tmp/b5b-verify/probe/arangodb-lib.rs.bak` 手工恢复。
+⇒ **强制停止之后必须再跑一次收尾检查**（判据要可执行，不是「记得检查」）：
+
+```bash
+# 收尾检查：src 是否干净 + 关键文件 md5 是否等于冻结值
+git status --porcelain -- 'ecat-data-*/src/'          # 期望：空
+md5sum ecat-data-arangodb/src/lib.rs                  # 期望：冻结值（本例 3064eb456c0f4884073146e7e32be69d）
+```
+
+**两层保险缺一不可**：`trap` 覆盖可捕获的退出，收尾检查覆盖不可捕获的（SIGKILL / 断电 /
+容器被杀）。只做前者，就会在某次强制停止后带着红态继续跑后面的验证。
+
 **推论：任何时刻仓库都不该停在注入态 —— 提交前必查一次 `git status --porcelain`**，
 它同时能抓住「探针没还原」与「误碰别人的文件」（本批两种都真发生过）。
 
