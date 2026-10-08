@@ -256,8 +256,15 @@ async fn concurrency_cap_limits_in_flight_requests() {
             peak.fetch_max(seen, Ordering::SeqCst);
         }));
     }
-    for h in handles {
-        h.await.unwrap();
+    // **外层保险丝（Task 7 实测后补）**：许可泄漏时第 3 个 task 永远排在
+    // `acquire()` 上 —— 许可在超时层**外面**，没有任何预算能结束它。
+    // 裸 `h.await` 会让**整个测试二进制挂死**：Task 7 注入 `mem::forget(permit)`
+    // 探针后 9 分钟未返回，人工 kill 才脱身。有这层时同一探针变成一条 FAILED。
+    for (i, h) in handles.into_iter().enumerate() {
+        tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap_or_else(|_| panic!("第 {i} 个并发任务挂死（许可泄漏？）"))
+            .unwrap();
     }
     assert!(
         peak.load(Ordering::SeqCst) <= 2,
