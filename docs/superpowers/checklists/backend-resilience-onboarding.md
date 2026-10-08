@@ -728,6 +728,11 @@ where
 9 分钟未返回，人工 kill）。给它单独套一层（10 秒远大于 3×50ms 的正常耗时）：
 
 ```rust
+    // **外层保险丝（checklist §(d-补)）**：许可泄漏时第 3 个 task 永远排在
+    // `acquire()` 上 —— 许可在超时层**外面**，没有任何预算能结束它。
+    // 裸 `h.await` 会让**整个测试二进制挂死**：Task 7 注入 `mem::forget(permit)`
+    // 探针后 9 分钟未返回、人工 kill；复审在 neo4j 上重测，`timeout 120` 到点被杀、
+    // 无任何 `test result:` 行。有这层时同一探针变成一条 10 秒量级的 FAILED。
     for (i, h) in handles.into_iter().enumerate() {
         tokio::time::timeout(Duration::from_secs(10), h)
             .await
@@ -738,6 +743,11 @@ where
 
 判据：探针「把 `let _permit` 换成 `std::mem::forget(permit)`」时该用例是 **FAILED**，
 不是悬挂。**Task 1–7 的 7 个 crate 是裸等形态，已列入追补清单。**
+⚠️ 同一文件里**另一处** `for h in handles`（`zero_max_concurrency_means_unlimited` 里的）
+**不要碰** —— 那条路径上没有许可，且它自带 2 秒保险丝。定位用 `awk` 按 `^async fn` 归属，
+**别按行号猜**（每个文件恰好两处，行号会漂）。
+上面那段注释是**逐字标准文本**（2026-10-08 统一）：曾有「无注释 / 引 Task 7 / 引 §(d-补)」
+三个变体，现统一为同时引**判据出处与两次实测**。
 
 **(e) 每个出站方法都要覆盖**：只测一个方法的话，谁漏包另一个（比如 `set` 直接直连），
 现有测试不会红。模板：`ecat-data-redis/src/tests.rs:366-398`
