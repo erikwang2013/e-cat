@@ -27,16 +27,6 @@ async fn spawn_slow_clickhouse(delay: Duration, in_flight: Arc<AtomicUsize>) -> 
     format!("http://{addr}")
 }
 
-/// 断言进程级 `TIMEOUTS` 槽的三条用例的串行锁。
-///
-/// `TIMEOUTS` 是**进程级静态量**，而 libtest 默认并行：`query_times_out_*` 与
-/// `repeated_timeouts_*` 都在写 `Rdbms` 槽，会让 `tsdb_path_counts_*` 的
-/// 「Tsdb 的超时不得落到 Rdbms 槽」这条**见证槽**断言随机红（实测并行 20 次 17 红，
-/// `--test-threads=1` 30/30 绿 —— 产品行为没错，红的是见证槽）。
-/// `ecat-data/src/timeout.rs` 的同类用例靠「换一个无人写的证人槽」回避；这里三条
-/// 用例都在盯同一个槽，只能串行。
-static SLOT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 /// `max_concurrency` 走**配置**（`Some` 显式给值、`None` 走 `from_config` 的默认
 /// 32）：直接改私有字段会让 `cfg.max_concurrency` 的装配路径失去覆盖 —— 那样
 /// `from_config` 里删掉那行，本文件的并发测试照样绿。
@@ -59,7 +49,6 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Cl
 /// 调用会**成功返回** ⇒ 断言失败。这条测试不是空验收。
 #[tokio::test]
 async fn query_times_out_with_timeout_error() {
-    let _serial = SLOT_LOCK.lock().await;
     let url = spawn_slow_clickhouse(Duration::from_secs(5), Arc::new(AtomicUsize::new(0))).await;
     let c = client_at(&url, 1, None);
     let before = TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::SeqCst);
@@ -76,10 +65,12 @@ async fn query_times_out_with_timeout_error() {
 /// `TsdbClient` 路径独立计维度 —— 一个 client 两条路径，别串到一个槽里。
 #[tokio::test]
 async fn tsdb_path_counts_its_own_dimension() {
-    let _serial = SLOT_LOCK.lock().await;
     let url = spawn_slow_clickhouse(Duration::from_secs(5), Arc::new(AtomicUsize::new(0))).await;
     let c = client_at(&url, 1, None);
-    let rdbms_before = TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::SeqCst);
+    // 证人槽必须是**本测试二进制内没有任何其它用例会写**的槽 —— `Rdbms` 不行
+    // （另两条用例在写它，libtest 并行时它们的 +1 会插进本用例的观测窗口）。
+    // 加用例前先 `grep -rn 'BackendKind::Storage'`；要写它就先换一个自由槽。
+    let witness_before = TIMEOUTS[BackendKind::Storage as usize].load(Ordering::SeqCst);
     let tsdb_before = TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst);
     let err = ecat_data::TsdbClient::query(&c, "SELECT 1")
         .await
@@ -87,16 +78,15 @@ async fn tsdb_path_counts_its_own_dimension() {
     assert_eq!(err.code, ErrorCode::DeadlineExceeded, "got: {err}");
     assert!(TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst) > tsdb_before);
     assert_eq!(
-        TIMEOUTS[BackendKind::Rdbms as usize].load(Ordering::SeqCst),
-        rdbms_before,
-        "Tsdb 的超时不得落到 Rdbms 槽"
+        TIMEOUTS[BackendKind::Storage as usize].load(Ordering::SeqCst),
+        witness_before,
+        "Tsdb 的超时不得落到别的槽（证人槽约束见上）"
     );
 }
 
 /// 熔断真的打开（spec §8 判据 3）：连续超时后**快速失败**，不再等满超时。
 #[tokio::test]
 async fn repeated_timeouts_open_the_breaker_and_fail_fast() {
-    let _serial = SLOT_LOCK.lock().await;
     let url = spawn_slow_clickhouse(Duration::from_secs(5), Arc::new(AtomicUsize::new(0))).await;
     let c = client_at(&url, 1, None);
     for _ in 0..5 {
