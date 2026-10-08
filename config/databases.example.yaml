@@ -1,4 +1,4 @@
-# e-cat 数据库配置示例 — v2.4.2
+# e-cat 数据库配置示例 — v6.0.0
 #
 # 每个数据库后端都有 XxxConfig + from_config() 方法。
 # username / password / tls 均为可选字段，省略则跳过。
@@ -35,6 +35,9 @@ mssql:
 redis:
   url: "redis://localhost:6379"
   # password: "auth_token"   # 可选: Redis AUTH
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 memcached:
   # username: "memcache"     # 可选: 保留字段（当前为内存实现）
@@ -47,35 +50,53 @@ clickhouse:
   database: "default"
   # username: "default"      # 可选: 开启 HTTP Basic Auth
   # password: "changeme"     # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 # ── 搜索 ────────────────────────────────────────────────────
 elasticsearch:
   base_url: "http://localhost:9200"
   # username: "elastic"      # 可选: 开启 HTTP Basic Auth
   # password: "changeme"     # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 opensearch:
   base_url: "http://localhost:9200"
   # username: "admin"        # 可选: 开启 HTTP Basic Auth
   # password: "changeme"     # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 # ── 图数据库 ────────────────────────────────────────────────
 neo4j:
   base_url: "http://localhost:7474"
   # username: "neo4j"         # 可选: 复制本文件后请改成强口令
   # password: "changeme"      # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 nebulagraph:
   base_url: "http://localhost:19669"
   space: "my_space"
   # username: "root"         # 可选: 开启 HTTP Basic Auth
   # password: "nebula"       # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 arangodb:
   base_url: "http://localhost:8529"
   db: "mydb"
   # username: "root"          # 可选: 复制本文件后请改成强口令
   # password: "changeme"      # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 # ── 时序数据库 ──────────────────────────────────────────────
 influxdb:
@@ -83,11 +104,17 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   # token: "my-secret-token"  # 可选: 复制本文件后请换成真实令牌
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 iotdb:
   base_url: "http://localhost:18080"
   # username: "root"          # 可选: 复制本文件后请改成强口令
   # password: "root"          # 可选
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 questdb:
   base_url: "http://localhost:9000"
@@ -98,6 +125,36 @@ questdb:
   #   client_cert: "/etc/ecat/client.pem"
   #   client_key: "/etc/ecat/client-key.pem"
   #   skip_verify: false     # 跳过证书验证 (仅测试环境)
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
+
+tdengine:
+  base_url: "http://localhost:6041"
+  username: "root"
+  password: "taosdata"         # 复制本文件后请改成强口令
+  # database: "my_db"          # 可选: 不填则用 REST 路径里的默认库
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
+
+# ── 文档 ────────────────────────────────────────────────────
+mongodb:
+  url: "mongodb://localhost:27017"
+  database: "app"
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_pool_size / min_pool_size（连接池上下限；省略 = 驱动默认 10 / 0 —— 本 crate 没有信号量）
+
+# ── 对象存储 ────────────────────────────────────────────────
+s3:
+  endpoint: "http://localhost:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"     # 复制本文件后请换成真实密钥
+  secret_key: "minioadmin"
+  # 出站韧性（可选）：query_timeout_secs（0 = 禁用，默认 30 秒）
+  #   breaker: { failure_ratio: 0.5, window: 30, half_open_probes: 3, open_duration: 10 }
+  #   max_concurrency（默认 32，本 crate 的信号量）
 
 # ── TLS 证书自动生成示例 ──────────────────────────────────────
 # 使用 ecat-tls crate 编程生成:
