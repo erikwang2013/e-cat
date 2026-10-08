@@ -316,6 +316,10 @@ cargo test -p ecat-data-sqlx -p ecat-data-mssql --features metrics,health,tracin
 
 整文件替换为：
 
+> ⚠️ **本片段的 API 部分是「API 收口」之前的形态（`2d1199c` 之前），未随收口同步** —— 照抄会得到一份能编译但已过时的 API（测试模块里的证人槽已按文末「片段纠偏」第 1 条更新，其余照旧）。最终形态以 `ecat-data/src/timeout.rs` 为准，三处差异：
+> `from_timeout(d)` → **`from_timeout(kind, d)`**；`reason` 不再写死 `"timeout"` 而取 **`kind.slug()`**（写死会让按 reason 过滤/告警的人漏掉全部超时）；取槽 `TIMEOUTS[kind as usize]` → **`timeout_counter(kind)`**（无 `_` 分支的 `match`，加维度变成编译错误）。Step 7 与「出入 3」里的 `TIMEOUTS[BackendKind::Rdbms as usize]` 同理应写作 `timeout_counter(BackendKind::Rdbms)`。
+> 详见文末「片段纠偏」第 7 条。
+
 ```rust
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::rdbms::RdbmsError;
@@ -467,9 +471,18 @@ mod tests {
 
     /// 分维度计数**互不串**（spec §8 判据 4）。
     /// 两个维度都真开火，而不是只断言「某维度 += 1」—— 后者在没有分维度时也会过。
+    ///
+    /// 观测槽取 `Storage` 而非 `Rdbms`：`slow_future_times_out_and_counts`
+    /// 同样在等 10ms 后推进 `Rdbms` 槽，两条用例被 libtest 并发调度时窗口重叠，
+    /// 拿 `Rdbms` 当观测槽是竞态（实测 12/15 次误红）。`Storage` 无其它写者，
+    /// 断言才确定；若实现把超时计到别的槽，这一条仍会红。
+    ///
+    /// **约束：证人槽必须是同二进制内没有任何其它用例会写的槽**，否则同一个竞态
+    /// 复发（写它的用例会把 `+1` 插进 `witness_before` 与断言之间）。加用例前
+    /// `grep -rn 'BackendKind::Storage'` 确认无人写它；要写就先换证人槽。
     #[tokio::test]
     async fn timeout_counters_are_per_backend_kind() {
-        let rdbms_before = count(BackendKind::Rdbms);
+        let witness_before = count(BackendKind::Storage);
         let tsdb_before = count(BackendKind::Tsdb);
         let slow = || async {
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -479,9 +492,9 @@ mod tests {
             run_with_timeout(BackendKind::Tsdb, Some(Duration::from_millis(10)), slow()).await;
         assert_eq!(count(BackendKind::Tsdb), tsdb_before + 1);
         assert_eq!(
-            count(BackendKind::Rdbms),
-            rdbms_before,
-            "Tsdb 的超时不得落到 Rdbms 槽"
+            count(BackendKind::Storage),
+            witness_before,
+            "Tsdb 的超时不得落到别的槽"
         );
     }
 }
@@ -2947,7 +2960,7 @@ async fn tsdb_path_counts_its_own_dimension() {
     .await;
     let c = client_at(&url, 1, None);
     // 证人槽必须是**本测试二进制内没有任何其它用例会写**的槽 —— `Rdbms` 不行
-    // （另两条用例在写它，libtest 并行时它们的 +1 会插进本用例的观测窗口，实测 3/3 红）。
+    // （另两条用例在写它，libtest 并行时它们的 +1 会插进本用例的观测窗口）。
     // 加用例前先 `grep -rn 'BackendKind::Storage'`；要写它就先换一个自由槽。
     let witness_before = TIMEOUTS[BackendKind::Storage as usize].load(Ordering::SeqCst);
     let tsdb_before = TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst);
@@ -2955,7 +2968,14 @@ async fn tsdb_path_counts_its_own_dimension() {
         .await
         .expect_err("必须超时");
     assert_eq!(err.code, ErrorCode::DeadlineExceeded, "got: {err}");
-    assert!(TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst) > tsdb_before);
+    // 严格 `== +1`（而非 `>`）成立的前提：`Tsdb` 槽在**本测试二进制内只有一个写者**。
+    // metrics.rs 的用例已改成不推进它（见那里的说明）；谁要新增写 Tsdb 槽的用例，
+    // 先想清楚这条断言会不会被它的 +1 掩护成绿。
+    assert_eq!(
+        TIMEOUTS[BackendKind::Tsdb as usize].load(Ordering::SeqCst),
+        tsdb_before + 1,
+        "Tsdb 路径必须恰好计一次 Tsdb 槽"
+    );
     assert_eq!(
         TIMEOUTS[BackendKind::Storage as usize].load(Ordering::SeqCst),
         witness_before,
@@ -3251,7 +3271,7 @@ mkdir -p docs/superpowers/checklists
 2. `## 2. 包 run_with_timeout` —— **熔断在外、超时在内**的顺序，附一段说明（为什么不能反过来：卡死后端会打不开熔断器 + 半开名额泄漏）。给出 `guarded` 外壳的两个变体（`RdbmsError` / `ecat_errors::Error`）。
 3. `## 3. 加 Breaker 字段` —— 逐实例一个 `Arc<Breaker>`、`state()` 给路由用、`opened_total()` 给指标用、`guarded` 里闭包按需构造 future。
 4. `## 4. 注册指标` —— 三个指标名 + 维度 + 数据源表；**`collector` 在 `ecat-metrics`，本 crate 只写 ~15 行注册**（`[features] metrics = ["dep:ecat-metrics"]`，**不要**再各建 collector —— 会撞 `AlreadyReg`，见「出入 11」）；`backend` 标签值取**产品级名**（`"redis"` / `"clickhouse"`；一个后端有两条 I/O 路径时按路径各出一份，如 `"clickhouse-tsdb"`）。⚠️ **与 spec 的差异要写明**：spec §4 写的是类别名（`rdbms`/`cache`/…），**实际约定是产品名** —— 告警规则**必须按产品名写**（`backend="redis"`），照 spec 写永远匹配不到。另：指标标签是**产品名**、错误里的 `reason` 是**类别** slug（`"cache"`），两者粒度不同是有意的（见 `BackendKind::slug()`）。附一句「为什么不能照抄批次 4 的每 crate 一份」。
-5. `## 5. 加一条超时测试` —— 判据三选一（按后端的可测性）：①有 HTTP 接口 → axum mock + 延迟（ClickHouse 模式）；②有原生连接 → 假 `TcpListener` 装死（mssql 模式）；③内层可替身 → 假 impl + `future::pending()`。**必须是端到端**（打真实方法），不能只测 `run_with_timeout` 本身。⚠️ **若该测试要断言「计数落到了正确的槽」，证人槽必须是本测试二进制内没有任何其它用例会写的槽** —— 否则 libtest 并行调度时别的用例的 `+1` 会插进你的观测窗口，**必现红**（本批在 Redis 与 ClickHouse 各踩一次：ClickHouse 实测 3/3 红、`--test-threads=1` 恒绿）。加用例前先 `grep -rn 'BackendKind::<槽>'` 确认；**不要**用加锁串行化来绕（那只护住当前这几条用例，将来加一条写同一槽的用例 flake 会原样回来，且会被 5b 抄 12 遍）。
+5. `## 5. 加一条超时测试` —— 判据三选一（按后端的可测性）：①有 HTTP 接口 → axum mock + 延迟（ClickHouse 模式）；②有原生连接 → 假 `TcpListener` 装死（mssql 模式）；③内层可替身 → 假 impl + `future::pending()`。**必须是端到端**（打真实方法），不能只测 `run_with_timeout` 本身。⚠️ **若该测试要断言「计数落到了正确的槽」，证人槽必须是本测试二进制内没有任何其它用例会写的槽** —— 否则 libtest 并行调度时别的用例的 `+1` 会插进你的观测窗口，**必现红**（本批在 Redis 与 ClickHouse 各踩一次：ClickHouse 无锁并行**实测 20 次 17 红**、`--test-threads=1` 恒绿；确实找不到自由槽时退用**方向断言**（`> before`）并在注释里写明原因 —— 见 `ecat-data-redis/src/tests.rs:370-371`）。加用例前先 `grep -rn 'BackendKind::<槽>'` 确认；**不要**用加锁串行化来绕（那只护住当前这几条用例，将来加一条写同一槽的用例 flake 会原样回来，且会被 5b 抄 12 遍）。
 6. `## 6. 加一条熔断测试` —— 连续失败后断言**两件事**：`state() == Open` **且** 下一次调用**不等满超时**就返回（时间断言）。只断言 `is_err()` 是空验收。**判据要选准**（Task 4 复核用 A/B 探针实测）：**严格判据是 `err.code == <熔断拒绝码>`**（如 `Unavailable`）—— 它只能由熔断器在**调内层之前**拒绝产生，crate 内无其它生产者，**严格强于墙钟**；而「不等满超时」的**墙钟断言是冗余佐证**（把它删掉测试仍绿），且是全套里唯一对调度抖动敏感的断言。语义判据必写；墙钟断言可留作直观信号，但别当唯一依据。
 
 **外加两节**：
@@ -3474,11 +3494,48 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
 | `cargo clippy --workspace --all-targets -- -D warnings` | |
 | `--all-features` 四 crate | |
 
-**落码期发现的计划片段错误（均已由实施者实测复现后纠偏，已更新本文件的片段）**：
-1. **Task 3 Step 6/7**：`Box::new(count_pool_timeout)` 编译不过（`E0271: expected … to return u64, but it returns ()`）——
-   片段一边要求「原样保留 `count_pool_timeout`」（递增函数、返回 `()`），一边把它当 `RdbmsCounterFn = Box<dyn Fn() -> u64>` 传，自相矛盾。
-   已改为 `Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed))`（即原 collector 的写法，契约逐字未变）。
-2. **Task 1 的新增测试** `timeout_counters_are_per_backend_kind` 原写法**是 flaky 的**（与既有的 `slow_future_times_out_and_counts` 并发争同一个 `Rdbms` 槽，实测 12/15 误红）——
-   已改为用无人写的 `Storage` 作证人槽（20/20 绿）。计划已更新。
-3. **Task 3 片段曾引用 Task 1 已删的 `QUERY_TIMEOUTS`**（会 E0432）—— 已在 `a97153b` 修正。
-**共同教训**：本文件的代码片段由计划作者人工撰写、**未经编译**（当时的环境跑不动构建）。实施者遇到片段跑不通时，正确做法是「实测复现 → 停下报 lead → 经确认后偏离并写进提交信息」，**不要**默默改成自认为对的样子。
+**落码期发现的计划片段错误（完整清单，共 7 条；2026-10-08 由 Task 8 执行者逐条回源码与提交核实，每条按「现象（含实测数）/ 根因 / 最终做法 / 证据」写）**：
+
+1. **Task 1 Step 2 新增用例 `timeout_counters_are_per_backend_kind` 的证人槽选错（flaky）**
+   - 现象：片段拿 `count(BackendKind::Rdbms)` 当「别的维度没被污染」的证人槽，而同二进制的既有用例 `slow_future_times_out_and_counts` 也在推进 `Rdbms` 槽 —— libtest 默认并行，它的 `+1` 落进观测窗口，**实测 12/15 次误红**（红的是证人槽断言，产品行为本身是对的）。
+   - 根因：进程级 `static TIMEOUTS` 是共享可变状态；「换一个维度」不等于「换一个没人写的槽」。
+   - 最终做法：证人槽改 `BackendKind::Storage`（`grep` 确认本二进制内无写者），约束写进用例 doc 注释。本文件该片段**此前从未同步过**（旧文写「计划已更新」，不实 —— `git grep 'count(BackendKind::Storage)'` 在当时的 HEAD 上零命中），2026-10-08 才补齐。
+   - 证据：`ecat-data/src/timeout.rs:241-268`（现状，含 12/15 与「证人槽必须无人写」）；`a3fd64c`（注释落码）；`79d13f5`（顺带用 `ptr::eq` 把 7 个槽的下标钉死 —— 无 `_` 分支的 `match` 只保证编译期穷尽，臂写反照样编译过）。
+2. **Task 1 片段引用的 `QUERY_TIMEOUTS` 已被同一份计划的 Task 1 自己删掉（E0432）**
+   - 现象：Task 3 的 `use ecat_data::{QUERY_TIMEOUTS, TRANSACTIONS_LEAKED}` 与 `QUERY_TIMEOUTS.load(..)` 指向 Task 1 已删的静态量 ⇒ E0432；**且这两处只在 `--features metrics` 下才编译到**（陷阱是计划自己在「出入 3」里写明的，但它没保护自己的片段）。
+   - 根因：同一份计划的不同片段分批撰写，Task 1 的「删」没有回灌到 Task 3 的引用；片段从未编译，没有第二道防线。
+   - 最终做法：`a97153b` 改为 `TIMEOUTS[BackendKind::Rdbms as usize]`；`d466d1e` 再统一为收口新增的访问器 `timeout_counter(BackendKind::Rdbms)`（消掉 `as usize`）。
+   - 证据：`a97153b`、`d466d1e`；`ecat-data-sqlx/src/metrics.rs:20,59`、`ecat-data-mssql/src/metrics.rs:24,68`（现状）。
+3. **Task 3 Step 6/7 片段自相矛盾：`Box::new(count_pool_timeout)`（E0271）**
+   - 现象：片段一边要求「原样保留 `count_pool_timeout`」，一边把它放进 `RdbmsCounterFn = Box<dyn Fn() -> u64>` 的位置 —— 而它是**递增函数**（`POOL_TIMEOUTS.fetch_add(..)`，返回 `()`），编译报 `E0271: expected … to return u64, but it returns ()`。
+   - 根因：把「递增口」与「取数闭包」两个角色混在一处；原 collector 里这两个角色本来就是分开的（`count_pool_timeout` 递增、注册处传读值闭包）。
+   - 最终做法：改为 `Box::new(|| POOL_TIMEOUTS.load(Ordering::Relaxed))`（即原 collector 的读法，指标名/标签/契约逐字未变）；`count_pool_timeout` 保持原样继续做唯一的递增口。
+   - 证据：`c8cacd3`；`ecat-data-sqlx/src/metrics.rs:30-31,56`、`ecat-data-mssql/src/metrics.rs:35-36,67`（现状）。
+4. **Task 2a 的 `disarm()` 位置论断不准确（把两件事绑成了一件）**
+   - 现象：原文写「`disarm()` 的位置必须在记录之后 —— 放前面就等于没修」，读起来像「取消缺陷的修复取决于 disarm 的位置」。
+   - 根因：取消路径**根本不经过 `disarm`** —— 取消点是 `f().await`（`breaker.rs:175`），future 被 drop 时走 `ProbePermit` 的 `Drop` 归还（`:292-303`）；`disarm` 只管「探测已被记录 ⇒ 撤销 Drop 里的归还」（`:225-228`）。
+   - 最终做法：`e4a33dc` 把该行拆成两个论断（记录之后 = 记账正确；**与取消修复无关**）+ 标注原文不准确。
+   - 证据：`e4a33dc`；`ecat-circuit-breaker/src/breaker.rs:145-231,277-303`。
+   - ⚠️ **本次复核未能证实同一次修正补的括注**（「提前 disarm 会让**同一次探测**既被记录又被归还，名额多还一个」）：`disarm(mut self)` 消费 permit，Drop 随即因 `armed=false` 空转，推不出「还两次」的路径；且从 `f().await`（:175）到 `disarm`（:226-228）之间没有 await，记录前/后放行为一致。真正会让取消修复失效的位置是 **`f().await` 之前** —— 那里 `Drop` 是唯一的归还路径。此括注**待 lead 裁决**，不影响落码。
+5. **`register_outbound_metrics` 的括注漏了第四个参数（`Fn() -> u8`）**
+   - 现象：注册片段的括注只说「第三个参数是 `Box<dyn Fn() -> u64 + Send + Sync>`」，第四个参数没写类型 —— 它收的是 `breaker.state().code()`，即 **`u8`**（`OutboundStateFn`），塞进 u64 的位置就是类型错。
+   - 根因：括注是人工摘要，四个参数的真实类型在别人 crate（`ecat-metrics/src/outbound.rs:32,38`）；片段里只看到调用处，肉眼分不出第 3/第 4 个参数的差别。
+   - 最终做法：`d652f2e` 写全四参签名（含两个类型别名的展开）。发现者是 Task 6 的 checklist 作者 —— 写样例的人会撞上写计划的人看不见的东西。
+   - 证据：`d652f2e`；`ecat-metrics/src/outbound.rs:32,38,41-47`；`ecat-circuit-breaker/src/breaker.rs:22-28`（`code() -> u8`）。
+6. **Task 5 `tsdb_path_counts_its_own_dimension` 的证人槽竞态（与第 1 条同类，ClickHouse 侧）**
+   - 现象：证人槽取 `Rdbms`，而本二进制另两条用例也在写它 —— **无锁并行实测 20 次 17 红**（首轮观察记的是 3/3 红；红的都是证人槽断言，产品行为正确），`--test-threads=1` 恒绿 ⇒ 是调度竞态而非逻辑错。
+   - 根因：同第 1 条。（中途试过 `SLOT_LOCK` 串行化：40 次 0 红，但会把串行锁写进 5b 要复用 12 次的模板 → 放弃。）
+   - 最终做法：`83b0b89` 计划片段改 `Storage` → `b2bae3f` 落码换槽（撤掉锁，Tsdb 断言当时保留计划原文的 `>`）→ `e9b54e3` 按 lead 裁决收紧为严格 `== tsdb_before + 1`，靠**消除并发写者**（`metrics.rs` 的用例不再推进 `Tsdb` 槽）而不是换比较符。e9b54e3 的对照实验：自然调度下没能复现假绿，但注入「迟到写者」后 5/5 假绿 ⇒ **窗口里任何杂散 `+1` 都能骗过 `== +1`，修写者才是修根因**。
+   - 证据：`83b0b89`、`b2bae3f`、`e9b54e3`；`ecat-data-clickhouse/src/tests/resilience.rs:68-93`（现状）。本文件该片段 2026-10-08 才补上严格 `==`（此前仍写着 `>` + 「实测 3/3 红」）。
+   - 相关：**找不到自由槽时的退路**是方向断言 `> before` 并在注释里写明为什么 —— `ecat-data-redis/src/tests.rs:370-371` 是仓内范例（`Cache` 槽有两个写者）。
+7. **（复核追加）Task 1 Step 2 的整段代码停留在「API 收口」之前，三处调用侧片段也从未回灌**
+   - 现象：片段写 `fn from_timeout(d: Duration)`、`reason` 写死 `"timeout"`、取槽 `TIMEOUTS[kind as usize]`；最终代码是 `from_timeout(kind, d)`、`reason = kind.slug()`、`timeout_counter(kind)`。另有 Step 7 与「出入 3」两处 `TIMEOUTS[BackendKind::Rdbms as usize]`（能编译，但已不是仓内写法）。
+   - 根因：收口（`2d1199c`）发生在片段写就之后；团队只同步了下游 Task 3/4/5 的**生产注册**片段（`d466d1e`、`218319f`），Task 1 自己的片段没人回灌 —— 与第 2 条是同一台机器：同一份计划的不同片段之间没有一致性检查。
+   - 最终做法：不逐字重写（它是收口前的设计记录），在片段前加 ⚠️ 指向现状与三处差异；5b 一律以 `ecat-data/src/timeout.rs` 为准。
+   - 证据：`2d1199c`、`d466d1e`、`218319f`；`ecat-data/src/timeout.rs:52,79,99,109-117`（现状）。
+
+**给 5b 计划撰写者的提示**（上面 7 条里 6 条属于下面三类，写计划时照着自检）：
+1. **片段间一致性**：动 API（删常量 / 加参数 / 换访问器）必须 `grep` 全文回灌所有引用片段 —— 第 2、7 条都是「删了没回灌」；只在 `--features metrics` 之类开关下才编译到的片段尤其要点名（没有第二道防线）。
+2. **共享可变状态是测试前提**：进程级 `static` / 全局注册表 / `:memory:` 库这类「同一二进制内人人可写」的状态，证人与观测窗口要在注释里写清「谁还会写它」+ 加用例前的 `grep` 命令 —— 第 1、6 条是同一个竞态在两个 crate 各踩一次，且这个模板要被抄 12 份。
+3. **注释里的因果论断要指得到代码行**：第 4 条把「记录位置」与「取消修复」绑成一句，照它推理会得到错结论；论断旁附 `文件:行`，复核者才有得核。
+**流程**：片段跑不通时 —— **实测复现 → 停下报 lead → 经确认后偏离并把偏离写进提交信息**；不要默默改成自认为对的样子，也不要用「默认 feature 下是绿的」当作没坏（第 2 条就是）。
