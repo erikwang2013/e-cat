@@ -570,6 +570,27 @@ cargo test -p <crate> <你的超时用例名> -- --test-threads=1   # 串行也�
 
 ---
 
+### 模式 ④（**并发上限类后端必须做**）：超时后并发许可必须归还
+
+若你的后端有并发上限（信号量 / 连接池），**必须**补一条：**第一次调用超时后，许可要能立刻被第二次调用拿到**。
+
+为什么单列：超时时 `run_with_timeout` 是**返回 Err**（不是取消 future），许可随 future 的 drop 释放 —— 这条看着显然，
+但**仓内原本没有任何用例覆盖它**（Task 5 复核在副本里加临时用例才验出来：`max_concurrency=1`、
+第一次 1s 超时打 3s mock、第二次必须能拿到许可 → 正常 1.00s 绿；注入 `std::mem::forget(permit)` 后 3.01s 红）。
+
+```rust
+// 上限 1：第一次超时（1s 预算 vs 3s mock），第二次必须仍能拿到许可并正常完成。
+let c = client_at(&url, 1, Some(1));
+let _ = ecat_data::SqlExecutor::query(&c, "SELECT 1").await;  // 超时；许可应随 future drop 归还
+let t = std::time::Instant::now();
+let ok = ecat_data::SqlExecutor::query(&c, "SELECT 1").await; // 这次用短 mock，不再超时
+assert!(ok.is_ok() && t.elapsed() < std::time::Duration::from_secs(2),
+        "超时后许可没归还 —— 后续调用会永远排队");
+```
+
+**探针自证**：把 `permit` 换成 `std::mem::forget(...)`（或让它逃逸出函数作用域）→ 第二次调用必须**拿不到许可**（挂到超时）。
+
+---
 ## 6. 加一条熔断测试
 
 **两件事都要断言**：`state() == Open` **且** 下一次调用**快速失败**。只断言 `is_err()`
