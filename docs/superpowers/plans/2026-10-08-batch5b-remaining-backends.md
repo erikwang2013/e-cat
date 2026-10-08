@@ -105,9 +105,10 @@ ClickHouse / QuestDB 行写「✅ 熔断」（5b 后是「✅ 超时 + 熔断」
 **出入 15：README 的 QuestDB 行写着「✅ 熔断」，但 crate 里 0 处 `Breaker`。**
 `grep -rn 'Breaker' ecat-data-questdb/` → **空**；把 13 个数据后端逐个计数，只有
 `ecat-data-redis`(17 处) / `ecat-data-clickhouse`(15 处) 有，**11 个目标 crate 全是 0**。
-⇒ 那一行是**提前吹的**（表格领先于代码），QuestDB 的熔断要等 Task 9 落地才成立。
-这正是 Task 12 的尾列 ✅ 计数验收（7 → 18，14 份镜像逐份查）存在的理由：
-它把「表格比代码先行」和「漏改某个镜像」一并抓出来。
+⇒ **在 5b 落地之前，那一行是假的**（表格领先于代码）—— 读到它的人不要当成现状引用，
+QuestDB 的熔断要等 Task 9 合并才成立。
+处理方向已裁决：**让代码追上表格**（不是把表格改小、更不是把那行删掉）。Task 12 的尾列
+✅ 计数验收（7 → 18，14 份镜像逐份查）同时管两件事：表格比代码先行、以及漏改某个镜像。
 
 ---
 
@@ -355,9 +356,11 @@ pub struct <XxxClient> {
     }
 ```
 
-> **与 checklist 的一处有意偏离**：checklist §2 变体 B（`:171-184`）的签名带 `kind: BackendKind`。
-> 那是 ClickHouse 的形状（两条路径）。11 个目标 crate 都只有一条路径 ⇒ 写死更安全，
-> 偏差记录在这里，实施时**不要**「统一」回去。
+> **与 checklist 的一处有意偏离（已裁决 = 批准，并已回写 checklist）**：checklist §2 变体 B
+> （`:171-184`）的签名带 `kind: BackendKind` —— 那是 ClickHouse 的形状（两条路径）。
+> 11 个目标 crate 都只有一条路径 ⇒ 写死更安全（参数化会把「维度由 trait 家族决定」
+> 降级成「调用者说了算」，而填错只静默少数）。checklist §2 已加上同口径的规则段
+> （**Task 12 Step 0 是它的落地/核对步骤，开工前先做那一步**）。实施时**不要**「统一」回去。
 
 `<KIND>`/`<LABEL>` 取值见 §2 表；QuestDB 是 `RdbmsError` 路径，见 Task 9；MongoDB 去掉 `let _permit` 行，见 Task 11。
 
@@ -3000,10 +3003,11 @@ async fn bson_conversion_error_does_not_trip_the_breaker() {
 
 ## Task 12：文档同步（**28 个文件**：1 + 13 + 14）
 
-**Files**（三组，各自独立提交；**不要**在同一个 commit 里混组）：
+**Files**（四组，各自独立提交；**不要**在同一个 commit 里混组）：
 
 | 组 | 文件 | 数量 |
 |----|------|------|
+| 0 | `docs/superpowers/checklists/backend-resilience-onboarding.md` | 1 |
 | A | `config/databases.example.yaml` | 1 |
 | B | `docs/database-config-tutorial.md` + `docs/i18n/{ar,bn,de,en,es,fr,hi,id,ja,ko,pt,ru}/database-config-tutorial.md` | 13 |
 | C | `README.md`、`README.en.md` + `docs/i18n/{12 语言}/README.md` | 14 |
@@ -3013,6 +3017,26 @@ async fn bson_conversion_error_does_not_trip_the_breaker() {
 「两层超时」「熔断默认开启」两段说明）；缺的是**其余 8 节的新字段**与
 **TDengine / MongoDB / S3 三节**。`config/databases.example.yaml` **连 5a 都没更新**
 （`redis:` 节 35-37、`clickhouse:` 节 45-49 都只有旧字段，且**没有** tdengine / mongodb / s3 三节）。
+
+**Step 0（3 分钟）0 组：先把 checklist 的口径改成与 T0 一致**（**本批次开工前做**）。
+T0-C 用的是「`kind` 写死」的变体，而 checklist §2 的变体 B 模板带 `kind: BackendKind` 参数
+（照抄自 `ecat-data-clickhouse`，它是**双路径** crate）。两者不统一，下一个照 checklist 写的人
+就会给单路径 crate 平白加一个能传错的旋钮。**已回写进 checklist**，核对下述文本在位即可
+（若已存在 = 别人已改，跳过）：
+
+```bash
+grep -n 'kind` 写死，除非你的 crate 有多条 I/O 路径' docs/superpowers/checklists/backend-resilience-onboarding.md
+# 期望：命中 1 行（§2 变体 B 代码块之后）；没有就按下面的文本补
+grep -c 'BackendKind::Graph, self.query_timeout, fut' docs/superpowers/checklists/backend-resilience-onboarding.md
+# 期望：1（写死 kind 的正例；与字面量参数形式并存，因为 clickhouse 确实是双路径）
+```
+
+补充文本（若缺失则插在 checklist §2 变体 B 代码块之后、`**包哪些方法**：` 之前）：
+「**`kind` 写死，除非你的 crate 有多条 I/O 路径**：`kind` 是维度选择器，只有当一个 crate
+同时实现多个 I/O trait、必须按调用点区分维度时（ClickHouse：`SqlExecutor` → `Rdbms` 与
+`TsdbClient` → `Tsdb`）才做成参数；单路径 crate 一律写死，否则调用点可以传任意维度，
+把「维度由 trait 家族决定」降级成「调用者说了算」，而填错只会静默少数。5b 的 10 个 HTTP 后端
+全是单路径 ⇒ 全写死；`ecat-data-questdb` 虽是 `RdbmsError` 路径但也只有一条路径 ⇒ 写死 `BackendKind::Rdbms`。」
 
 **Step 1（3 分钟）基线**（把 4 个数字记进 commit message）：
 
@@ -3074,7 +3098,7 @@ tdengine:
 ```
 
 (c) 文件头 `# e-cat 数据库配置示例 — v2.4.2` 改成 `— v6.0.0`（与当前 Cargo.toml 一致；
-Task 13 的 bump 会把它一起改成 6.1.0）。
+Task 13 的 bump 会把它一起改成 7.0.0）。
 
 **验收（A 组，非空）**：
 
@@ -3269,27 +3293,39 @@ done; echo DONE
 # 期望：只有 DONE
 ```
 
-**Step 6（4 分钟）三组各自提交**：
+**Step 6（4 分钟）四组各自提交**：
 
 ```bash
+git add docs/superpowers/checklists/backend-resilience-onboarding.md
+git commit --only docs/superpowers/checklists/backend-resilience-onboarding.md -m "docs(checklist): guarded 的 kind 写死（仅多 I/O 路径的 crate 才带参数）—— 与 5b 的 T0 口径统一"
 git add config/databases.example.yaml
 git commit --only config/databases.example.yaml -m "docs(config): 示例配置补齐出站韧性字段与 tdengine/mongodb/s3 三节"
 git commit --only docs/database-config-tutorial.md docs/i18n/*/database-config-tutorial.md -m "docs(tutorial): 补齐 5b 十一个后端的出站韧性字段与三节新后端（13 份镜像）"
 git commit --only README.md README.en.md docs/i18n/*/README.md -m "docs(readme): 支持数据库表「超时/熔断」列更新到 18/19（14 份镜像）"
 ```
 
+（0 组**必做、且最先做** —— 它改的是 5b 工人照着写的模板；A/B/C 三组可任意顺序。
+这四处提交都**不要**带上别人的改动。**若某组此刻已经没有 diff**（例如 0 组已由 lead 提前
+改并提交），那条 `--only` 提交会报 `nothing to commit` —— 跳过它，**不要**为了让命令有输出
+而制造改动。）
+
 > `git commit --only <paths>` 会**只**提交列出的路径（共享 index 里别人的暂存文件不受影响）；
 > 命中 `.index.lock` **不要删锁**，等 15 秒重试。
 
 ---
 
-## Task 13：CHANGELOG + 版本号 6.0.0 → 6.1.0 + 全量闸门
+## Task 13：CHANGELOG + 版本号 6.0.0 → **7.0.0** + 全量闸门
 
-> **这一条要 lead 裁决版本号**：新增公开字段（`XxxConfig` 三个字段）属于「新增功能」，
-> 按 semver = **6.1.0**；但用**结构体字面量**构造这些 Config 的下游代码会 E0063
-> —— 若按「公开 API 破坏 = major」的严格读法就是 **7.0.0**。本计划默认 **6.1.0**
-> （与 5a 的 6.0.0 同级递增；serde 路径不受影响）。lead 若选 7.0.0，把下面所有
-> `6.1.0` 逐个替换即可，其余步骤不变。
+> **版本号已由 lead 裁决 = `7.0.0`（major）**，判据是本仓自己的先例，不是偏好：
+> 6.0.0 的 CHANGELOG 已经把**同一处改动**（`RedisConfig` / `ClickhouseConfig` 加公开字段）
+> 写进**破坏性变更**段，理由原文是「两个结构体都没有 `Default` 也没有 `#[non_exhaustive]`，
+> 用**结构体字面量**构造的用户代码需要补字段」。实测确认 11 个目标 crate 的 Config 同样是
+> 朴素 `#[derive(Debug, Clone, Deserialize)]`（`impl Default` / `derive(Default)` 命中均为 0，
+> 无 `#[non_exhaustive]`）⇒ 同一个改动在相邻两次发布里不能两套标准 ⇒ **7.0.0**。
+> 因此本任务**必须有破坏性变更段**（见 Step 2），且 sed 的替换串是 `7.0.0`。
+>
+> 另记一条**本批不做**的债（lead 自行跟踪，别写进 CHANGELOG）：给这些 Config 加
+> `#[non_exhaustive]` 能让将来再加字段是 minor —— 但那本身也是破坏性变更，值得单独一批。
 
 **Files**：`CHANGELOG.md`、`Cargo.lock`、14 个 README、`config/databases.example.yaml`、
 以及 61 个受版本串影响的 `Cargo.toml`（其中 **38 个**带 `"6.0.0"`；其余是纯 path 依赖）。
@@ -3311,7 +3347,18 @@ grep -c 'v6\.0\.0' config/databases.example.yaml                          # 记�
 标题用**破折号** `—`，与既有条目一致）：
 
 ```markdown
-## [6.1.0] — 2026-10-08
+## [7.0.0] — 2026-10-08
+
+### ⚠️ 破坏性变更
+
+- **11 个后端 Config 新增公开字段**：`ArangoConfig` / `Neo4jConfig` / `NebulaGraphConfig` /
+  `ElasticsearchConfig` / `OpenSearchConfig` / `InfluxConfig` / `IotdbConfig` /
+  `TdengineConfig` / `QuestdbConfig` / `S3Config` 新增 `query_timeout_secs` / `breaker` /
+  `max_concurrency`；`MongoConfig` 新增 `query_timeout_secs` / `breaker` / `max_pool_size` /
+  `min_pool_size`。这些结构体既没有 `Default` 也没有 `#[non_exhaustive]`，用**结构体字面量**
+  构造的用户代码需要补字段（E0063）；走 serde 配置的写法不受影响（新字段全部带
+  `#[serde(default)]`，省略即默认）。判定与 6.0.0 对 `RedisConfig` / `ClickhouseConfig`
+  的同一处改动一致 —— 同一个改动，同一套标准。
 
 ### Added — 出站韧性覆盖全部数据后端（批次 5b）
 
@@ -3346,23 +3393,23 @@ grep -c 'v6\.0\.0' config/databases.example.yaml                          # 记�
 **Step 3（3 分钟）bump 版本号**：
 
 ```bash
-git ls-files '*Cargo.toml' | xargs sed -i 's/"6\.0\.0"/"6.1.0"/g'          # Cargo.toml 里带引号
-sed -i 's/6\.0\.0/6.1.0/g' README.md README.en.md docs/i18n/*/README.md   # README 里是裸串
-sed -i 's/6\.0\.0/6.1.0/g' config/databases.example.yaml                  # `— v6.0.0` → `— v6.1.0`
+git ls-files '*Cargo.toml' | xargs sed -i 's/"6\.0\.0"/"7.0.0"/g'          # Cargo.toml 里带引号
+sed -i 's/6\.0\.0/7.0.0/g' README.md README.en.md docs/i18n/*/README.md   # README 里是裸串
+sed -i 's/6\.0\.0/7.0.0/g' config/databases.example.yaml                  # `— v6.0.0` → `— v7.0.0`
 ```
 
 **验收（不变式，非空）**：
 
 ```bash
 git ls-files '*Cargo.toml' | xargs grep -l '"6\.0\.0"' | wc -l     # 期望 0
-git ls-files '*Cargo.toml' | xargs grep -l '"6\.1\.0"' | wc -l     # 期望 = N（= 38，与 Step 1 相等：文件数不变）
+git ls-files '*Cargo.toml' | xargs grep -l '"7\.0\.0"' | wc -l     # 期望 = N（= 38，与 Step 1 相等：文件数不变）
 grep -h '6\.0\.0' README.md README.en.md docs/i18n/*/README.md | wc -l    # 期望 0
-grep -h '6\.1\.0' README.md README.en.md docs/i18n/*/README.md | wc -l    # 期望 = M（= 28）
+grep -h '7\.0\.0' README.md README.en.md docs/i18n/*/README.md | wc -l    # 期望 = M（= 28，裸串两处 × 14 份）
 grep -c '6\.0\.0' config/databases.example.yaml                    # 期望 0
-grep -c 'v6\.1\.0' config/databases.example.yaml                   # 期望 = K（= 1）
+grep -c 'v7\.0\.0' config/databases.example.yaml                   # 期望 = K（= 1）
 # 只允许版本行的改动（防止 sed 误伤别的 "6.0.0"）：
 git diff -U0 -- '*.toml' | grep -E '^-[^-]' | grep -vc '6\.0\.0'   # 期望 0
-git diff -U0 -- '*.toml' | grep -E '^\+[^+]' | grep -vc '6\.1\.0'  # 期望 0
+git diff -U0 -- '*.toml' | grep -E '^\+[^+]' | grep -vc '7\.0\.0'  # 期望 0
 ```
 
 **Step 4（3 分钟）重生成 `Cargo.lock`**（不改 lock 的话 workspace 成员版本会与 Cargo.toml 不一致）：
@@ -3392,7 +3439,7 @@ done; echo DONE
 **Step 6（5 分钟）提交**：
 
 ```bash
-git commit --only CHANGELOG.md Cargo.lock config/databases.example.yaml README.md README.en.md docs/i18n/*/README.md $(git ls-files '*Cargo.toml') -m "chore(release): 6.0.0 → 6.1.0（批次 5b：11 个后端出站韧性）"
+git commit --only CHANGELOG.md Cargo.lock config/databases.example.yaml README.md README.en.md docs/i18n/*/README.md $(git ls-files '*Cargo.toml') -m "chore(release): 6.0.0 → 7.0.0（批次 5b：11 个后端出站韧性；Config 新增公开字段 = major）"
 ```
 
 （命中 `.index.lock` 等 15 秒重试，**不要删锁**。）

@@ -159,7 +159,8 @@ cargo test -p <crate> config_             # ② 从配置装配
 ```
 
 **变体 B：`RdbmsError` 路径 + 信号量**（`ecat-data-clickhouse/src/lib.rs:164-195` 逐字）——
-`SqlExecutor` 家族用这个；同一文件还有 `Error` 路径的孪生 `guarded_tsdb`：
+`SqlExecutor` 家族用这个（**`kind` 参数只在多 I/O 路径的 crate 上保留**，单路径写死，见下）；
+同一文件还有 `Error` 路径的孪生 `guarded_tsdb`：
 
 ```rust
     /// 一次出站调用的外壳（`RdbmsError` 路径）。
@@ -195,6 +196,33 @@ cargo test -p <crate> config_             # ② 从配置装配
             .map_err(|e| breaker_error_to_backend_error(e, "clickhouse"))
     }
 ```
+
+**`kind` 写死，除非你的 crate 有多条 I/O 路径**（5b 起，口径统一）：
+
+`kind` 是**维度选择器**，它的值由「调用点包着哪个 trait」唯一决定。只有当一个 crate
+**同时实现多个 I/O trait、必须按调用点区分维度**时（`ecat-data-clickhouse`：
+`SqlExecutor` → `Rdbms` 与 `TsdbClient` → `Tsdb` 共用同一个 `Breaker`），才把 `kind`
+做成函数参数（上面的变体 B 就是从它逐字抄的）。**单路径 crate 一律写死**：
+
+```rust
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        let _permit = self.permit().await; // HTTP 后端才有（见上面的「许可在最外」）
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Graph, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "arangodb"))
+    }
+```
+
+理由：写成参数意味着**调用点可以传任意维度**，把「维度由 trait 家族决定」这条约束
+降级成「调用者说了算」；而填错只会**静默少数**（见下一条），没有编译期保护。
+单路径 crate 带这个参数 = 白送一个能悄悄写错的旋钮，没有任何收益。
+（批次 5b 的 10 个 HTTP 后端全部是单路径，因此全部写死；`ecat-data-clickhouse` 是
+双路径的例外，保留参数形式。`ecat-data-questdb` 虽是 `RdbmsError` 路径，但只有
+`SqlExecutor` 一条路径 ⇒ 也写死 `BackendKind::Rdbms`。）
 
 **包哪些方法**：
 
