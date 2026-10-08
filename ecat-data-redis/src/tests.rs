@@ -167,7 +167,9 @@ async fn lock_from_config_with_password_path_fails_on_unreachable() {
 /// 数据命令不回应 ⇒ 调用方在超时前一直挂着。这正是「一个卡死的 Redis GET」。
 /// 握手命令必须应答，否则 `get_multiplexed_async_connection` 就卡在建连上了，
 /// 测到的是建连超时而不是命令超时。
-async fn spawn_silent_redis() -> String {
+/// `pub(crate)`：`metrics` 的 `from_config` 自动注册用例也要用它
+/// （Redis 的 `from_config` 真建连，不能指向无人监听的地址）。
+pub(crate) async fn spawn_silent_redis() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

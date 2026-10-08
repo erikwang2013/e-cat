@@ -15,8 +15,17 @@ use std::sync::atomic::Ordering;
 
 /// 挂上 ClickHouse 的出站数据源。收熔断器而非整个 client（同 Task 4）。
 pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
-    register_one("clickhouse", BackendKind::Rdbms, Arc::clone(&breaker));
-    register_one("clickhouse-tsdb", BackendKind::Tsdb, breaker);
+    register_as("clickhouse", "clickhouse-tsdb", breaker);
+}
+
+/// 两个标签**只给测试用**：注册表按标签**覆盖**
+/// （`ecat-metrics/src/outbound.rs`），而 `metrics` feature 下每个 `from_config`
+/// 都会往公共标签上再写一次，所以「断言自己那台熔断器」的用例必须用**私有标签**，
+/// 否则是在赌「谁最后注册」（`ecat-metrics` 自己的用例用的是同一个路子）。
+/// 生产入口固定 `"clickhouse"` 与 `"clickhouse-tsdb"`。
+fn register_as(rdbms_backend: &'static str, tsdb_backend: &'static str, breaker: Arc<Breaker>) {
+    register_one(rdbms_backend, BackendKind::Rdbms, Arc::clone(&breaker));
+    register_one(tsdb_backend, BackendKind::Tsdb, breaker);
 }
 
 fn register_one(backend: &'static str, kind: BackendKind, breaker: Arc<Breaker>) {
@@ -56,10 +65,20 @@ mod tests {
     /// 另一件由本用例抓的事：`register_one("clickhouse-tsdb", …)` 的 kind 误接
     /// （写成 `Rdbms`）—— 误接时两份样本同源、值相等，`tsdb < clickhouse` 红。
     /// 这条轴 `guarded_tsdb` 的严格断言够不到（那是另一行代码）。
+    ///
+    /// 注册用**私有标签**（`-live-test` 后缀）：公共标签在 `metrics` feature 下
+    /// 被同二进制的每个 `from_config` 反复覆盖（自动注册），拿它断言具体值就是
+    /// 在赌「谁最后注册」—— 实测未用私有标签时（500 次）本用例红 4 次。
+    /// 公共标签的接线由 `from_config_registers_outbound_metrics` 断言「样本存在」
+    /// （与注册者是谁无关）。
     #[tokio::test]
     async fn both_paths_publish_their_own_timeout_sample() {
         let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
-        register_outbound_metrics(Arc::clone(&breaker));
+        register_as(
+            "clickhouse-live-test",
+            "clickhouse-tsdb-live-test",
+            Arc::clone(&breaker),
+        );
 
         // 推进**一大格**（不是一格）：1000 与「Tsdb 槽单写者（≤1）」拉开距离，
         // 于是「两份样本同源」可直接用 `tsdb < clickhouse` 抓 —— 不依赖写者次数。
@@ -68,11 +87,11 @@ mod tests {
         let text = ecat_metrics::metrics_text();
         let clickhouse = sample(
             &text,
-            r#"ecat_outbound_timeouts_total{backend="clickhouse"}"#,
+            r#"ecat_outbound_timeouts_total{backend="clickhouse-live-test"}"#,
         );
         let tsdb = sample(
             &text,
-            r#"ecat_outbound_timeouts_total{backend="clickhouse-tsdb"}"#,
+            r#"ecat_outbound_timeouts_total{backend="clickhouse-tsdb-live-test"}"#,
         );
         assert!(
             clickhouse.is_some_and(|v| v >= 1000.0),
@@ -86,7 +105,7 @@ mod tests {
             tsdb < clickhouse,
             "两份样本同源（tsdb 标签读了 Rdbms 槽？）—— 实际输出:\n{text}"
         );
-        for backend in ["clickhouse", "clickhouse-tsdb"] {
+        for backend in ["clickhouse-live-test", "clickhouse-tsdb-live-test"] {
             assert_eq!(
                 sample(
                     &text,
@@ -104,7 +123,7 @@ mod tests {
         }
         assert_eq!(breaker.state(), BreakerState::Open);
         let text = ecat_metrics::metrics_text();
-        for backend in ["clickhouse", "clickhouse-tsdb"] {
+        for backend in ["clickhouse-live-test", "clickhouse-tsdb-live-test"] {
             assert_eq!(
                 sample(
                     &text,
@@ -112,6 +131,29 @@ mod tests {
                 ),
                 Some(1.0),
                 "{backend} 的状态应随熔断器实时变化，实际输出:\n{text}"
+            );
+        }
+    }
+
+    /// **`from_config` 自动注册**（lead 裁决 2026-10-08）：构造即接线，不需要用户额外调用。
+    /// **不发任何请求** —— 只构造再抓一次指标文本。两条路径的两个标签都该出现。
+    ///
+    /// 断言的是**公共标签的样本存在**（与注册者是谁无关），所以同二进制里别的
+    /// `from_config` 覆盖同一个标签不影响本用例。
+    ///
+    /// 探针：注释掉 `from_config` 里那两行 ⇒ 本用例红。
+    #[tokio::test]
+    async fn from_config_registers_outbound_metrics() {
+        let cfg: crate::ClickhouseConfig =
+            serde_json::from_str(r#"{"base_url":"http://127.0.0.1:1"}"#).unwrap();
+        let _c = crate::ClickhouseClient::from_config(cfg).unwrap();
+        let text = ecat_metrics::metrics_text();
+        for backend in ["clickhouse", "clickhouse-tsdb"] {
+            assert!(
+                text.contains(&format!(
+                    r#"ecat_outbound_timeouts_total{{backend="{backend}"}}"#
+                )),
+                "from_config 没自动注册？实际输出:\n{text}"
             );
         }
     }

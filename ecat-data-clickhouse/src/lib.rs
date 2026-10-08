@@ -137,6 +137,13 @@ impl ClickhouseClient {
     pub fn from_config(cfg: ClickhouseConfig) -> Result<Self, RdbmsError> {
         let client = ecat_tls::build_reqwest_client(&cfg.tls)
             .map_err(|e| RdbmsError::Config(format!("TLS: {e}")))?;
+        let breaker = Arc::new(Breaker::new(cfg.breaker.unwrap_or_default()));
+        // 自动接线（lead 裁决 2026-10-08）：`metrics` feature 下**构造即注册**，
+        // 用户代码零变化。`ecat_metrics::register_outbound_metrics` 是幂等的
+        // （同一 backend 重复注册是覆盖闭包），所以多 client 不会炸。
+        // 探针：注释掉下面两行 ⇒ from_config_registers_outbound_metrics 红。
+        #[cfg(feature = "metrics")]
+        crate::register_outbound_metrics(Arc::clone(&breaker));
         Ok(Self {
             client,
             base_url: cfg.base_url,
@@ -146,7 +153,7 @@ impl ClickhouseClient {
             created: std::sync::Mutex::new(std::collections::HashMap::new()),
             create_ttl: CREATE_TTL,
             query_timeout: query_timeout(cfg.query_timeout_secs),
-            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            breaker,
             semaphore: match cfg.max_concurrency {
                 // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
                 // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起

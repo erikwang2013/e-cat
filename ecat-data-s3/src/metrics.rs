@@ -13,9 +13,17 @@ use std::sync::atomic::Ordering;
 
 /// 挂上 s3 的出站数据源。标签值固定为 `"s3"`（= 配置节名）。
 pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
+    register_as("s3", breaker);
+}
+
+/// 挂到任意标签上 —— **只给测试用**：注册表按标签**覆盖**（`ecat-metrics/src/outbound.rs`），
+/// 而 `metrics` feature 下每个 `from_config` 都会往公共标签上再写一次，所以
+/// 「断言自己那台熔断器」的用例必须用**私有标签**，否则是在赌「谁最后注册」
+/// （`ecat-metrics` 自己的用例用的是同一个路子）。生产入口固定 `"s3"`。
+fn register_as(backend: &'static str, breaker: Arc<Breaker>) {
     let opened = Arc::clone(&breaker);
     ecat_metrics::register_outbound_metrics(
-        "s3",
+        backend,
         Box::new(|| timeout_counter(BackendKind::Storage).load(Ordering::Relaxed)),
         Box::new(move || opened.opened_total()),
         Box::new(move || breaker.state().code()),
@@ -40,22 +48,33 @@ mod tests {
     /// `timeout_counter(BackendKind::Storage)` 的 kind 误接（写成别的槽）在这里红：
     /// 两份样本都会存在，但值差着 1000。
     /// **本用例只推进 Storage 槽**（= 本 crate 自己的 kind），证人槽（Cache）纹丝不动。
+    ///
+    /// 注册用**私有标签** `s3-live-test`：公共标签 `s3` 在 `metrics` feature 下
+    /// 被同二进制的每个 `from_config` 反复覆盖（自动注册），拿它断言具体值就是在
+    /// 赌「谁最后注册」—— 实测未用私有标签时（500 次）本用例红 2 次。公共标签的
+    /// 接线由 `from_config_registers_outbound_metrics` 断言「样本存在」（与注册者是谁无关）。
     #[tokio::test]
     async fn outbound_metrics_appear_with_live_values() {
         let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
-        register_outbound_metrics(Arc::clone(&breaker));
+        register_as("s3-live-test", Arc::clone(&breaker));
 
         // 推进**本 crate 的 kind 槽**一大格。本文件**不许**动证人槽（见 T0 模板）。
         timeout_counter(BackendKind::Storage).fetch_add(1000, Ordering::Relaxed);
 
         let text = ecat_metrics::metrics_text();
         assert!(
-            sample(&text, r#"ecat_outbound_timeouts_total{backend="s3"}"#)
-                .is_some_and(|v| v >= 1000.0),
+            sample(
+                &text,
+                r#"ecat_outbound_timeouts_total{backend="s3-live-test"}"#
+            )
+            .is_some_and(|v| v >= 1000.0),
             "超时样本应现读静态量（先 +1000 再抓取），实际输出:\n{text}"
         );
         assert_eq!(
-            sample(&text, r#"ecat_outbound_breaker_state{backend="s3"}"#),
+            sample(
+                &text,
+                r#"ecat_outbound_breaker_state{backend="s3-live-test"}"#
+            ),
             Some(0.0),
             "未打开时状态应为 0，实际输出:\n{text}"
         );
@@ -67,14 +86,41 @@ mod tests {
         assert_eq!(breaker.state(), BreakerState::Open);
         let text = ecat_metrics::metrics_text();
         assert_eq!(
-            sample(&text, r#"ecat_outbound_breaker_open_total{backend="s3"}"#),
+            sample(
+                &text,
+                r#"ecat_outbound_breaker_open_total{backend="s3-live-test"}"#
+            ),
             Some(1.0),
             "打开次数应为 1，实际输出:\n{text}"
         );
         assert_eq!(
-            sample(&text, r#"ecat_outbound_breaker_state{backend="s3"}"#),
+            sample(
+                &text,
+                r#"ecat_outbound_breaker_state{backend="s3-live-test"}"#
+            ),
             Some(1.0),
             "打开后状态应为 1（现读），实际输出:\n{text}"
+        );
+    }
+
+    /// **`from_config` 自动注册**（lead 裁决 2026-10-08）：构造即接线，不需要用户额外调用。
+    /// **不发任何请求** —— 只构造再抓一次指标文本。
+    ///
+    /// 断言的是**公共标签的样本存在**（与注册者是谁无关），所以同二进制里别的
+    /// `from_config` 覆盖同一个标签不影响本用例。
+    ///
+    /// 探针：注释掉 `from_config` 里那两行 ⇒ 本用例红。
+    #[tokio::test]
+    async fn from_config_registers_outbound_metrics() {
+        let cfg: crate::S3Config = serde_json::from_str(
+            r#"{"endpoint":"127.0.0.1:1","region":"us-east-1","access_key":"ak","secret_key":"sk"}"#,
+        )
+        .unwrap();
+        let _c = crate::S3Client::from_config(cfg).unwrap();
+        let text = ecat_metrics::metrics_text();
+        assert!(
+            text.contains(r#"ecat_outbound_timeouts_total{backend="s3"}"#),
+            "from_config 没自动注册？实际输出:\n{text}"
         );
     }
 }

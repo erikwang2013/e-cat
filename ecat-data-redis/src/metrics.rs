@@ -18,9 +18,17 @@ use std::sync::atomic::Ordering;
 /// 熔断两项读的是这个熔断器本身。所以不必持有整个 client，测试也就能
 /// 不依赖真实连接地验证注册。
 pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
+    register_as("redis", breaker);
+}
+
+/// 挂到任意标签上 —— **只给测试用**：注册表按标签**覆盖**（`ecat-metrics/src/outbound.rs`），
+/// 而 `metrics` feature 下每个 `from_config` 都会往公共标签上再写一次，所以
+/// 「断言自己那台熔断器」的用例必须用**私有标签**，否则是在赌「谁最后注册」
+/// （`ecat-metrics` 自己的用例用的是同一个路子）。生产入口固定 `"redis"`。
+fn register_as(backend: &'static str, breaker: Arc<Breaker>) {
     let opened = Arc::clone(&breaker);
     ecat_metrics::register_outbound_metrics(
-        "redis",
+        backend,
         Box::new(|| timeout_counter(BackendKind::Cache).load(Ordering::Relaxed)),
         Box::new(move || opened.opened_total()),
         Box::new(move || breaker.state().code()),
@@ -44,14 +52,23 @@ mod tests {
 
     /// 三个指标都要出现，且**值是抓取时现读的**：熔断器在**注册之后**才被推到
     /// `Open`，注册时快照的实现只会给出 0。
+    ///
+    /// 注册用**私有标签** `redis-live-test`：公共标签 `redis` 在 `metrics` feature
+    /// 下被同二进制的每个 `from_config` 反复覆盖（自动注册），拿它断言具体值
+    /// 就是在赌「谁最后注册」—— 实测未用私有标签时（3000 次）本用例红 7 次。
+    /// 公共标签的接线由 `from_config_registers_outbound_metrics` 断言「样本存在」
+    /// （与注册者是谁无关）。
     #[tokio::test]
     async fn outbound_metrics_appear_with_live_values() {
         let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
-        register_outbound_metrics(Arc::clone(&breaker));
+        register_as("redis-live-test", Arc::clone(&breaker));
 
         let text = ecat_metrics::metrics_text();
         assert_eq!(
-            sample(&text, "ecat_outbound_breaker_state{backend=\"redis\"}"),
+            sample(
+                &text,
+                "ecat_outbound_breaker_state{backend=\"redis-live-test\"}"
+            ),
             Some(0.0),
             "未打开时状态应为 0，实际输出:\n{text}"
         );
@@ -65,19 +82,53 @@ mod tests {
 
         let text = ecat_metrics::metrics_text();
         assert_eq!(
-            sample(&text, "ecat_outbound_breaker_state{backend=\"redis\"}"),
+            sample(
+                &text,
+                "ecat_outbound_breaker_state{backend=\"redis-live-test\"}"
+            ),
             Some(1.0),
             "打开后状态应为 1，实际输出:\n{text}"
         );
         assert_eq!(
-            sample(&text, "ecat_outbound_breaker_open_total{backend=\"redis\"}"),
+            sample(
+                &text,
+                "ecat_outbound_breaker_open_total{backend=\"redis-live-test\"}"
+            ),
             Some(1.0),
             "打开次数应为 1，实际输出:\n{text}"
         );
         // 超时数是进程级静态量，值会被别的用例推进 —— 只断言样本存在。
         assert!(
-            sample(&text, "ecat_outbound_timeouts_total{backend=\"redis\"}").is_some(),
+            sample(
+                &text,
+                "ecat_outbound_timeouts_total{backend=\"redis-live-test\"}"
+            )
+            .is_some(),
             "缺超时指标样本，实际输出:\n{text}"
+        );
+    }
+
+    /// **`from_config` 自动注册**（lead 裁决 2026-10-08）：构造即接线，不需要用户额外调用。
+    ///
+    /// Redis 的 `from_config` 与其余后端不同：它**真的建连**（`Self::connect`），
+    /// 所以这里指向本 crate 既有的假服务端（应答握手、对数据命令装死），
+    /// 而不是一个无人监听的地址 —— 建连成功即注册。**不发任何数据命令**，
+    /// 只构造再抓一次指标文本。
+    ///
+    /// 断言的是**公共标签的样本存在**（与注册者是谁无关），所以同二进制里别的
+    /// `from_config` 覆盖同一个标签不影响本用例。
+    ///
+    /// 探针：注释掉 `from_config` 里那两行 ⇒ 本用例红。
+    #[tokio::test]
+    async fn from_config_registers_outbound_metrics() {
+        let url = crate::tests::spawn_silent_redis().await;
+        let cfg: crate::RedisConfig =
+            serde_json::from_str(&format!(r#"{{"url": "{url}"}}"#)).unwrap();
+        let _c = crate::RedisCache::from_config(cfg).await.unwrap();
+        let text = ecat_metrics::metrics_text();
+        assert!(
+            text.contains(r#"ecat_outbound_timeouts_total{backend="redis"}"#),
+            "from_config 没自动注册？实际输出:\n{text}"
         );
     }
 }

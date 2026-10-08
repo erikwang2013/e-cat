@@ -123,10 +123,17 @@ impl RedisCache {
             Some(pw) if !pw.is_empty() => Self::connect_with_password(&url, pw).await?,
             _ => Self::connect(&url).await?,
         };
+        let breaker = Arc::new(Breaker::new(cfg.breaker.unwrap_or_default()));
+        // 自动接线（lead 裁决 2026-10-08）：`metrics` feature 下**构造即注册**，
+        // 用户代码零变化。`ecat_metrics::register_outbound_metrics` 是幂等的
+        // （同一 backend 重复注册是覆盖闭包），所以多 client 不会炸。
+        // 探针：注释掉下面两行 ⇒ from_config_registers_outbound_metrics 红。
+        #[cfg(feature = "metrics")]
+        crate::register_outbound_metrics(Arc::clone(&breaker));
         Ok(Self {
             conn: client.conn,
             query_timeout: query_timeout(cfg.query_timeout_secs),
-            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            breaker,
         })
     }
 
