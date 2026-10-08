@@ -124,7 +124,7 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Ar
 async fn config_wires_timeout_concurrency_and_breaker() {
     let cfg: ArangoConfig = serde_json::from_str(
         r#"{"base_url":"http://127.0.0.1:1","db":"d","username":"u","password":"p",
-            "query_timeout_secs":1,"max_concurrency":3}"#,
+            "query_timeout_secs":1,"max_concurrency":3,"breaker":{"failure_ratio":1.1}}"#,
     )
     .unwrap();
     let c = ArangoClient::from_config(cfg).unwrap();
@@ -134,7 +134,22 @@ async fn config_wires_timeout_concurrency_and_breaker() {
         3,
         "显式给非 0 的值必须真的建出对应许可数的信号量"
     );
-    assert_eq!(c.breaker().state(), BreakerState::Closed);
+    // 非默认 breaker（`failure_ratio: 1.1` = 永不触发）：连续 5 次失败后必须
+    // **仍是 Closed**。失败用本地 `call` 直接驱动 —— 熔断器对 `f` 的 `Err` 记为
+    // 失败，与真实出站失败同一条记账路径
+    // （`ecat-circuit-breaker/src/breaker.rs:182-190`），不依赖 mock 也不走网络。
+    // 若 `from_config` 漏接 `cfg.breaker`（默认 0.5 会在第 5 次失败后开断）⇒ 必红。
+    for _ in 0..5 {
+        let _ = c
+            .breaker()
+            .call(|| async { Err::<(), std::io::Error>(std::io::Error::other("boom")) })
+            .await;
+    }
+    assert_eq!(
+        c.breaker().state(),
+        BreakerState::Closed,
+        "配置里的 failure_ratio 1.1 没生效 —— from_config 是否漏接了 cfg.breaker？"
+    );
 }
 
 /// `0` = 显式禁用（`None`），未配置 = 30 秒（`ecat-data-redis/src/tests.rs:334-343`）。
