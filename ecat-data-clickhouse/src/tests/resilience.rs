@@ -111,6 +111,39 @@ async fn repeated_timeouts_open_the_breaker_and_fail_fast() {
     assert!(matches!(err, RdbmsError::Connection(_)), "got: {err:?}");
 }
 
+/// **两条路径共用同一个 `Breaker`** —— 本批把 ClickHouse 当最难 case 的核心理由
+/// （同一服务器、同一故障域）：`SqlExecutor` 打到 Open 后，`TsdbClient` 也必须被
+/// 同一个熔断器拒绝。若有人拆成两个 `Breaker` 字段，这条会红。
+///
+/// 判据用**错误语义**（`Unavailable` + "circuit breaker is open"）而非墙钟 ——
+/// 语义严格强于计时（Task 4 A/B 探针结论）；墙钟只作次判据。不共享时该调用会
+/// 走满 1 秒超时并返回 `DeadlineExceeded` ⇒ 语义断言先红。
+#[tokio::test]
+async fn open_breaker_on_rdbms_path_also_rejects_tsdb_path() {
+    let url = spawn_slow_clickhouse(Duration::from_secs(5), Arc::new(AtomicUsize::new(0))).await;
+    let c = client_at(&url, 1, None);
+    for _ in 0..5 {
+        let _ = ecat_data::SqlExecutor::query(&c, "SELECT 1").await;
+    }
+    assert_eq!(
+        c.breaker().state(),
+        BreakerState::Open,
+        "前置：Rdbms 路径须先打到 Open"
+    );
+
+    let start = std::time::Instant::now();
+    let err = ecat_data::TsdbClient::query(&c, "SELECT 1")
+        .await
+        .expect_err("熔断已打开，Tsdb 路径不得放行");
+    assert_eq!(err.code, ErrorCode::Unavailable, "got: {err}");
+    assert_eq!(err.message, "circuit breaker is open", "got: {err}");
+    assert!(
+        start.elapsed() < Duration::from_millis(500),
+        "熔断拒绝必须立即返回，实际 {:?}",
+        start.elapsed()
+    );
+}
+
 /// **`_with` 落到 trait 默认实现，绝不触碰熔断器**（出入 7）。
 ///
 /// 三个方法默认返回「不支持」—— 那是**调用方的用法错**，不是后端故障。
