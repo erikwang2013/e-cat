@@ -2461,8 +2461,10 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 ```
 
 判据：`grep -c 'ecat-metrics' ecat-data-s3/Cargo.toml` 期望 `4`（含两行注释，见 T0-A 自证）；
-`grep -c 'axum' ecat-data-s3/Cargo.toml` 期望 `1`（只算 dev-deps 那一行 —— 别给这行加含
-"axum" 的注释，否则该数会随注释漂移）。
+`grep -c 'axum' ecat-data-s3/Cargo.toml` 期望 **`2`**（Task 10 实测更正：本表初稿写 `1`，
+错在**忘了 T0-A 模板自身的注释行就含 "axum"** —— `ecat-metrics` 的 optional 注释里那句
+「默认不把 axum 拖进核心依赖树」。实测 s3 = 2，tdengine / influxdb / iotdb / elasticsearch
+**同为 2**。⇒ 这条判据实际是「>= 2 且与同批一致」，不是精确 1）。
 
 **Step 3（8 分钟）拆测试文件**：测试块从 `src/lib.rs:228` 到文件末尾 `:419`
 （块内 `use std::io::{Read, Write};` 要跟着搬）。判据：仍是 **17 passed**。
@@ -2782,8 +2784,10 @@ async fn spawn_paged(pages_with_token: usize, delay: Duration) -> String {
 （`cargo test -p ecat-data-s3 --features metrics`）。**17 → 26 的数字必须精确对上**；
 对不上先看 `signing.rs` / `xml.rs` 的 8 条是否还在跑。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 本 crate 专属：
-(a) 见证槽写错成 `Storage` ⇒ `put_times_out_…` 在**单独跑**时可能仍绿（本 crate 自己会写 Storage），
-这条只能靠 `grep -rn 'BackendKind::Cache' ecat-data-s3/src/` 只命中 witness 行来保证；
+(a) 见证槽写错成 `Storage` ⇒ `put_times_out_…` **确定性红**（Task 10 实测 `left: 1, right: 0` @resilience.rs:231）。
+**本表初稿说「单独跑时可能仍绿」是错的** —— 该断言是 `assert_eq!(witness_after, witness_before)`，
+把 witness 换成 `Storage` 后 `before` 在断言前读到 0、断言时读到 1（本 crate 自己刚写过），
+**差值确定性非零**，不依赖并发时序。所以它既有行为判据也有 `grep -rn 'BackendKind::Cache'` 的静态判据；
 (b) `put` 的 `guarded` 删掉 ⇒ `put_times_out_…` 与 `every_io_method_…` 红。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：`cargo fmt -p ecat-data-s3`、clippy（`--all-targets`）、
 `git commit --only` 六个文件（含 **`Cargo.lock`**）。

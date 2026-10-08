@@ -472,6 +472,20 @@ cargo test -p <crate> 2>&1 | grep -c 'outbound_metrics'   # 期望 0：指标代
 （uplifted 的 `target/debug/lib<crate>.rlib` 只是最后一次构建的硬链接，切 feature 后它
 到底是哪个单元的产物要先确认：`ls target/debug/deps/lib<crate>-*.rlib` 逐个量。）
 
+⚠️ **「标签字面量」这一列因 crate 而异，用前先自测（2026-10-08 实测）**：
+
+| crate | 精确匹配（`strings … | grep -c '^<名字>$'`）默认 → metrics | 可用？ |
+|---|---|---|
+| `ecat-data-questdb` | 0 → 1 | ✅ 可区分 |
+| `ecat-data-s3` | **0 → 0** | ❌ **无区分力** |
+
+s3 不可用的原因：本 crate 的错误消息遍地是 `"s3 put: {e}"` / `"s3 list body: {e}"` 这类
+**碎片**（子串匹配 `s3` 在默认二进制里就有 3 万处），独立的 `s3` 字面量没有留下可定位的
+NUL 终止串。**可靠的是前两个判别器**（`ecat_metrics8outbound` 符号数、以及
+`ecat_outbound_timeouts_total` / `ecat_outbound_breaker_state` 两个指标名字符串 ——
+s3 实测默认 0/0、metrics 2/2）。**用标签字面量前，先在两个产物上各量一次确认它真的从 0 变 1**，
+否则你得到的是一个恒 0 的假判据。
+
 用例模板：`ecat-data-redis/src/metrics.rs:47-82`（三个样本都在 + 熔断器推到 `Open` 后
 是**抓取时现读**的：注册时快照的实现只会给出 0）。本 crate 内的测试只能证明「自己挂上了」；
 「多个后端共存」的真验收在 `ecat-metrics/src/outbound.rs:292-305`
