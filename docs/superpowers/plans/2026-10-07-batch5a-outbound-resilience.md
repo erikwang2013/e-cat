@@ -1042,7 +1042,7 @@ impl Drop for ProbePermit<'_> {
         }
 ```
 
-⚠️ **别改状态迁移本身**：permit 只多归还一次名额，`state` / `window` / `opened_at` 的语义一个都不动。`disarm()` 的位置必须在记录之后（提前 disarm 会让**同一次探测**既被记录又被归还，名额多还一个）。⚠️ **但这与「取消修复」无关**（2026-10-08 复核纠正）：取消路径**根本不经过 `disarm`** —— future 在 `f().await` 处被 drop，走的是 `Drop` 归还，所以 `disarm` 放前放后都不影响取消语义。原计划此处写「放前面就等于没修」，不准确。
+⚠️ **别改状态迁移本身**：permit 只多归还一次名额，`state` / `window` / `opened_at` 的语义一个都不动。`disarm()` 的位置必须在记录之后（⚠️ 2026-10-08 复核纠正：此处原文写「提前 disarm 会让同一次探测既被记录又被归还、名额多还一个」，**这是错的** —— `disarm(mut self)` 是**消费** permit 并置 `armed=false`，`Drop` 随即空转，推不出「还两次」；`f().await` 与 `disarm` 之间没有 await，故记录前/后放行为一致。**真正会让取消修复失效的位置是 `f().await` 之前** —— 那里 `Drop` 是唯一的归还路径，提前 disarm 会让被取消的探测漏还名额）。⚠️ **但这与「取消修复」无关**（2026-10-08 复核纠正）：取消路径**根本不经过 `disarm`** —— future 在 `f().await` 处被 drop，走的是 `Drop` 归还，所以 `disarm` 放前放后都不影响取消语义。原计划此处写「放前面就等于没修」，不准确。
 
 ```bash
 cargo test -p ecat-circuit-breaker cancelled_half_open_probes 2>&1 | grep -E '^test |^test result'
@@ -3516,7 +3516,7 @@ git commit -m "chore: 版本 5.0.0 → 6.0.0（run_with_timeout 签名变更 + Q
    - 根因：取消路径**根本不经过 `disarm`** —— 取消点是 `f().await`（`breaker.rs:175`），future 被 drop 时走 `ProbePermit` 的 `Drop` 归还（`:292-303`）；`disarm` 只管「探测已被记录 ⇒ 撤销 Drop 里的归还」（`:225-228`）。
    - 最终做法：`e4a33dc` 把该行拆成两个论断（记录之后 = 记账正确；**与取消修复无关**）+ 标注原文不准确。
    - 证据：`e4a33dc`；`ecat-circuit-breaker/src/breaker.rs:145-231,277-303`。
-   - ⚠️ **本次复核未能证实同一次修正补的括注**（「提前 disarm 会让**同一次探测**既被记录又被归还，名额多还一个」）：`disarm(mut self)` 消费 permit，Drop 随即因 `armed=false` 空转，推不出「还两次」的路径；且从 `f().await`（:175）到 `disarm`（:226-228）之间没有 await，记录前/后放行为一致。真正会让取消修复失效的位置是 **`f().await` 之前** —— 那里 `Drop` 是唯一的归还路径。此括注**待 lead 裁决**，不影响落码。
+   - ⚠️ **本次复核未能证实同一次修正补的括注**（「提前 disarm 会让**同一次探测**既被记录又被归还，名额多还一个」）：`disarm(mut self)` 消费 permit，Drop 随即因 `armed=false` 空转，推不出「还两次」的路径；且从 `f().await`（:175）到 `disarm`（:226-228）之间没有 await，记录前/后放行为一致。真正会让取消修复失效的位置是 **`f().await` 之前** —— 那里 `Drop` 是唯一的归还路径。**lead 裁决（2026-10-08）：该括注不成立，已按上文的准确表述改正**（原文见 L1045 的纠正注）。你的推理我按源码复核后认可：`disarm` 消费 permit ⇒ 不可能「还两次」；`f().await` 到 `disarm` 之间无 await ⇒ 位置无行为差异；失效位置只在 `f().await` **之前**。
 5. **`register_outbound_metrics` 的括注漏了第四个参数（`Fn() -> u8`）**
    - 现象：注册片段的括注只说「第三个参数是 `Box<dyn Fn() -> u64 + Send + Sync>`」，第四个参数没写类型 —— 它收的是 `breaker.state().code()`，即 **`u8`**（`OutboundStateFn`），塞进 u64 的位置就是类型错。
    - 根因：括注是人工摘要，四个参数的真实类型在别人 crate（`ecat-metrics/src/outbound.rs:32,38`）；片段里只看到调用处，肉眼分不出第 3/第 4 个参数的差别。
