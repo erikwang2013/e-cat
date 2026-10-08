@@ -595,7 +595,7 @@ where
 
 | # | 用例名 | 判据 | 模板 |
 |---|--------|------|------|
-| 1 | `config_wires_timeout_concurrency_and_breaker` | 经 `from_config` 装配：`c.query_timeout == Some(1s)`、`c.semaphore.available_permits() == 3`、`c.breaker().state() == Closed` | checklist §1 验收② |
+| 1 | `config_wires_timeout_concurrency_and_breaker` | 经 `from_config` 装配：`c.query_timeout == Some(1s)`、`c.semaphore.as_ref().unwrap().available_permits() == 3`（字段是 `Option`）、`c.breaker().state() == Closed` | checklist §1 验收② |
 | 2 | `zero_timeout_means_disabled` | `query_timeout(Some(0)) == None`、`query_timeout(None) == Some(30s)`，且 `from_config` 里 `query_timeout_secs: 0` ⇒ `c.query_timeout == None` | `ecat-data-redis/src/tests.rs:334-343` |
 | 3 | `<主方法>_times_out_with_deadline_exceeded` | 1s 预算 vs 5s mock ⇒ `DeadlineExceeded` + `reason == "<slug>"` + 本 kind 槽 `> before` + 证人槽 `== before` | checklist §5 模式 ① |
 | 4 | `every_<x>_method_times_out_when_the_backend_stalls` | 每个 I/O 方法各打一次（**≤4 次调用** ⇒ 打不满 5 条窗口，熔断不会在途中打开） | `ecat-data-redis/src/tests.rs:366-398` |
@@ -1101,7 +1101,11 @@ async fn config_wires_timeout_concurrency_and_breaker() {
     .unwrap();
     let c = ArangoClient::from_config(cfg).unwrap();
     assert_eq!(c.query_timeout, Some(Duration::from_secs(1)));
-    assert_eq!(c.semaphore.available_permits(), 3);
+    assert_eq!(
+        c.semaphore.as_ref().unwrap().available_permits(),
+        3,
+        "显式给非 0 的值必须真的建出对应许可数的信号量"
+    );
     assert_eq!(c.breaker().state(), BreakerState::Closed);
 }
 
@@ -2978,11 +2982,17 @@ async fn client_at(timeout_secs: u64, max_pool_size: Option<u32>) -> MongoClient
 
 /// 池大小真的从配置接到了驱动旋钮上（spec §8 对 MongoDB 的判据）。
 /// 删掉 `build_options` 里那两行赋值 ⇒ 本用例红（`.is_some()` 落空）。
+///
+/// **`failure_ratio: 1.1` 那半段是裁决 07b5b9a（2026-10-08）**：`Closed` 是**默认**
+/// 状态，只断言它等于没断言 —— `from_config` 漏接 `cfg.breaker`、装配成
+/// `BreakerConfig::default()` 时照样绿（实测复现过的空验收形态）。给一个**不可能触发**
+/// 的阈值，再本地驱动 5 次失败：真接上了就仍 `Closed`、`opened_total() == 0`；
+/// 漏接成默认阈值（0.5）就会被这 5 次打满窗口翻成 `Open` ⇒ 红。
 #[tokio::test]
 async fn config_wires_timeout_pool_and_breaker() {
     let cfg: MongoConfig = serde_json::from_str(
         r#"{"url":"mongodb://127.0.0.1:27017","database":"app","query_timeout_secs":1,
-            "max_pool_size":7,"min_pool_size":2}"#,
+            "max_pool_size":7,"min_pool_size":2,"breaker":{"failure_ratio":1.1}}"#,
     )
     .unwrap();
     let options = MongoClient::build_options(&cfg).await.unwrap();
@@ -2996,6 +3006,19 @@ async fn config_wires_timeout_pool_and_breaker() {
     let c = MongoClient::from_config(cfg).await.unwrap();
     assert_eq!(c.query_timeout, Some(Duration::from_secs(1)));
     assert_eq!(c.breaker().state(), BreakerState::Closed);
+
+    // 5 次本地驱动的失败（各 1 秒超时，共约 5 秒）。窗口下限是 5 条失败。
+    for _ in 0..5 {
+        let _ = c
+            .guarded(std::future::pending::<Result<(), Error>>())
+            .await;
+    }
+    assert_eq!(
+        c.breaker().state(),
+        BreakerState::Closed,
+        "配置里的 failure_ratio 1.1 没生效 —— from_config 是否漏接了 cfg.breaker？"
+    );
+    assert_eq!(c.breaker().opened_total(), 0);
 }
 
 /// 省略池字段 = `None` = **不覆盖**，交给驱动默认（mongodb 3.8.0 实测 10）。
