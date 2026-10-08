@@ -18,6 +18,17 @@ serde.workspace = true
 serde_json.workspace = true
 mongodb = "3"
 futures-util = "0.3"
+# 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
+ecat-circuit-breaker.workspace = true
+# 本 crate **没有** tokio/sync：并发背压交给驱动的连接池（`max_pool_size`），无信号量。
+# 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+
+[features]
+# 只有 ecat-metrics：三个出站指标家族的唯一 collector 在那边（批次 5a「出入 11」），
+# 本 crate 不需要直接依赖 prometheus。
+metrics = ["dep:ecat-metrics"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+# 既有是 ["macros", "rt"]，加 time（超时/熔断测试要 sleep）。
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
