@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # опционально
   # password: "quest"     # опционально
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | Адрес HTTP API |
 | `username` | `Option<String>` | Опционально: имя пользователя HTTP Basic Auth |
 | `password` | `Option<String>` | Опционально: пароль HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
+
+**Тип ошибки**: QuestDB идёт через `SqlExecutor` (семейство RDBMS) — таймаут это `RdbmsError::Timeout`,
+а отказ breaker — `RdbmsError::Connection("circuit breaker is open")`; остальные HTTP-бэкенды
+единообразно возвращают `ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`, `reason` = имя бэкенда).
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # опционально
   # password: "secret"    # опционально
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | Адрес REST API |
 | `username` | `Option<String>` | Опционально: имя пользователя HTTP Basic Auth |
 | `password` | `Option<String>` | Опционально: пароль HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # опционально
   # password: "secret"    # опционально
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | Адрес REST API |
 | `username` | `Option<String>` | Опционально: имя пользователя HTTP Basic Auth |
 | `password` | `Option<String>` | Опционально: пароль HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | Имя организации |
 | `bucket` | `String` | Имя bucket-а |
 | `token` | `String` | Токен аутентификации |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | Адрес REST API |
 | `username` | `String` | Имя пользователя |
 | `password` | `String` | Пароль |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # опционально
   # password: "nebula"    # опционально
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | Имя graph space |
 | `username` | `Option<String>` | Опционально: имя пользователя HTTP Basic Auth |
 | `password` | `Option<String>` | Опционально: пароль HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | Имя базы данных |
 | `username` | `String` | Имя пользователя |
 | `password` | `String` | Пароль |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
 ```
 
 | Поле | Тип | Описание |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | Адрес REST API |
 | `username` | `String` | Имя пользователя |
 | `password` | `String` | Пароль |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # Необязательно: без него берётся база по умолчанию из пути REST
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
+```
+
+| Поле | Тип | Описание |
+|------|------|------|
+| `base_url` | `String` | Адрес REST-интерфейса (taosAdapter, порт по умолчанию 6041) |
+| `username` | `String` | Имя пользователя |
+| `password` | `String` | Пароль |
+| `database` | `Option<String>` | Необязательно: имя базы по умолчанию (добавляется в путь REST) |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
+
+**Один бюджет на весь вызов**: `write()` разбивает пачку точек данных на несколько HTTP-запросов, и `query_timeout_secs` покрывает **весь вызов** (все части), а не по бюджету на часть.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # Необязательно: верхняя граница пула соединений, опущено = значение драйвера (**10**)
+  # min_pool_size: 0         # Необязательно: нижняя граница пула соединений (соединения, поддерживаемые в фоне)
+  # query_timeout_secs: 30   # Необязательно: таймаут одной команды, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+```
+
+| Поле | Тип | Описание |
+|------|------|------|
+| `url` | `String` | URI подключения (аутентификация, replica set и параметры TLS — всё внутри URI) |
+| `database` | `String` | Имя базы данных |
+| `max_pool_size` | `Option<u32>` | Верхняя граница пула соединений; опущено = значение драйвера **10** (измерено на `mongodb` 3.8.0, а не 100) |
+| `min_pool_size` | `Option<u32>` | Нижняя граница пула соединений; опущено = значение драйвера `0` |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одной команды в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+
+**Обратное давление по конкурентности идёт через пул драйвера**: в этом crate **нет** `max_concurrency` (он и не HTTP) — драйвер несёт собственный пул, так что для большей конкурентности задайте `max_pool_size` явно.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # Необязательно: таймаут одного вызова, 0 = отключено
+  # breaker: {}              # Необязательно: настройка breaker, опущено = консервативные значения (0.5 / 30s / открыт 10s)
+  # max_concurrency: 32      # Необязательно: предел конкурентности (семафор этого crate)
+```
+
+| Поле | Тип | Описание |
+|------|------|------|
+| `endpoint` | `String` | Адрес S3-совместимого сервиса (MinIO / собственный шлюз) |
+| `region` | `String` | Регион для подписи; MinIO к значению безразличен, достаточно `us-east-1` |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | Таймаут одного вызова в секундах; опущено = `30`, **`0` = отключено** |
+| `breaker` | `Option<BreakerConfig>` | Пороги и окно breaker; общего выключателя `enabled` нет |
+| `max_concurrency` | `Option<usize>` | Предел конкурентности (по умолчанию `32`); собственный семафор этого crate |
+
+**Один бюджет на весь вызов**: `list()` идёт по continuation token и отправляет несколько GET за один вызов; таймаут покрывает **всю постраничную прокрутку**.
+
+> **Что общего у исходящей устойчивости** (все HTTP-бэкенды этого раздела): порядок — **разрешение → breaker → таймаут**; ошибки таймаута несут `code = DeadlineExceeded`, отказы breaker — `code = Unavailable` с `message = "circuit breaker is open"`; с feature `metrics` они считаются в `ecat_outbound_timeouts_total{backend="<имя секции конфигурации>"}` — метка это **имя секции конфигурации** (`"arangodb"` / `"mongodb"` / …), а не имя категории trait.
 
 ---
 

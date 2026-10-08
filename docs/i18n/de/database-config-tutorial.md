@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # optional
   # password: "quest"     # optional
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP-API-Adresse |
 | `username` | `Option<String>` | optional: HTTP-Basic-Auth-Benutzername |
 | `password` | `Option<String>` | optional: HTTP-Basic-Auth-Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
+
+**Fehlertyp**: QuestDB läuft über `SqlExecutor` (RDBMS-Familie) — ein Timeout ist `RdbmsError::Timeout`,
+eine Breaker-Ablehnung `RdbmsError::Connection("circuit breaker is open")`; alle übrigen HTTP-Backends
+liefern einheitlich `ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`, `reason` = Backend-Name).
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # optional
   # password: "secret"    # optional
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST-API-Adresse |
 | `username` | `Option<String>` | optional: HTTP-Basic-Auth-Benutzername |
 | `password` | `Option<String>` | optional: HTTP-Basic-Auth-Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # optional
   # password: "secret"    # optional
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST-API-Adresse |
 | `username` | `Option<String>` | optional: HTTP-Basic-Auth-Benutzername |
 | `password` | `Option<String>` | optional: HTTP-Basic-Auth-Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | Organisationsname |
 | `bucket` | `String` | Bucket-Name |
 | `token` | `String` | Authentifizierungs-Token |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST-API-Adresse |
 | `username` | `String` | Benutzername |
 | `password` | `String` | Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # optional
   # password: "nebula"    # optional
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | Graph-Space-Name |
 | `username` | `Option<String>` | optional: HTTP-Basic-Auth-Benutzername |
 | `password` | `Option<String>` | optional: HTTP-Basic-Auth-Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | Datenbankname |
 | `username` | `String` | Benutzername |
 | `password` | `String` | Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
 ```
 
 | Feld | Typ | Beschreibung |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST-API-Adresse |
 | `username` | `String` | Benutzername |
 | `password` | `String` | Passwort |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # Optional: ohne Angabe gilt die Standarddatenbank im REST-Pfad
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
+```
+
+| Feld | Typ | Beschreibung |
+|------|------|------|
+| `base_url` | `String` | Adresse der REST-Schnittstelle (taosAdapter, Standardport 6041) |
+| `username` | `String` | Benutzername |
+| `password` | `String` | Passwort |
+| `database` | `Option<String>` | Optional: Name der Standarddatenbank (wird in den REST-Pfad eingehängt) |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
+
+**Ein Budget für den gesamten Aufruf**: `write()` zerlegt einen Stapel Datenpunkte in mehrere HTTP-Anfragen, und `query_timeout_secs` umfasst den **gesamten Aufruf** (alle Teile), nicht ein Budget je Teil.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # Optional: Obergrenze des Verbindungspools, weglassen = Treiber-Standard (**10**)
+  # min_pool_size: 0         # Optional: Untergrenze des Verbindungspools (im Hintergrund gehaltene Verbindungen)
+  # query_timeout_secs: 30   # Optional: Timeout pro Befehl, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+```
+
+| Feld | Typ | Beschreibung |
+|------|------|------|
+| `url` | `String` | Verbindungs-URI (Authentifizierung, Replica-Set und TLS-Optionen stecken alle in der URI) |
+| `database` | `String` | Datenbankname |
+| `max_pool_size` | `Option<u32>` | Obergrenze des Verbindungspools; weglassen = Treiber-Standard **10** (auf `mongodb` 3.8.0 gemessen, nicht 100) |
+| `min_pool_size` | `Option<u32>` | Untergrenze des Verbindungspools; weglassen = Treiber-Standard `0` |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Befehl in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+
+**Nebenläufigkeits-Backpressure läuft über den Treiberpool**: Dieses Crate hat **kein** `max_concurrency` (und ist auch kein HTTP) — der Treiber bringt seinen eigenen Pool mit; wer mehr Nebenläufigkeit braucht, setzt explizit `max_pool_size`.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # Optional: Timeout pro Aufruf, 0 = deaktiviert
+  # breaker: {}              # Optional: Breaker-Konfiguration, weglassen = konservative Standardwerte (0.5 / 30s / offen 10s)
+  # max_concurrency: 32      # Optional: Nebenläufigkeitslimit (Semaphore dieses Crates)
+```
+
+| Feld | Typ | Beschreibung |
+|------|------|------|
+| `endpoint` | `String` | Adresse des S3-kompatiblen Dienstes (MinIO / selbst betriebenes Gateway) |
+| `region` | `String` | Region für die Signatur; MinIO ist beim Wert gleichgültig, `us-east-1` genügt |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | Timeout pro Aufruf in Sekunden; weglassen = `30`, **`0` = deaktiviert** |
+| `breaker` | `Option<BreakerConfig>` | Schwellenwerte und Fenster des Breakers; kein `enabled`-Hauptschalter |
+| `max_concurrency` | `Option<usize>` | Nebenläufigkeitslimit (Standard `32`); die eigene Semaphore dieses Crates |
+
+**Ein Budget für den gesamten Aufruf**: `list()` folgt Continuation-Tokens und schickt in einem Aufruf mehrere GETs; der Timeout umfasst das **gesamte Blättern**.
+
+> **Gemeinsamkeiten der Outbound-Resilienz** (alle HTTP-Backends in diesem Abschnitt): Reihenfolge **Permit → Breaker → Timeout**; Timeout-Fehler tragen `code = DeadlineExceeded`, Breaker-Ablehnungen `code = Unavailable` mit `message = "circuit breaker is open"`; mit dem Feature `metrics` werden sie unter `ecat_outbound_timeouts_total{backend="<Name des Konfigabschnitts>"}` gezählt — das Label ist der **Name des Konfigabschnitts** (`"arangodb"` / `"mongodb"` / …), nicht der Name der Trait-Kategorie.
 
 ---
 

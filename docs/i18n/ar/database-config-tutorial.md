@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # اختياري
   # password: "quest"     # اختياري
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | عنوان واجهة HTTP API |
 | `username` | `Option<String>` | اختياري: اسم مستخدم HTTP Basic Auth |
 | `password` | `Option<String>` | اختياري: كلمة مرور HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
+
+**نوع الخطأ**: QuestDB يمر عبر `SqlExecutor` (عائلة RDBMS) —— المهلة هي `RdbmsError::Timeout`،
+ورفض الـbreaker هو `RdbmsError::Connection("circuit breaker is open")`؛ أما بقية الواجهات الخلفية HTTP فتوحّد
+`ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`، و`reason` = اسم الواجهة الخلفية).
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # اختياري
   # password: "secret"    # اختياري
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | عنوان REST API |
 | `username` | `Option<String>` | اختياري: اسم مستخدم HTTP Basic Auth |
 | `password` | `Option<String>` | اختياري: كلمة مرور HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # اختياري
   # password: "secret"    # اختياري
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | عنوان REST API |
 | `username` | `Option<String>` | اختياري: اسم مستخدم HTTP Basic Auth |
 | `password` | `Option<String>` | اختياري: كلمة مرور HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | اسم المؤسسة |
 | `bucket` | `String` | اسم الوعاء |
 | `token` | `String` | رمز المصادقة |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | عنوان REST API |
 | `username` | `String` | اسم المستخدم |
 | `password` | `String` | كلمة المرور |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # اختياري
   # password: "nebula"    # اختياري
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | اسم مساحة الرسم البياني |
 | `username` | `Option<String>` | اختياري: اسم مستخدم HTTP Basic Auth |
 | `password` | `Option<String>` | اختياري: كلمة مرور HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | اسم قاعدة البيانات |
 | `username` | `String` | اسم المستخدم |
 | `password` | `String` | كلمة المرور |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | الوصف |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | عنوان REST API |
 | `username` | `String` | اسم المستخدم |
 | `password` | `String` | كلمة المرور |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # اختياري: إن لم يُحدَّد تُستخدم القاعدة الافتراضية في مسار REST
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
+```
+
+| الحقل | النوع | الوصف |
+|------|------|------|
+| `base_url` | `String` | عنوان واجهة REST (taosAdapter، المنفذ الافتراضي 6041) |
+| `username` | `String` | اسم المستخدم |
+| `password` | `String` | كلمة المرور |
+| `database` | `Option<String>` | اختياري: اسم القاعدة الافتراضية (يُضاف إلى مسار REST) |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
+
+**ميزانية واحدة للاستدعاء كله**: يقسّم `write()` دفعة نقاط البيانات إلى عدة طلبات HTTP، و`query_timeout_secs` يغطي **الاستدعاء كله** (كل الأجزاء)، لا ميزانية لكل جزء.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # اختياري: حد مجمّع الاتصالات الأعلى، الحذف = افتراضي السائق (**10**)
+  # min_pool_size: 0         # اختياري: الحد الأدنى لمجمّع الاتصالات (اتصالات الإبقاء في الخلفية)
+  # query_timeout_secs: 30   # اختياري: مهلة الأمر الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+```
+
+| الحقل | النوع | الوصف |
+|------|------|------|
+| `url` | `String` | URI الاتصال (المصادقة ومجموعة النسخ وخيارات TLS كلها داخل الـURI) |
+| `database` | `String` | اسم القاعدة |
+| `max_pool_size` | `Option<u32>` | حد مجمّع الاتصالات الأعلى؛ الحذف = افتراضي السائق **10** (مقاس على `mongodb` 3.8.0، وليس 100) |
+| `min_pool_size` | `Option<u32>` | الحد الأدنى لمجمّع الاتصالات؛ الحذف = افتراضي السائق `0` |
+| `query_timeout_secs` | `Option<u64>` | مهلة الأمر الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+
+**الضغط الخلفي للتزامن يمر عبر مجمّع السائق**: هذا الـcrate **ليس فيه** `max_concurrency` (وليس HTTP أصلًا) —— فالسائق يحمل مجمّعه الخاص؛ وإن أردت تزامنًا أعلى فاضبط `max_pool_size` صراحةً.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # اختياري: مهلة الاستدعاء الواحد، 0 = تعطيل
+  # breaker: {}              # اختياري: إعداد الـbreaker، الحذف = افتراضي متحفظ (0.5 / 30s / فتح 10s)
+  # max_concurrency: 32      # اختياري: حد التزامن (سيمافور هذا الـcrate)
+```
+
+| الحقل | النوع | الوصف |
+|------|------|------|
+| `endpoint` | `String` | عنوان خدمة متوافقة مع S3 (MinIO / بوابة مستضافة ذاتيًا) |
+| `region` | `String` | المنطقة المستخدمة في التوقيع؛ MinIO لا يهتم بالقيمة، فـ`us-east-1` تكفي |
+| `access_key` | `String` | مفتاح الوصول |
+| `secret_key` | `String` | المفتاح السري |
+| `query_timeout_secs` | `Option<u64>` | مهلة الاستدعاء الواحد بالثواني؛ الحذف = `30`، **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | عتبات الـbreaker ونافذته؛ لا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | حد التزامن (الافتراضي `32`)؛ سيمافور هذا الـcrate نفسه |
+
+**ميزانية واحدة للاستدعاء كله**: `list()` يتابع continuation token ويصدر عدة طلبات GET في استدعاء واحد، والمهلة تغطي **التنقل بين الصفحات كله**.
+
+> **القواسم المشتركة للصلابة الصادرة** (كل واجهات HTTP الخلفية في هذا القسم): الترتيب **تصريح → breaker → مهلة**؛ خطأ المهلة `code = DeadlineExceeded`، ورفض الـbreaker `code = Unavailable` مع `message = "circuit breaker is open"`؛ ومع ميزة `metrics` تُحتسب تحت `ecat_outbound_timeouts_total{backend="<اسم قسم الإعداد>"}` —— والوسم هنا هو **اسم قسم الإعداد** (`"arangodb"` / `"mongodb"` / …)، وليس اسم فئة الـtrait.
 
 ---
 

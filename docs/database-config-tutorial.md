@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # 可选
   # password: "quest"     # 可选
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP API 地址 |
 | `username` | `Option<String>` | 可选：HTTP Basic Auth 用户名 |
 | `password` | `Option<String>` | 可选：HTTP Basic Auth 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
+
+**错误类型**：QuestDB 走 `SqlExecutor`（RDBMS 家族）—— 超时是 `RdbmsError::Timeout`，
+熔断拒绝是 `RdbmsError::Connection("circuit breaker is open")`；其余 HTTP 后端统一为
+`ecat_errors::Error`（`code = DeadlineExceeded` / `Unavailable`，`reason` = 后端名）。
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # 可选
   # password: "secret"    # 可选
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST API 地址 |
 | `username` | `Option<String>` | 可选：HTTP Basic Auth 用户名 |
 | `password` | `Option<String>` | 可选：HTTP Basic Auth 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # 可选
   # password: "secret"    # 可选
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST API 地址 |
 | `username` | `Option<String>` | 可选：HTTP Basic Auth 用户名 |
 | `password` | `Option<String>` | 可选：HTTP Basic Auth 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | 组织名 |
 | `bucket` | `String` | 桶名 |
 | `token` | `String` | 认证令牌 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST API 地址 |
 | `username` | `String` | 用户名 |
 | `password` | `String` | 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # 可选
   # password: "nebula"    # 可选
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | 图空间名 |
 | `username` | `Option<String>` | 可选：HTTP Basic Auth 用户名 |
 | `password` | `Option<String>` | 可选：HTTP Basic Auth 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | 数据库名 |
 | `username` | `String` | 用户名 |
 | `password` | `String` | 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 说明 |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST API 地址 |
 | `username` | `String` | 用户名 |
 | `password` | `String` | 密码 |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口，省略 = 保守默认（0.5 / 30s / 打开 10s）；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；**本 crate 自己的信号量**，不是 reqwest 的旋钮 |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # 可选：不填则用 REST 路径里的默认库
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `base_url` | `String` | REST 接口地址（taosAdapter，默认端口 6041） |
+| `username` | `String` | 用户名 |
+| `password` | `String` | 密码 |
+| `database` | `Option<String>` | 可选：默认库名（拼进 REST 路径） |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；本 crate 自己的信号量 |
+
+**整次调用一个预算**：`write()` 会把一批数据点分片成多次 HTTP 请求，`query_timeout_secs` 罩住**整次调用**（所有分片），不是每片一个预算。
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # 可选：连接池上限，省略 = 驱动默认（**10**）
+  # min_pool_size: 0         # 可选：连接池下限（后台保活连接数）
+  # query_timeout_secs: 30   # 可选：单次命令超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `url` | `String` | 连接 URI（认证、副本集、TLS 选项都写在 URI 里） |
+| `database` | `String` | 数据库名 |
+| `max_pool_size` | `Option<u32>` | 连接池上限；省略 = 驱动默认 **10**（`mongodb` 3.8.0 实测，非 100） |
+| `min_pool_size` | `Option<u32>` | 连接池下限；省略 = 驱动默认 `0` |
+| `query_timeout_secs` | `Option<u64>` | 单次命令超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口；没有 `enabled` 总开关 |
+
+**并发背压走驱动连接池**：本 crate **没有** `max_concurrency`（也不是 HTTP）—— 驱动自带连接池，需要更高并发就显式配 `max_pool_size`。
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # 可选：单次调用超时，0 = 禁用
+  # breaker: {}              # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32      # 可选：并发上限（本 crate 的信号量）
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `endpoint` | `String` | S3 兼容服务地址（MinIO / 自建网关） |
+| `region` | `String` | 签名用的区域；MinIO 对取值不敏感，填 `us-east-1` 即可 |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | 单次调用超时秒数；省略 = `30`，**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 熔断阈值与窗口；没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | 并发上限（默认 `32`）；本 crate 自己的信号量 |
+
+**整次调用一个预算**：`list()` 跟随 continuation token 翻页、一次调用发多个 GET，超时罩住**整次翻页**。
+
+> **出站韧性共同点**（本节全部 HTTP 后端）：顺序 **许可 → 熔断 → 超时**；超时错误 `code = DeadlineExceeded`，熔断拒绝 `code = Unavailable` 且 `message = "circuit breaker is open"`；`metrics` feature 下按 `ecat_outbound_timeouts_total{backend="<配置节名>"}` 计数 —— 标签是**配置节名**（`"arangodb"` / `"mongodb"` / …），不是 trait 类别名。
 
 ---
 

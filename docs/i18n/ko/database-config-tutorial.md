@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # 선택
   # password: "quest"     # 선택
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP API 주소 |
 | `username` | `Option<String>` | 선택: HTTP Basic Auth 사용자 이름 |
 | `password` | `Option<String>` | 선택: HTTP Basic Auth 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
+
+**오류 유형**: QuestDB는 `SqlExecutor`(RDBMS 계열)를 지납니다 —— 타임아웃은 `RdbmsError::Timeout`,
+브레이커 거부는 `RdbmsError::Connection("circuit breaker is open")`입니다. 나머지 HTTP 백엔드는
+한결같이 `ecat_errors::Error`(`code = DeadlineExceeded` / `Unavailable`, `reason` = 백엔드 이름)를 돌려줍니다.
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # 선택
   # password: "secret"    # 선택
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST API 주소 |
 | `username` | `Option<String>` | 선택: HTTP Basic Auth 사용자 이름 |
 | `password` | `Option<String>` | 선택: HTTP Basic Auth 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # 선택
   # password: "secret"    # 선택
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST API 주소 |
 | `username` | `Option<String>` | 선택: HTTP Basic Auth 사용자 이름 |
 | `password` | `Option<String>` | 선택: HTTP Basic Auth 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | 조직 이름 |
 | `bucket` | `String` | 버킷 이름 |
 | `token` | `String` | 인증 토큰 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST API 주소 |
 | `username` | `String` | 사용자 이름 |
 | `password` | `String` | 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # 선택
   # password: "nebula"    # 선택
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | 그래프 스페이스 이름 |
 | `username` | `Option<String>` | 선택: HTTP Basic Auth 사용자 이름 |
 | `password` | `Option<String>` | 선택: HTTP Basic Auth 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | 데이터베이스 이름 |
 | `username` | `String` | 사용자 이름 |
 | `password` | `String` | 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 설명 |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST API 주소 |
 | `username` | `String` | 사용자 이름 |
 | `password` | `String` | 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # 선택: 지정하지 않으면 REST 경로의 기본 데이터베이스를 씁니다
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `base_url` | `String` | REST 인터페이스 주소 (taosAdapter, 기본 포트 6041) |
+| `username` | `String` | 사용자 이름 |
+| `password` | `String` | 비밀번호 |
+| `database` | `Option<String>` | 선택: 기본 데이터베이스 이름 (REST 경로에 이어 붙습니다) |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
+
+**호출 전체에 예산 하나**: `write()`는 데이터 포인트 배치를 여러 HTTP 요청으로 쪼개지만, `query_timeout_secs`가 덮는 것은 **호출 전체**(모든 조각)이며 조각마다의 예산이 아닙니다.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # 선택: 커넥션 풀 상한, 생략 = 드라이버 기본값 (**10**)
+  # min_pool_size: 0         # 선택: 커넥션 풀 하한 (백그라운드에서 유지하는 연결 수)
+  # query_timeout_secs: 30   # 선택: 명령 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `url` | `String` | 연결 URI (인증, 레플리카 세트, TLS 옵션이 모두 URI 안에 들어갑니다) |
+| `database` | `String` | 데이터베이스 이름 |
+| `max_pool_size` | `Option<u32>` | 커넥션 풀 상한; 생략 = 드라이버 기본값 **10** (`mongodb` 3.8.0에서 실측, 100이 아닙니다) |
+| `min_pool_size` | `Option<u32>` | 커넥션 풀 하한; 생략 = 드라이버 기본값 `0` |
+| `query_timeout_secs` | `Option<u64>` | 명령 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+
+**동시성 배압은 드라이버 커넥션 풀로**: 이 crate에는 `max_concurrency`가 **없습니다**(HTTP도 아닙니다) —— 드라이버가 자체 풀을 가지므로 더 높은 동시성이 필요하면 `max_pool_size`를 명시적으로 설정하십시오.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}              # 선택: 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32      # 선택: 동시성 상한 (이 crate의 세마포어)
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `endpoint` | `String` | S3 호환 서비스 주소 (MinIO / 자체 호스팅 게이트웨이) |
+| `region` | `String` | 서명에 쓰는 리전; MinIO는 값에 민감하지 않으므로 `us-east-1`이면 충분합니다 |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | 호출 단위 타임아웃(초); 생략 = `30`, **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 브레이커의 임계값과 윈도우; `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | 동시성 상한 (기본 `32`); 이 crate 자체의 세마포어 |
+
+**호출 전체에 예산 하나**: `list()`는 continuation token을 따라가며 한 번의 호출로 여러 GET을 보내고, 타임아웃은 **페이지 넘김 전체**를 덮습니다.
+
+> **아웃바운드 복원력의 공통점** (이 절의 모든 HTTP 백엔드): 순서는 **허가 → 브레이커 → 타임아웃**입니다. 타임아웃 오류는 `code = DeadlineExceeded`, 브레이커 거부는 `code = Unavailable`에 `message = "circuit breaker is open"`입니다. `metrics` feature에서는 `ecat_outbound_timeouts_total{backend="<설정 절 이름>"}`로 집계됩니다 —— 레이블은 **설정 절 이름**(`"arangodb"` / `"mongodb"` / …)이며 trait 범주 이름이 아닙니다.
 
 ---
 

@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # opsional
   # password: "quest"     # opsional
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | Alamat HTTP API |
 | `username` | `Option<String>` | Opsional: nama pengguna HTTP Basic Auth |
 | `password` | `Option<String>` | Opsional: kata sandi HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
+
+**Jenis galat**: QuestDB lewat `SqlExecutor` (keluarga RDBMS) — timeout adalah `RdbmsError::Timeout`,
+penolakan breaker adalah `RdbmsError::Connection("circuit breaker is open")`; seluruh backend HTTP lain
+seragam mengembalikan `ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`, `reason` = nama backend).
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # opsional
   # password: "secret"    # opsional
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | Alamat REST API |
 | `username` | `Option<String>` | Opsional: nama pengguna HTTP Basic Auth |
 | `password` | `Option<String>` | Opsional: kata sandi HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # opsional
   # password: "secret"    # opsional
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | Alamat REST API |
 | `username` | `Option<String>` | Opsional: nama pengguna HTTP Basic Auth |
 | `password` | `Option<String>` | Opsional: kata sandi HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | Nama organisasi |
 | `bucket` | `String` | Nama bucket |
 | `token` | `String` | Token autentikasi |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | Alamat REST API |
 | `username` | `String` | Nama pengguna |
 | `password` | `String` | Kata sandi |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # opsional
   # password: "nebula"    # opsional
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | Nama graph space |
 | `username` | `Option<String>` | Opsional: nama pengguna HTTP Basic Auth |
 | `password` | `Option<String>` | Opsional: kata sandi HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | Nama database |
 | `username` | `String` | Nama pengguna |
 | `password` | `String` | Kata sandi |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Keterangan |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | Alamat REST API |
 | `username` | `String` | Nama pengguna |
 | `password` | `String` | Kata sandi |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # Opsional: bila kosong, database default di jalur REST yang dipakai
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
+```
+
+| Kolom | Tipe | Keterangan |
+|------|------|------|
+| `base_url` | `String` | Alamat antarmuka REST (taosAdapter, port default 6041) |
+| `username` | `String` | Nama pengguna |
+| `password` | `String` | Kata sandi |
+| `database` | `Option<String>` | Opsional: nama database default (disisipkan ke jalur REST) |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
+
+**Satu anggaran untuk seluruh panggilan**: `write()` memecah satu batch titik data menjadi beberapa permintaan HTTP, dan `query_timeout_secs` menutup **seluruh panggilan** (semua bagian), bukan satu anggaran per bagian.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # Opsional: batas atas connection pool, dihilangkan = default driver (**10**)
+  # min_pool_size: 0         # Opsional: batas bawah connection pool (koneksi yang dijaga di latar belakang)
+  # query_timeout_secs: 30   # Opsional: timeout per perintah, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+```
+
+| Kolom | Tipe | Keterangan |
+|------|------|------|
+| `url` | `String` | URI koneksi (autentikasi, replica set, dan opsi TLS semuanya ada di URI) |
+| `database` | `String` | Nama database |
+| `max_pool_size` | `Option<u32>` | Batas atas connection pool; dihilangkan = default driver **10** (diukur pada `mongodb` 3.8.0, bukan 100) |
+| `min_pool_size` | `Option<u32>` | Batas bawah connection pool; dihilangkan = default driver `0` |
+| `query_timeout_secs` | `Option<u64>` | Timeout per perintah dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+
+**Backpressure konkurensi lewat pool driver**: crate ini **tidak punya** `max_concurrency` (dan juga bukan HTTP) — driver membawa pool-nya sendiri; bila butuh konkurensi lebih tinggi, setel `max_pool_size` secara eksplisit.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # Opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}              # Opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32      # Opsional: batas konkurensi (semaphore crate ini)
+```
+
+| Kolom | Tipe | Keterangan |
+|------|------|------|
+| `endpoint` | `String` | Alamat layanan kompatibel S3 (MinIO / gateway self-hosted) |
+| `region` | `String` | Region untuk penandatanganan; MinIO tidak peduli nilainya, `us-east-1` cukup |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | Timeout per panggilan dalam detik; dihilangkan = `30`, **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | Ambang dan jendela breaker; tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | Batas konkurensi (default `32`); semaphore milik crate ini sendiri |
+
+**Satu anggaran untuk seluruh panggilan**: `list()` mengikuti continuation token dan mengirim beberapa GET dalam satu panggilan; timeout menutup **seluruh penelusuran halaman**.
+
+> **Kesamaan resiliensi keluar** (semua backend HTTP di bagian ini): urutannya **izin → breaker → timeout**; galat timeout membawa `code = DeadlineExceeded`, penolakan breaker `code = Unavailable` dengan `message = "circuit breaker is open"`; dengan feature `metrics` keduanya dihitung di `ecat_outbound_timeouts_total{backend="<nama bagian konfigurasi>"}` — labelnya adalah **nama bagian konfigurasi** (`"arangodb"` / `"mongodb"` / …), bukan nama kategori trait.
 
 ---
 

@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # opcional
   # password: "quest"     # opcional
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | Endereço da API HTTP |
 | `username` | `Option<String>` | Opcional: usuário HTTP Basic Auth |
 | `password` | `Option<String>` | Opcional: senha HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
+
+**Tipo de erro**: o QuestDB passa pelo `SqlExecutor` (a família RDBMS) — um timeout é `RdbmsError::Timeout`,
+uma rejeição do breaker é `RdbmsError::Connection("circuit breaker is open")`; os demais backends HTTP
+devolvem uniformemente `ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`, `reason` = nome do backend).
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # opcional
   # password: "secret"    # opcional
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | Endereço da API REST |
 | `username` | `Option<String>` | Opcional: usuário HTTP Basic Auth |
 | `password` | `Option<String>` | Opcional: senha HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # opcional
   # password: "secret"    # opcional
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | Endereço da API REST |
 | `username` | `Option<String>` | Opcional: usuário HTTP Basic Auth |
 | `password` | `Option<String>` | Opcional: senha HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | Nome da organização |
 | `bucket` | `String` | Nome do bucket |
 | `token` | `String` | Token de autenticação |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | Endereço da API REST |
 | `username` | `String` | Nome de usuário |
 | `password` | `String` | Senha |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # opcional
   # password: "nebula"    # opcional
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | Nome do espaço de grafo |
 | `username` | `Option<String>` | Opcional: usuário HTTP Basic Auth |
 | `password` | `Option<String>` | Opcional: senha HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | Nome do banco de dados |
 | `username` | `String` | Nome de usuário |
 | `password` | `String` | Senha |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
 ```
 
 | Campo | Tipo | Descrição |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | Endereço da API REST |
 | `username` | `String` | Nome de usuário |
 | `password` | `String` | Senha |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # Opcional: sem isso, usa-se o banco padrão do caminho REST
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
+```
+
+| Campo | Tipo | Descrição |
+|------|------|------|
+| `base_url` | `String` | Endereço da interface REST (taosAdapter, porta padrão 6041) |
+| `username` | `String` | Nome de usuário |
+| `password` | `String` | Senha |
+| `database` | `Option<String>` | Opcional: nome do banco padrão (anexado ao caminho REST) |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
+
+**Um orçamento para a chamada inteira**: `write()` divide um lote de pontos de dados em várias requisições HTTP, e `query_timeout_secs` cobre a **chamada inteira** (todas as partes), não um orçamento por parte.
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # Opcional: teto do pool de conexões, omitido = padrão do driver (**10**)
+  # min_pool_size: 0         # Opcional: piso do pool de conexões (conexões mantidas em segundo plano)
+  # query_timeout_secs: 30   # Opcional: timeout por comando, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+```
+
+| Campo | Tipo | Descrição |
+|------|------|------|
+| `url` | `String` | URI de conexão (autenticação, replica set e opções TLS ficam todas na URI) |
+| `database` | `String` | Nome do banco de dados |
+| `max_pool_size` | `Option<u32>` | Teto do pool de conexões; omitido = padrão do driver **10** (medido no `mongodb` 3.8.0, não 100) |
+| `min_pool_size` | `Option<u32>` | Piso do pool de conexões; omitido = padrão do driver `0` |
+| `query_timeout_secs` | `Option<u64>` | Timeout por comando em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+
+**A contrapressão de concorrência vai pelo pool do driver**: este crate **não tem** `max_concurrency` (e também não é HTTP) — o driver carrega o próprio pool; quem precisa de mais concorrência define `max_pool_size` explicitamente.
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # Opcional: timeout por chamada, 0 = desativado
+  # breaker: {}              # Opcional: configuração do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
+  # max_concurrency: 32      # Opcional: limite de concorrência (semáforo deste crate)
+```
+
+| Campo | Tipo | Descrição |
+|------|------|------|
+| `endpoint` | `String` | Endereço do serviço compatível com S3 (MinIO / gateway próprio) |
+| `region` | `String` | Região usada na assinatura; o MinIO é indiferente ao valor, `us-east-1` basta |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | Timeout por chamada em segundos; omitido = `30`, **`0` = desativado** |
+| `breaker` | `Option<BreakerConfig>` | Limiares e janela do breaker; sem chave geral `enabled` |
+| `max_concurrency` | `Option<usize>` | Limite de concorrência (padrão `32`); semáforo deste próprio crate |
+
+**Um orçamento para a chamada inteira**: `list()` segue os continuation token e dispara vários GET numa única chamada; o timeout cobre **toda a paginação**.
+
+> **O que a resiliência de saída tem em comum** (todos os backends HTTP desta seção): a ordem é **permissão → breaker → timeout**; erros de timeout trazem `code = DeadlineExceeded`, rejeições do breaker `code = Unavailable` com `message = "circuit breaker is open"`; com a feature `metrics` são contados em `ecat_outbound_timeouts_total{backend="<nome da seção de configuração>"}` — o rótulo é o **nome da seção de configuração** (`"arangodb"` / `"mongodb"` / …), não o nome da categoria de trait.
 
 ---
 

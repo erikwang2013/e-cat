@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # वैकल्पिक
   # password: "quest"     # वैकल्पिक
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP API पता |
 | `username` | `Option<String>` | वैकल्पिक: HTTP Basic Auth उपयोगकर्ता नाम |
 | `password` | `Option<String>` | वैकल्पिक: HTTP Basic Auth पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
+
+**त्रुटि का प्रकार**: QuestDB `SqlExecutor` (RDBMS परिवार) से जाता है —— टाइमआउट `RdbmsError::Timeout` है,
+और breaker की अस्वीकृति `RdbmsError::Connection("circuit breaker is open")`; बाक़ी सभी HTTP बैकएंड
+एकसमान `ecat_errors::Error` लौटाते हैं (`code = DeadlineExceeded` / `Unavailable`, `reason` = बैकएंड का नाम)।
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # वैकल्पिक
   # password: "secret"    # वैकल्पिक
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST API पता |
 | `username` | `Option<String>` | वैकल्पिक: HTTP Basic Auth उपयोगकर्ता नाम |
 | `password` | `Option<String>` | वैकल्पिक: HTTP Basic Auth पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # वैकल्पिक
   # password: "secret"    # वैकल्पिक
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST API पता |
 | `username` | `Option<String>` | वैकल्पिक: HTTP Basic Auth उपयोगकर्ता नाम |
 | `password` | `Option<String>` | वैकल्पिक: HTTP Basic Auth पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | संगठन नाम |
 | `bucket` | `String` | बकेट नाम |
 | `token` | `String` | प्रमाणीकरण टोकन |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST API पता |
 | `username` | `String` | उपयोगकर्ता नाम |
 | `password` | `String` | पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # वैकल्पिक
   # password: "nebula"    # वैकल्पिक
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | ग्राफ स्पेस नाम |
 | `username` | `Option<String>` | वैकल्पिक: HTTP Basic Auth उपयोगकर्ता नाम |
 | `password` | `Option<String>` | वैकल्पिक: HTTP Basic Auth पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | डेटाबेस नाम |
 | `username` | `String` | उपयोगकर्ता नाम |
 | `password` | `String` | पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
 ```
 
 | फ़ील्ड | प्रकार | स्पष्टीकरण |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST API पता |
 | `username` | `String` | उपयोगकर्ता नाम |
 | `password` | `String` | पासवर्ड |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # वैकल्पिक: न दें तो REST पथ का डिफ़ॉल्ट डेटाबेस इस्तेमाल होता है
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
+```
+
+| फ़ील्ड | प्रकार | स्पष्टीकरण |
+|------|------|------|
+| `base_url` | `String` | REST इंटरफ़ेस का पता (taosAdapter, डिफ़ॉल्ट पोर्ट 6041) |
+| `username` | `String` | उपयोगकर्ता नाम |
+| `password` | `String` | पासवर्ड |
+| `database` | `Option<String>` | वैकल्पिक: डिफ़ॉल्ट डेटाबेस का नाम (REST पथ में जुड़ता है) |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
+
+**पूरे कॉल के लिए एक बजट**: `write()` डेटा-बिंदुओं के एक बैच को कई HTTP अनुरोधों में बाँटता है, और `query_timeout_secs` **पूरे कॉल** (सभी हिस्सों) को कवर करता है, हर हिस्से का अलग बजट नहीं।
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # वैकल्पिक: कनेक्शन पूल की ऊपरी सीमा, छोड़ी गई = ड्राइवर डिफ़ॉल्ट (**10**)
+  # min_pool_size: 0         # वैकल्पिक: कनेक्शन पूल की निचली सीमा (पृष्ठभूमि में बनाए रखे कनेक्शन)
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कमांड टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+```
+
+| फ़ील्ड | प्रकार | स्पष्टीकरण |
+|------|------|------|
+| `url` | `String` | कनेक्शन URI (प्रमाणीकरण, रेप्लिका सेट और TLS विकल्प सब URI में ही रहते हैं) |
+| `database` | `String` | डेटाबेस का नाम |
+| `max_pool_size` | `Option<u32>` | कनेक्शन पूल की ऊपरी सीमा; छोड़ी गई = ड्राइवर डिफ़ॉल्ट **10** (`mongodb` 3.8.0 पर मापा गया, 100 नहीं) |
+| `min_pool_size` | `Option<u32>` | कनेक्शन पूल की निचली सीमा; छोड़ी गई = ड्राइवर डिफ़ॉल्ट `0` |
+| `query_timeout_secs` | `Option<u64>` | प्रति कमांड टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+
+**समवर्तीता का बैकप्रेशर ड्राइवर पूल से जाता है**: इस crate में `max_concurrency` **नहीं** है (और यह HTTP भी नहीं है) —— ड्राइवर अपना पूल लाता है; ज़्यादा समवर्तीता चाहिए तो `max_pool_size` स्पष्ट रूप से सेट करें।
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # वैकल्पिक: प्रति कॉल टाइमआउट, 0 = अक्षम
+  # breaker: {}              # वैकल्पिक: breaker कॉन्फ़िग, छोड़ी गई = रूढ़िवादी डिफ़ॉल्ट (0.5 / 30s / खुला 10s)
+  # max_concurrency: 32      # वैकल्पिक: समवर्तीता सीमा (इसी crate का सीमाफोर)
+```
+
+| फ़ील्ड | प्रकार | स्पष्टीकरण |
+|------|------|------|
+| `endpoint` | `String` | S3-संगत सेवा का पता (MinIO / स्वयं-होस्टेड गेटवे) |
+| `region` | `String` | हस्ताक्षर के लिए क्षेत्र; MinIO को मान से फ़र्क़ नहीं पड़ता, `us-east-1` काफ़ी है |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | प्रति कॉल टाइमआउट (सेकंड में); छोड़ी गई = `30`, **`0` = अक्षम** |
+| `breaker` | `Option<BreakerConfig>` | breaker की सीमाएँ और विंडो; `enabled` मास्टर स्विच नहीं |
+| `max_concurrency` | `Option<usize>` | समवर्तीता सीमा (डिफ़ॉल्ट `32`); इसी crate का अपना सीमाफोर |
+
+**पूरे कॉल के लिए एक बजट**: `list()` continuation token का पीछा करते हुए एक कॉल में कई GET भेजता है; टाइमआउट **पूरी पेजिंग** को कवर करता है।
+
+> **आउटबाउंड रेज़िलिएंस की साझा बातें** (इस खंड के सभी HTTP बैकएंड): क्रम **परमिट → breaker → टाइमआउट** है; टाइमआउट त्रुटि `code = DeadlineExceeded`, breaker की अस्वीकृति `code = Unavailable` के साथ `message = "circuit breaker is open"`; `metrics` feature के साथ ये `ecat_outbound_timeouts_total{backend="<कॉन्फ़िग खंड का नाम>"}` में गिने जाते हैं —— लेबल **कॉन्फ़िग खंड का नाम** है (`"arangodb"` / `"mongodb"` / …), trait श्रेणी का नाम नहीं।
 
 ---
 

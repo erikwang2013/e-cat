@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # ঐচ্ছিক
   # password: "quest"     # ঐচ্ছিক
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP API ঠিকানা |
 | `username` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth ইউজারনেম |
 | `password` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
+
+**ত্রুটির ধরন**: QuestDB `SqlExecutor` (RDBMS পরিবার) দিয়ে যায় —— টাইমআউট হলো `RdbmsError::Timeout`,
+আর breaker-এর প্রত্যাখ্যান `RdbmsError::Connection("circuit breaker is open")`; বাকি HTTP ব্যাকএন্ড সবই
+`ecat_errors::Error` (`code = DeadlineExceeded` / `Unavailable`, `reason` = ব্যাকএন্ডের নাম)।
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # ঐচ্ছিক
   # password: "secret"    # ঐচ্ছিক
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST API ঠিকানা |
 | `username` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth ইউজারনেম |
 | `password` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # ঐচ্ছিক
   # password: "secret"    # ঐচ্ছিক
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST API ঠিকানা |
 | `username` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth ইউজারনেম |
 | `password` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | সংস্থার নাম |
 | `bucket` | `String` | বাকেটের নাম |
 | `token` | `String` | অথেনটিকেশন টোকেন |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST API ঠিকানা |
 | `username` | `String` | ইউজারনেম |
 | `password` | `String` | পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # ঐচ্ছিক
   # password: "nebula"    # ঐচ্ছিক
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | গ্রাফ স্পেস নাম |
 | `username` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth ইউজারনেম |
 | `password` | `Option<String>` | ঐচ্ছিক: HTTP Basic Auth পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | ডেটাবেস নাম |
 | `username` | `String` | ইউজারনেম |
 | `password` | `String` | পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
 ```
 
 | ফিল্ড | টাইপ | ব্যাখ্যা |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST API ঠিকানা |
 | `username` | `String` | ইউজারনেম |
 | `password` | `String` | পাসওয়ার্ড |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # ঐচ্ছিক: না দিলে REST পাথের ডিফল্ট ডেটাবেস ব্যবহৃত হয়
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
+```
+
+| ফিল্ড | টাইপ | ব্যাখ্যা |
+|------|------|------|
+| `base_url` | `String` | REST ইন্টারফেসের ঠিকানা (taosAdapter, ডিফল্ট পোর্ট 6041) |
+| `username` | `String` | ব্যবহারকারীর নাম |
+| `password` | `String` | পাসওয়ার্ড |
+| `database` | `Option<String>` | ঐচ্ছিক: ডিফল্ট ডেটাবেসের নাম (REST পাথে যুক্ত হয়) |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
+
+**গোটা কলের জন্য এক বাজেট**: `write()` এক ব্যাচ ডেটাপয়েন্টকে কয়েকটি HTTP রিকোয়েস্টে ভাগ করে, আর `query_timeout_secs` **গোটা কল** (সব ভাগ) ঢাকে, প্রতি ভাগে আলাদা বাজেট নয়।
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # ঐচ্ছিক: কানেকশন পুলের ঊর্ধ্বসীমা, বাদ দেওয়া = ড্রাইভারের ডিফল্ট (**10**)
+  # min_pool_size: 0         # ঐচ্ছিক: কানেকশন পুলের নিম্নসীমা (ব্যাকগ্রাউন্ডে রাখা সংযোগ)
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কমান্ডে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+```
+
+| ফিল্ড | টাইপ | ব্যাখ্যা |
+|------|------|------|
+| `url` | `String` | সংযোগ URI (প্রমাণীকরণ, রেপ্লিকা সেট ও TLS অপশন সবই URI-তে) |
+| `database` | `String` | ডেটাবেসের নাম |
+| `max_pool_size` | `Option<u32>` | কানেকশন পুলের ঊর্ধ্বসীমা; বাদ দেওয়া = ড্রাইভারের ডিফল্ট **10** (`mongodb` 3.8.0-তে মাপা, 100 নয়) |
+| `min_pool_size` | `Option<u32>` | কানেকশন পুলের নিম্নসীমা; বাদ দেওয়া = ড্রাইভারের ডিফল্ট `0` |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কমান্ডে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+
+**সমবর্তিতার ব্যাকপ্রেশার চলে ড্রাইভারের কানেকশন পুলে**: এই crate-এ **নেই** `max_concurrency` (HTTP-ও নয়) —— ড্রাইভার নিজের পুল বহন করে; বেশি সমবর্তিতা চাইলে `max_pool_size` স্পষ্টভাবে সেট করুন।
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # ঐচ্ছিক: প্রতি কলে টাইমআউট, 0 = নিষ্ক্রিয়
+  # breaker: {}              # ঐচ্ছিক: breaker কনফিগ, বাদ দেওয়া = রক্ষণশীল ডিফল্ট (0.5 / 30s / খোলা 10s)
+  # max_concurrency: 32      # ঐচ্ছিক: সমবর্তিতার সীমা (এই crate-এর সেমাফোর)
+```
+
+| ফিল্ড | টাইপ | ব্যাখ্যা |
+|------|------|------|
+| `endpoint` | `String` | S3-সামঞ্জস্যপূর্ণ সেবার ঠিকানা (MinIO / নিজস্ব গেটওয়ে) |
+| `region` | `String` | সাইনিংয়ের রিজিয়ন; MinIO মান নিয়ে সংবেদনশীল নয়, `us-east-1` দিলেই চলে |
+| `access_key` | `String` | Access Key |
+| `secret_key` | `String` | Secret Key |
+| `query_timeout_secs` | `Option<u64>` | প্রতি কলে টাইমআউট (সেকেন্ডে); বাদ দেওয়া = `30`, **`0` = নিষ্ক্রিয়** |
+| `breaker` | `Option<BreakerConfig>` | breaker-এর থ্রেশহোল্ড ও উইন্ডো; `enabled` মাস্টার সুইচ নেই |
+| `max_concurrency` | `Option<usize>` | সমবর্তিতার সীমা (ডিফল্ট `32`); এই crate-এর নিজস্ব সেমাফোর |
+
+**গোটা কলের জন্য এক বাজেট**: `list()` continuation token অনুসরণ করে এক কলে কয়েকটি GET পাঠায়, আর টাইমআউট **গোটা পেজিং** ঢাকে।
+
+> **আউটবাউন্ড রেজিলিয়েন্সের সাধারণ দিক** (এই বিভাগের সব HTTP ব্যাকএন্ড): ক্রম **পারমিট → breaker → টাইমআউট**; টাইমআউট ত্রুটি `code = DeadlineExceeded`, breaker-এর প্রত্যাখ্যান `code = Unavailable` ও `message = "circuit breaker is open"`; `metrics` feature থাকলে `ecat_outbound_timeouts_total{backend="<কনফিগ বিভাগের নাম>"}`-এ গোনা হয় —— লেবেলটি **কনফিগ বিভাগের নাম** (`"arangodb"` / `"mongodb"` / …), trait শ্রেণির নাম নয়।
 
 ---
 

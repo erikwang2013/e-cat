@@ -296,6 +296,9 @@ questdb:
   base_url: "http://host:9000"
   # username: "admin"     # オプション
   # password: "quest"     # オプション
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -303,6 +306,13 @@ questdb:
 | `base_url` | `String` | HTTP API アドレス |
 | `username` | `Option<String>` | オプション：HTTP Basic Auth ユーザー名 |
 | `password` | `Option<String>` | オプション：HTTP Basic Auth パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
+
+**エラーの型**：QuestDB は `SqlExecutor`（RDBMS ファミリー）を通ります —— タイムアウトは `RdbmsError::Timeout`、
+ブレーカーの拒否は `RdbmsError::Connection("circuit breaker is open")` です。残りの HTTP バックエンドは
+一律に `ecat_errors::Error`（`code = DeadlineExceeded` / `Unavailable`、`reason` = バックエンド名）です。
 
 ### Elasticsearch — ElasticsearchConfig
 
@@ -311,6 +321,9 @@ elasticsearch:
   base_url: "http://host:9200"
   # username: "elastic"   # オプション
   # password: "secret"    # オプション
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -318,6 +331,9 @@ elasticsearch:
 | `base_url` | `String` | REST API アドレス |
 | `username` | `Option<String>` | オプション：HTTP Basic Auth ユーザー名 |
 | `password` | `Option<String>` | オプション：HTTP Basic Auth パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### OpenSearch — OpenSearchConfig
 
@@ -326,6 +342,9 @@ opensearch:
   base_url: "http://host:9200"
   # username: "admin"     # オプション
   # password: "secret"    # オプション
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -333,6 +352,9 @@ opensearch:
 | `base_url` | `String` | REST API アドレス |
 | `username` | `Option<String>` | オプション：HTTP Basic Auth ユーザー名 |
 | `password` | `Option<String>` | オプション：HTTP Basic Auth パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### InfluxDB — InfluxConfig
 
@@ -342,6 +364,9 @@ influxdb:
   org: "myorg"
   bucket: "mybucket"
   token: "my-token"
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -350,6 +375,9 @@ influxdb:
 | `org` | `String` | 組織名 |
 | `bucket` | `String` | バケット名 |
 | `token` | `String` | 認証トークン |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### Neo4j — Neo4jConfig
 
@@ -358,6 +386,9 @@ neo4j:
   base_url: "http://host:7474"
   username: "neo4j"
   password: "secret"
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -365,6 +396,9 @@ neo4j:
 | `base_url` | `String` | REST API アドレス |
 | `username` | `String` | ユーザー名 |
 | `password` | `String` | パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### NebulaGraph — NebulaGraphConfig
 
@@ -374,6 +408,9 @@ nebulagraph:
   space: "my_space"
   # username: "root"      # オプション
   # password: "nebula"    # オプション
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -382,6 +419,9 @@ nebulagraph:
 | `space` | `String` | グラフスペース名 |
 | `username` | `Option<String>` | オプション：HTTP Basic Auth ユーザー名 |
 | `password` | `Option<String>` | オプション：HTTP Basic Auth パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### ArangoDB — ArangoConfig
 
@@ -391,6 +431,9 @@ arangodb:
   db: "mydb"
   username: "root"
   password: "secret"
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -399,6 +442,9 @@ arangodb:
 | `db` | `String` | データベース名 |
 | `username` | `String` | ユーザー名 |
 | `password` | `String` | パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
 
 ### IoTDB — IotdbConfig
 
@@ -407,6 +453,9 @@ iotdb:
   base_url: "http://host:18080"
   username: "root"
   password: "root"
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | 説明 |
@@ -414,6 +463,84 @@ iotdb:
 | `base_url` | `String` | REST API アドレス |
 | `username` | `String` | ユーザー名 |
 | `password` | `String` | パスワード |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
+
+### TDengine — TdengineConfig
+
+```yaml
+tdengine:
+  base_url: "http://host:6041"
+  username: "root"
+  password: "taosdata"
+  # database: "my_db"        # 任意：未指定なら REST パス内のデフォルトデータベースを使います
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
+```
+
+| フィールド | 型 | 説明 |
+|------|------|------|
+| `base_url` | `String` | REST インターフェースのアドレス（taosAdapter、デフォルトポート 6041） |
+| `username` | `String` | ユーザー名 |
+| `password` | `String` | パスワード |
+| `database` | `Option<String>` | 任意：デフォルトのデータベース名（REST パスに連結されます） |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
+
+**呼び出し全体で 1 つの予算**：`write()` はデータ点のバッチを複数の HTTP リクエストに分割しますが、`query_timeout_secs` が覆うのは**呼び出し全体**（すべての分割）で、分割ごとの予算ではありません。
+
+### MongoDB — MongoConfig
+
+```yaml
+mongodb:
+  url: "mongodb://host:27017"
+  database: "app"
+  # max_pool_size: 10        # 任意：接続プールの上限、省略 = ドライバーのデフォルト（**10**）
+  # min_pool_size: 0         # 任意：接続プールの下限（バックグラウンドで維持する接続数）
+  # query_timeout_secs: 30   # 任意：コマンド単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+```
+
+| フィールド | 型 | 説明 |
+|------|------|------|
+| `url` | `String` | 接続 URI（認証・レプリカセット・TLS オプションはすべて URI の中に書きます） |
+| `database` | `String` | データベース名 |
+| `max_pool_size` | `Option<u32>` | 接続プールの上限；省略 = ドライバーのデフォルト **10**（`mongodb` 3.8.0 で実測、100 ではありません） |
+| `min_pool_size` | `Option<u32>` | 接続プールの下限；省略 = ドライバーのデフォルト `0` |
+| `query_timeout_secs` | `Option<u64>` | コマンド単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+
+**同時実行の背圧はドライバーの接続プール側**：この crate に `max_concurrency` は**ありません**（そもそも HTTP でもありません）—— ドライバーが自前のプールを持つので、より高い同時実行が要るなら `max_pool_size` を明示的に設定してください。
+
+### S3 / MinIO — S3Config
+
+```yaml
+s3:
+  endpoint: "http://host:9000"
+  region: "us-east-1"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  # query_timeout_secs: 30   # 任意：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}              # 任意：ブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32      # 任意：同時実行の上限（この crate のセマフォ）
+```
+
+| フィールド | 型 | 説明 |
+|------|------|------|
+| `endpoint` | `String` | S3 互換サービスのアドレス（MinIO / 自前のゲートウェイ） |
+| `region` | `String` | 署名に使うリージョン；MinIO は値に頓着しないので `us-east-1` で十分です |
+| `access_key` | `String` | アクセスキー |
+| `secret_key` | `String` | シークレットキー |
+| `query_timeout_secs` | `Option<u64>` | 呼び出し単位のタイムアウト秒数；省略 = `30`、**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | ブレーカーの閾値とウィンドウ；`enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | 同時実行の上限（デフォルト `32`）；この crate 自身のセマフォ |
+
+**呼び出し全体で 1 つの予算**：`list()` は continuation token をたどって 1 回の呼び出しで複数の GET を発行し、タイムアウトは**ページ送り全体**を覆います。
+
+> **アウトバウンド耐性の共通点**（この節のすべての HTTP バックエンド）：順序は**許可 → ブレーカー → タイムアウト**。タイムアウトのエラーは `code = DeadlineExceeded`、ブレーカーの拒否は `code = Unavailable` で `message = "circuit breaker is open"`。`metrics` feature では `ecat_outbound_timeouts_total{backend="<設定節の名前>"}` として計上されます —— ラベルは**設定節の名前**（`"arangodb"` / `"mongodb"` / …）であり、trait のカテゴリ名ではありません。
 
 ---
 
