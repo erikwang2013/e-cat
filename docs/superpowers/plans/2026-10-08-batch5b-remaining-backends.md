@@ -628,25 +628,33 @@ where
 
 | crate | 任务 | `KIND` | `LABEL` | 构造器 | `client_at` 必填字段 | 方法数 | 证人槽 | 把守测试 | 拆测试文件 | 基线测试数 | 新增（默认） | 期望总数（默认 / metrics） |
 |-------|------|--------|---------|--------|---------------------|--------|--------|---------|-----------|-----------|-------------|--------------------------|
-| arangodb | Task 1 | Graph | arangodb | `new`/`from_config` | base_url, db, username, password | 1 | Storage | 无（无分支可守） | 否 | 7 | +7 | **14 / 15** ✅实测 |
-| neo4j | Task 2 | Graph | neo4j | `new`/`from_config` | base_url, username, password | 1 | Storage | 无 | 否 | 4 | +7 | **11 / 12** ✅实测 |
-| nebulagraph | Task 3 | Graph | nebulagraph | `new`/`with_auth`/`from_config` | base_url, space | 1 | Storage | 本地早退 | 否 | 7 | +8 | **15 / 16** ✅实测 |
-| elasticsearch | Task 4 | Search | elasticsearch | `new`/`with_auth`/`from_config` | base_url | 3 | Storage | `_with` 默认 ×2 | 否 | 11 | +9 | **20 / 21** ✅实测 |
-| opensearch | Task 5 | Search | opensearch | 同 ES | base_url | 3 | Storage | 同 ES | 否 | 10 | +9 | **19 / 20** ✅实测 |
-| influxdb | Task 6 | Tsdb | influxdb | `new`/`from_config` | base_url, org, bucket, token | 2 | Storage | `delete` 默认 | **是** | 10 | +9 | **19 / 20** ✅实测 |
-| iotdb | Task 7 | Tsdb | iotdb | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 10 | +10 | **20 / 21** ✅实测 |
-| tdengine | Task 8 | Tsdb | tdengine | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 11 | +10 | **21 / 22** ✅实测 |
-| questdb | Task 9 | Rdbms | questdb | `new`/`with_auth`/`from_config` | base_url | 2 | Storage | `transaction` 常量错 | 否 | 9 | +9 | 18 / 19 |
-| s3 | Task 10 | Storage | s3 | **只有 `from_config`** | endpoint, region, access_key, secret_key | 4 | **Cache** | 无 | **是** | 17 | +9 | 26 / 27 |
-| mongodb | Task 11 | Document | mongodb | **只有 `from_config`（async）** | url, database | 4 | Storage | bson 前置转换 | 否 | 8 | +6 | 14 / 15 |
+| arangodb | Task 1 | Graph | arangodb | `new`/`from_config` | base_url, db, username, password | 1 | Storage | 无（无分支可守） | 否 | 7 | +7 | **14 / 16** ✅实测 |
+| neo4j | Task 2 | Graph | neo4j | `new`/`from_config` | base_url, username, password | 1 | Storage | 无 | 否 | 4 | +7 | **11 / 13** ✅实测 |
+| nebulagraph | Task 3 | Graph | nebulagraph | `new`/`with_auth`/`from_config` | base_url, space | 1 | Storage | 本地早退 | 否 | 7 | +8 | **15 / 17** ✅实测 |
+| elasticsearch | Task 4 | Search | elasticsearch | `new`/`with_auth`/`from_config` | base_url | 3 | Storage | `_with` 默认 ×2 | 否 | 11 | +9 | **20 / 22** ✅实测 |
+| opensearch | Task 5 | Search | opensearch | 同 ES | base_url | 3 | Storage | 同 ES | 否 | 10 | +9 | **19 / 21** ✅实测 |
+| influxdb | Task 6 | Tsdb | influxdb | `new`/`from_config` | base_url, org, bucket, token | 2 | Storage | `delete` 默认 | **是** | 10 | +9 | **19 / 21** ✅实测 |
+| iotdb | Task 7 | Tsdb | iotdb | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 10 | +10 | **20 / 22** ✅实测 |
+| tdengine | Task 8 | Tsdb | tdengine | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 11 | +10 | **21 / 23** ✅实测 |
+| questdb | Task 9 | Rdbms | questdb | `new`/`with_auth`/`from_config` | base_url | 2 | Storage | `transaction` 常量错 | 否 | 9 | +9 | **18 / 20** ✅实测 |
+| s3 | Task 10 | Storage | s3 | **只有 `from_config`** | endpoint, region, access_key, secret_key | 4 | **Cache** | 无 | **是** | 17 | +9 | **26 / 28** ✅实测 |
+| mongodb | Task 11 | Document | mongodb | **只有 `from_config`（async）** | url, database | 4 | Storage | bson 前置转换 | 否 | 8 | **+7** | **15 / 17** ✅实测 |
 
-> **本表的「新增」列在 2026-10-08 被整体 +1**：初稿写于 `Some(0)`=不限并发与
-> `config_wires_*` 接 `cfg.breaker` 两条裁决**之前**，全表少算了那两条验收带来的用例。
-> 8 个已落地 crate 逐个数过，实测值就是上表 ✅ 列（`cargo test -p <crate>` 求和）。
-> **`questdb` / `s3` / `mongodb` 三行是按同样的 +1 规律推的，不是实测** —— 落码时
-> 以你自己的 `test result: ... passed` 为准；对不上先归因到具体一条用例，再改本表
-> （别默默改数字凑答案）。mongodb 的 +6 对应它 Task 11 里列的**六条**用例（该表初稿
-> 写 +5 是漏数了自己列的 `omitted_pool_size_leaves_the_driver_default`）。
+> **计数在 2026-10-08 二次更新（`from_config` 构造即注册之后）**：11 行现在是**全部实测**，
+> 不再是推算。规则很简单 —— **metrics = 默认 + 2**（`metrics` 模块自带 1 条 + 自动注册 1 条）。
+>
+> 逐个来源：`arangodb`…`iotdb` 七行由 `b5b-auto-reg-1` 实测；`tdengine`…`mongodb` 五行
+> 由 `b5b-auto-reg-2` 实测；`mongodb` 的 **+7**（不是 +6）是因为 `b5b-fix-mongo-shell`
+> 又补了一条 `all_four_methods_go_through_the_shell`（把「四个方法是否都包」从纯文本的
+> `grep -c` 判据升级成行为判据）。
+>
+> **更早的一次更正**：「新增」列初稿写于 `Some(0)`=不限并发与 `config_wires_*` 接
+> `cfg.breaker` 两条裁决**之前**，全表少算一条。两次都按「先归因到具体用例、再改数字」
+> 办，没有为凑数改文案。落码时仍以你自己的 `test result: ... passed` 为准。
+>
+> **不在本表里的两个 crate**：`ecat-data-redis`（默认 18 / metrics 20）与
+> `ecat-data-clickhouse`（默认 33 / metrics 35）—— 它们是 5a 的产物，同样在
+> 2026-10-08 的自动注册裁决里被接上（见 CHANGELOG）。
 
 - **基线测试数**是写作时对 `src/` 里 `#[test]` + `#[tokio::test]` 的实测计数（s3 的 17 含
   `src/signing.rs` 与 `src/xml.rs` 的模块内测试：lib.rs 9 + 两个子模块 8）。**每条任务第 1 步都要求
@@ -1380,7 +1388,7 @@ git commit --only Cargo.lock ecat-data-arangodb/Cargo.toml ecat-data-arangodb/sr
 | 构造器 | `new` + `from_config`（两个，同 Task 1） |
 | 配置必填字段（`client_at` 用） | `base_url`, `username`, `password` |
 | 方法数 | 1（`execute`） |
-| 期望测试数 | 4 + 7 = **11**（已实测）；`--features metrics` → **12** |
+| 期望测试数 | 4 + 7 = **11**（已实测）；`--features metrics` → **13** |
 | 把守测试 | 无 |
 
 **Step 1（2 分钟）基线**：同 Task 1 Step 1，crate 名换成 `ecat-data-neo4j`，期望 4 / 214。
@@ -1451,7 +1459,7 @@ git commit --only Cargo.lock ecat-data-arangodb/Cargo.toml ecat-data-arangodb/sr
 `mod resilience;` 加在 `src/lib.rs:80` 的 `mod tests` 第一行。
 
 **Step 9（3 分钟）跑测试**：`cargo test -p ecat-data-neo4j` → 期望 **11 passed**；
-`cargo test -p ecat-data-neo4j --features metrics` → 期望 **12 passed**。
+`cargo test -p ecat-data-neo4j --features metrics` → 期望 **13 passed**。
 
 **Step 10（3 分钟）空验收自证**：同 Task 1 Step 10 的表（把 `Graph` 用例名换成 neo4j 的；
 `db` 字段那条不存在，删表里对应行）。
@@ -1482,7 +1490,7 @@ git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.
 | 构造器 | `new` / `with_auth` / `from_config`（**三个**，装配三行都要加） |
 | 配置必填字段 | `base_url`, `space`（`client_at` 加这两个；`username`/`password` 可省） |
 | 方法数 | 1（`execute`，含本地早退分支） |
-| 期望测试数 | 7 + 8 = **15**（已实测）；`--features metrics` → **16** |
+| 期望测试数 | 7 + 8 = **15**（已实测）；`--features metrics` → **17** |
 | 把守测试 | `params_not_supported_does_not_touch_the_breaker` |
 
 **Step 1（2 分钟）基线**：期望 7 / 263。
@@ -1599,7 +1607,7 @@ async fn params_not_supported_does_not_touch_the_breaker() {
 }
 ```
 
-**Step 9（3 分钟）跑测试**：期望 **15 passed**；`--features metrics` → **16 passed**。
+**Step 9（3 分钟）跑测试**：期望 **15 passed**；`--features metrics` → **17 passed**。
 
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 一条本 crate 专属：
 **把 `if !params.is_null()` 那三行挪进 `guarded` 里面** ⇒ `params_not_supported_does_not_touch_the_breaker` 必红（8 次失败 > 5 次阈值）。
@@ -1620,7 +1628,7 @@ async fn params_not_supported_does_not_touch_the_breaker() {
 | 配置必填字段 | `base_url`（`username`/`password` 可省） |
 | 要包的方法 | `index` / `search` / `delete` |
 | **不包** | `bulk_index` / `update`（trait 默认实现，`ecat-data/src/search.rs:17-34`） |
-| 期望测试数 | 11 + 9 = **20**（已实测）；`--features metrics` → **21** |
+| 期望测试数 | 11 + 9 = **20**（已实测）；`--features metrics` → **22** |
 
 **Step 1（2 分钟）基线**：期望 11 / 347。
 
@@ -1795,7 +1803,7 @@ async fn unsupported_ops_do_not_trip_the_breaker() {
 
 `mod resilience;` 加在 `src/lib.rs:168` 的 `mod tests` 第一行。
 
-**Step 9（3 分钟）跑测试**：期望 **20 passed**；`--features metrics` → **21 passed**。
+**Step 9（3 分钟）跑测试**：期望 **20 passed**；`--features metrics` → **22 passed**。
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 本 crate 专属两条：
 删掉 `delete` 的 `guarded` ⇒ `every_io_method_times_out…` 红；把 `bulk_index` 默认实现覆写进 `guarded` ⇒ `unsupported_ops_do_not_trip_the_breaker` 红。
 **Step 11（5 分钟）红探针 + 闸门 + 提交**（`cargo fmt -p ecat-data-elasticsearch`、clippy、`git commit --only` 路径 + **`Cargo.lock`**）。
@@ -1811,7 +1819,7 @@ async fn unsupported_ops_do_not_trip_the_breaker() {
 | 基线 | **10 passed**；`src/lib.rs` → 336 行 |
 | kind / 标签 / slug | `BackendKind::Search` / `"opensearch"` / `"search"` |
 | 构造器 | `new` / `with_auth` / `from_config` |
-| 期望测试数 | 10 + 9 = **19**（已实测）；`--features metrics` → **20** |
+| 期望测试数 | 10 + 9 = **19**（已实测）；`--features metrics` → **21** |
 
 **做法**：**逐字照做 Task 4 的全部 11 步**，只换这些词：
 
@@ -1884,7 +1892,7 @@ wc -l src/tests.rs src/lib.rs                 # 两个文件都 < 500
 | 配置必填字段 | `base_url`, `org`, `bucket`, `token` |
 | 要包的方法 | `write` / `query` |
 | **不包** | `delete`（trait 默认，`ecat-data/src/tsdb.rs:55`）、`escape_line_part` / `escape_field_string`（纯本地） |
-| 期望测试数 | 10 + 9 = **19**（已实测）；`--features metrics` → **20** |
+| 期望测试数 | 10 + 9 = **19**（已实测）；`--features metrics` → **21** |
 
 **Step 1（2 分钟）基线**：期望 10 / 426。
 **Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2。
@@ -2016,7 +2024,7 @@ async fn delete_default_does_not_trip_the_breaker() {
 
 `mod resilience;` 加在 `src/tests.rs` 的**第一行**（`mod tests` 已经变成独立文件，声明放文件顶部）。
 
-**Step 10（3 分钟）跑测试**：期望 **19 passed**；`--features metrics` → **20 passed**。
+**Step 10（3 分钟）跑测试**：期望 **19 passed**；`--features metrics` → **21 passed**。
 **Step 11（5 分钟）空验收自证**：Task 1 Step 10 的表 + 拆文件那条：把 `mod resilience;` 注释掉 ⇒ 回到 10；
 删 `write` 的 `guarded` ⇒ `write_times_out_…` 与 `every_io_method_…` 都红。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：
@@ -2050,7 +2058,7 @@ git commit --only Cargo.lock ecat-data-influxdb/Cargo.toml ecat-data-influxdb/sr
 | 配置必填字段 | `base_url`, `username`, `password` |
 | 要包的方法 | `write`（**整个循环一个预算**）/ `query` |
 | **不包** | `delete`（trait 默认） |
-| 期望测试数 | 10 + 10 = **20**（已实测）；`--features metrics` → **21** |
+| 期望测试数 | 10 + 10 = **20**（已实测）；`--features metrics` → **22** |
 
 **Step 1（2 分钟）基线**：期望 10 / 427。
 **Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2。
@@ -2113,7 +2121,7 @@ async fn whole_call_budget_covers_every_request_in_write() {
 
 `mod resilience;` 加在 `src/tests.rs` 第一行。
 
-**Step 10（3 分钟）跑测试**：期望 **20 passed**；`--features metrics` → **21 passed**。
+**Step 10（3 分钟）跑测试**：期望 **20 passed**；`--features metrics` → **22 passed**。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 本 crate 专属：
 把 `guarded` 从 `write` 挪到循环内部 ⇒ `whole_call_budget_covers_every_request_in_write` 红（三次各自成功、返回 Ok）。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：同 Task 6 Step 12（路径换成 ecat-data-iotdb 的五个文件）。
@@ -2133,7 +2141,7 @@ async fn whole_call_budget_covers_every_request_in_write() {
 | 配置必填字段 | `base_url`, `username`, `password` |
 | 要包的方法 | `write`（**整个分块循环一个预算**）/ `query` |
 | **不包** | 私有 `exec`（内部 helper —— 包了就把一次调用切成 N 份）、`delete`（trait 默认）、`percent_encode_segment`/`escape_*`/`point_to_insert`/`sql_url`（纯本地） |
-| 期望测试数 | 11 + 10 = **21**（已实测）；`--features metrics` → **22** |
+| 期望测试数 | 11 + 10 = **21**（已实测）；`--features metrics` → **23** |
 
 **Step 1（2 分钟）基线**：期望 11 / 408。
 **Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2。
@@ -2203,7 +2211,7 @@ async fn whole_call_budget_covers_every_batch_in_write() {
 
 `mod resilience;` 加在 `src/tests.rs` 第一行。
 
-**Step 10（3 分钟）跑测试**：期望 **21 passed**；`--features metrics` → **22 passed**。
+**Step 10（3 分钟）跑测试**：期望 **21 passed**；`--features metrics` → **23 passed**。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 两条专属：
 (a) 把 `guarded` 从 `write` 挪到 `exec` 上 ⇒ `whole_call_budget_covers_every_batch_in_write` 与
 `query_times_out_…`（多一层后仍超时，但 `write` 的那条会红）——**以预算用例为准**；
@@ -2227,7 +2235,7 @@ async fn whole_call_budget_covers_every_batch_in_write() {
 | 配置必填字段 | `base_url` |
 | 要包的方法 | `execute` / `query` |
 | **不包** | `transaction`（常量错误）、`dialect`（纯本地）、`apply_auth`（构造请求头） |
-| 期望测试数 | 9 + 9 = **18**；`--features metrics` → **19**（`Some(0)` 裁决 +1，已实测同形先例） |
+| 期望测试数 | 9 + 9 = **18**（已实测）；`--features metrics` → **20**（`Some(0)` 裁决 +1，已实测同形先例） |
 
 **Step 1（2 分钟）基线**：期望 9 / 270。
 **Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2（本 crate 一样要加 `ecat-circuit-breaker` /
@@ -2436,7 +2444,7 @@ async fn transaction_error_does_not_trip_the_breaker() {
 见证槽仍 `Storage`（`use ecat_data::{BackendKind, timeout_counter};` 照抄）。
 `mod resilience;` 加在 `src/lib.rs:161` 的 `mod tests` 第一行。
 
-**Step 9（3 分钟）跑测试**：期望 **18 passed**；`--features metrics` → **19 passed**（以实测为准，计划此处曾少算 `Some(0)` 那条）。
+**Step 9（3 分钟）跑测试**：期望 **18 passed**；`--features metrics` → **20 passed**（以实测为准，计划此处曾少算 `Some(0)` 那条）。
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 本 crate 专属：
 删掉 `query` 的 `guarded` ⇒ `every_io_method_…` 红；把 `transaction` 包进 `guarded` ⇒
 `transaction_error_does_not_trip_the_breaker` 红。
@@ -2458,7 +2466,7 @@ async fn transaction_error_does_not_trip_the_breaker() {
 | 要包的方法 | `put` / `get` / `delete` / `list`（**整个翻页循环一个预算**） |
 | **不包** | `object_path` / `signed_request` / `check_status`（纯本地） |
 | **证人槽** | **`Cache`**（本 crate 自己是 `Storage`，不能用它当证人） |
-| 期望测试数 | 17 + 9 = **26**；`--features metrics` → **27**（含补的 `list` 整调用预算用例） |
+| 期望测试数 | 17 + 9 = **26**（已实测）；`--features metrics` → **28**（含补的 `list` 整调用预算用例） |
 
 **Step 1（2 分钟）基线**：期望 17 / 419。
 **Step 2（3 分钟）`Cargo.toml`**：本 crate 的 `[dev-dependencies]` 只有
@@ -2791,7 +2799,7 @@ async fn spawn_paged(pages_with_token: usize, delay: Duration) -> String {
 
 `mod resilience;` 加在 `src/tests.rs` 第一行。
 
-**Step 10（3 分钟）跑测试**：期望 **26 passed**；`--features metrics` → **27 passed**
+**Step 10（3 分钟）跑测试**：期望 **26 passed**；`--features metrics` → **28 passed**
 （`cargo test -p ecat-data-s3 --features metrics`）。**17 → 26 的数字必须精确对上**；
 对不上先看 `signing.rs` / `xml.rs` 的 8 条是否还在跑。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 本 crate 专属：
@@ -2819,7 +2827,7 @@ async fn spawn_paged(pages_with_token: usize, delay: Duration) -> String {
 | 配置必填字段 | `url`, `database` |
 | 要包的方法 | `insert` / `find` / `update` / `delete` 的**网络段** |
 | **不包** | bson 转换（本地，且是**调用方**的输入错误） |
-| 期望测试数 | 8 + 6 = **14**；`--features metrics` → **15** |
+| 期望测试数 | 8 + 7 = **15**（已实测）；`--features metrics` → **17** |
 
 **Step 1（2 分钟）基线**：期望 8 / 228。
 **Step 2（3 分钟）`Cargo.toml`**：与 HTTP crate **不同** —— 不需要 `tokio(sync)`（无信号量）：
@@ -3191,7 +3199,7 @@ async fn bson_conversion_error_does_not_trip_the_breaker() {
 }
 ```
 
-**Step 10（3 分钟）跑测试**：期望 **14 passed**（8 + 6）；`--features metrics` → **15 passed**。
+**Step 10（3 分钟）跑测试**：期望 **15 passed**（8 + 6）；`--features metrics` → **17 passed**。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 本 crate 专属：
 (a) 删 `build_options` 里两行赋值 ⇒ `config_wires_timeout_pool_and_breaker` 红；
 (b) 把 `insert` 的 bson 转换挪进 `guarded` ⇒ `bson_conversion_error_does_not_trip_the_breaker` 红；
