@@ -55,9 +55,11 @@ pub struct ClickhouseConfig {
     /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
     #[serde(default)]
     pub breaker: Option<BreakerConfig>,
-    /// 并发上限。reqwest **只有** `pool_max_idle_per_host`（空闲保留数），
-    /// 没有「最大总连接数」—— 默认无上限意味着并发无背压。
-    /// 未配置 = 32。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
     #[serde(default)]
     pub max_concurrency: Option<usize>,
 }
@@ -83,7 +85,8 @@ pub struct ClickhouseClient {
     /// 两条 I/O 路径（`SqlExecutor` / `TsdbClient`）**共用**一个 ——
     /// 同一个服务器、同一个故障域，两条路径各判一次会把故障域切错。
     breaker: Arc<Breaker>,
-    semaphore: Arc<Semaphore>,
+    /// `None` = 不限并发（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 
 /// `0` 表示显式禁用超时；未配置时为 30 秒。
@@ -107,7 +110,7 @@ impl ClickhouseClient {
             create_ttl: CREATE_TTL,
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-            semaphore: Arc::new(Semaphore::new(32)),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
         }
     }
 
@@ -127,7 +130,7 @@ impl ClickhouseClient {
             create_ttl: CREATE_TTL,
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-            semaphore: Arc::new(Semaphore::new(32)),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
         }
     }
 
@@ -144,7 +147,14 @@ impl ClickhouseClient {
             create_ttl: CREATE_TTL,
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
-            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
+            semaphore: match cfg.max_concurrency {
+                // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
+                // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
+                // —— 两个 `guarded*` 的第一句就是 `permit().await`，超时层在它里面。
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
         })
     }
 
@@ -153,12 +163,13 @@ impl ClickhouseClient {
         Arc::clone(&self.breaker)
     }
 
-    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
-    async fn permit(&self) -> SemaphorePermit<'_> {
-        self.semaphore
-            .acquire()
-            .await
-            .expect("semaphore is never closed")
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
     }
 
     /// 一次出站调用的外壳（`RdbmsError` 路径）。
