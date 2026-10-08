@@ -486,11 +486,46 @@ NUL 终止串。**可靠的是前两个判别器**（`ecat_metrics8outbound` 符
 s3 实测默认 0/0、metrics 2/2）。**用标签字面量前，先在两个产物上各量一次确认它真的从 0 变 1**，
 否则你得到的是一个恒 0 的假判据。
 
-用例模板：`ecat-data-redis/src/metrics.rs:47-82`（三个样本都在 + 熔断器推到 `Open` 后
+用例模板：`ecat-data-tdengine/src/metrics.rs`（三个样本都在 + 熔断器推到 `Open` 后
 是**抓取时现读**的：注册时快照的实现只会给出 0）。本 crate 内的测试只能证明「自己挂上了」；
 「多个后端共存」的真验收在 `ecat-metrics/src/outbound.rs:292-305`
 （`multiple_backends_coexist_in_one_registry`）与 Task 3 的跨 crate 回归测试。
-测试的 `backend` 标签**用例之间不要重复**（registry 与静态量都是进程级的）。
+
+### 4.1 标签约定（**`from_config` 自动注册之后，2026-10-08 裁决**）
+
+`--features metrics` 下 `from_config` **构造即注册**（用户代码零变化）。这带来一个后果，
+踩过一次、实测 flaky 率最高到 **17/1000**（全量套件 6 次红 2 次）：
+
+> **每一次 `from_config` 都是公共标签（`"<crate>"`）的一个写者，而注册是覆盖语义。**
+> 于是「断言**自己那台**熔断器数值」的用例会随机读到**别人的**熔断器 —— 同二进制里
+> 任何一次 `client_at`（延迟用例、并发用例都算）构造 client 就会把它顶掉。
+
+**规定形态**（`ecat-data-tdengine/src/metrics.rs` 逐字）：
+
+```rust
+/// 生产入口：标签固定为 "<crate>"，`from_config` 自动调它。
+pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
+    register_as("<crate>", breaker);
+}
+
+/// **只给测试用**：断言「自己那台熔断器」的用例必须走**私有标签** ——
+/// 公共标签会被同二进制里任何一次 `from_config` 改写（覆盖语义）。
+#[cfg(test)]
+fn register_as(backend: &'static str, breaker: Arc<Breaker>) { /* 原闭包装配 */ }
+```
+
+- **断言自身熔断器数值**的用例（`outbound_metrics_appear_with_live_values` 一类）：
+  用 `register_as("<crate>-live-test", …)`，断言里的 `backend="…"` 同步改。
+- **断言「生产入口挂上了」**的用例（`from_config_registers_outbound_metrics`）：**必须**
+  断言**公共**标签 —— 那正是它要证的东西。它只断言标签**存在**、不断言数值，所以不受覆盖影响。
+- ⚠️ **由此得到一条更强的验收性质**：私有标签化之后，公共标签在测试二进制里**只由
+  `from_config` 写** ⇒ 「注释掉 `from_config` 里那两行」的红探针在**不带测试名过滤的全量跑**
+  里也红。**反例**：若既有用例仍注册公共标签，它会把探针掩盖掉（实测 7/7 全量跑仍绿）
+  —— 探针只在加了 `--exact`/测试名过滤时红，那是更弱的判据。
+
+**别用测试期串行锁**（`static Mutex` + 在 `from_config` 里插 `#[cfg(all(test, …))]` 取锁）：
+它能消掉 flaky，但把测试脚手架放进了**会被逐字抄的生产函数**，而且上面那条「全量跑也红」
+的验收性质会丢掉。2026-10-08 曾有两套写法并存，已统一到私有标签。
 
 ---
 
