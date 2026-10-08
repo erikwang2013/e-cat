@@ -250,10 +250,18 @@ async fn concurrency_cap_limits_in_flight_requests() {
 /// 全部成功返回。旧语义（`Some(0) => Semaphore::new(0)`）在这里挂死 ——
 /// 2 秒外层保险丝把它变成一条 FAILED；`Some(1)` / `Some(2)` 这类排队实现在
 /// `Barrier` 上凑不齐 5 个、同样红。
+///
+/// **行为部分证明不了「不限」**：N=5 时 `None` 与 `Some(Semaphore::new(32))`
+/// 不可区分（把 `Some(0) => None` 改成给 32 个许可，下面 5 个并发照样全绿）。
+/// 钉住 rustdoc 那句承诺靠第一行结构断言。
 #[tokio::test]
 async fn zero_max_concurrency_means_unlimited() {
     let url = spawn_barrier(5).await;
     let c = Arc::new(client_at(&url, 30, Some(0)));
+    assert!(
+        c.semaphore.is_none(),
+        "0 应表示不限并发（不建信号量），而不是一个有限上限"
+    );
 
     let mut handles = Vec::new();
     for _ in 0..5 {
