@@ -3532,8 +3532,25 @@ git diff -U0 -- '*.toml' | grep -E '^\+[^+]' | grep -vc '7\.0\.0'  # 期望 0
 ```bash
 export CARGO_TARGET_DIR=/var/tmp/ecat-target
 cargo metadata --format-version=1 --offline > /dev/null
-git diff --stat Cargo.lock          # 期望：只有 Cargo.lock 与 11 个 workspace 成员版本行变化
-git diff Cargo.lock | grep -c '^[-+]version = "6\.1\.0"'   # > 0（成员版本被写回）
+git diff --stat Cargo.lock                                 # 期望：只有 Cargo.lock 被改
+git diff Cargo.lock | grep -c '^-version = "6\.0\.0"'      # 期望 **61**
+git diff Cargo.lock | grep -c '^+version = "7\.0\.0"'      # 期望 **60**
+grep -c 'version = "6\.0\.0"' Cargo.lock                   # 期望 **1** —— 见下
+```
+
+⚠️ **两条实测前提，别按直觉验收**（2026-10-08 lead 实测）：
+
+1. **改版前 `Cargo.lock` 里 `version = "6.0.0"` 是 61 行，不是 56** —— 拆开是
+   **60 个 workspace 成员**（`members` 声明实测 60，全部 `version.workspace = true`，
+   含 `examples/databases`、`examples/helloworld`、`examples/websocket`、
+   `ecat-middleware`）**+ 1 个外部 crate `r-efi`**（它自己就是 6.0.0，跟本仓无关）。
+2. ⇒ **bump 之后 `Cargo.lock` 里仍会剩 1 行 `6.0.0`（r-efi）**。谁把判据写成
+   「`Cargo.lock` 里 6.0.0 应为 0」都会撞上一个假红，然后去改一个不该改的外部依赖版本。
+   `r-efi` 不是成员，`sed` 也碰不到它（Step 3 只对 `*Cargo.toml` 下手）。
+
+Step 1 的「改版前测量」里另补一条：
+```bash
+grep -c 'version = "6\.0\.0"' Cargo.lock    # 记作 L —— 实测 61（60 成员 + r-efi）
 ```
 
 **Step 5（15 分钟）全量闸门** —— **仅在 11 个任务都已提交、且确认没有别的 agent 在飞时执行**
