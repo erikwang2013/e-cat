@@ -963,10 +963,12 @@ pub use metrics::register_outbound_metrics;
 ```bash
 export CARGO_TARGET_DIR=/var/tmp/ecat-target
 cargo check -p ecat-data-arangodb --features metrics 2>&1 | tail -3
-cargo test -p ecat-data-arangodb --features metrics 2>&1 | grep -c 'ecat_metrics'  # 期望 ≥1
+cargo tree -p ecat-data-arangodb --features metrics 2>&1 | grep -c 'ecat-metrics'  # 期望 ≥1
 ```
 
-期望第二条 ≥ 1（说明 `ecat-metrics` 真的在测试里被链接，不是被 feature 静默关掉）。
+期望第二条 ≥ 1（说明 `ecat-metrics` 真的被 feature 拉进依赖图，不是被静默关掉）。
+
+⚠️ **2026-10-08 更正**：原判据写的是 `cargo test … --features metrics | grep -c 'ecat_metrics'` 期望 ≥1 —— **那不可达**：测试全绿时的输出里根本不含 crate 名，实测（neo4j 落码后回查）在 arangodb 与 neo4j 上**都是 0**。要证「feature 真的把 `ecat-metrics` 拉进来了」，可达的判据是 `cargo tree --features metrics` 里能查到它；另一条等价证据是**测试数**：默认 N → 带 feature N+1（多的是 `metrics::tests::*` 那条），可用 `cargo test -p <crate> --features metrics -- --list` 确认该用例在场。
 
 ### Step 8（8 分钟）`src/tests/resilience.rs`
 
