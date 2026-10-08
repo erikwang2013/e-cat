@@ -1257,7 +1257,7 @@ cargo test -p ecat-data-arangodb --features metrics 2>&1 | tail -3
 | `execute` 外的 `self.guarded(async { … }).await`（拆回原体） | `execute_times_out_and_counts_graph_dimension` |
 | `from_config` 里的 `semaphore: …cfg.max_concurrency…` 行（写死 32） | `config_wires_timeout_concurrency_and_breaker` + `concurrency_cap_limits_in_flight_requests` |
 | `from_config` 里的 `breaker: …cfg.breaker…` 行 | `config_wires_timeout_concurrency_and_breaker` |
-| `src/metrics.rs` 里的 `timeout_counter(BackendKind::Graph)` 换成 `BackendKind::Search` | `outbound_metrics_appear_with_live_values`（另两份样本仍出现，值差 1000） |
+| **只改 `src/metrics.rs` 里注册闭包那一行**（`Box::new(|| timeout_counter(BackendKind::Graph)…)` → `BackendKind::Search`）；⚠️ **不要全局替换**：该串在 `metrics.rs` 出现 ≥3 次（注册行 + 测试自己的 `fetch_add` + rustdoc），全局改会把测试的**写槽**也改掉 ⇒ 读槽与写槽一起移动 ⇒ **探针静默变绿**（Task 3 实测踩到，第一遍就绿了） | `outbound_metrics_appear_with_live_values`（另两份样本仍出现，值差 1000） |
 | `let _permit = self.permit().await;` 改成 `.forget()` | `timed_out_request_returns_its_permit` |
 
 第一条**必须真跑**；其余靠读代码确认（它们都是「删掉就少一条断言/少一个样本」的形状）。
