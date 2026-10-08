@@ -281,6 +281,24 @@ cargo test -p <crate> config_             # ② 从配置装配
 用例 5.00s 后 FAILED，信息 `set: 内层超时没开火（漏包 guarded？）`；拆掉前 0.11s 绿。
 **探针输出记进提交信息** —— 这是「包装真的生效」的证据链。
 
+⚠️ **探针必须自带兜底还原（2026-10-08 实测的惊险现场）**。「改 → 跑 → 还原」的脚本有个
+固有窗口：**任何 kill / 超时 / 崩溃落在「改」与「还原」之间，仓库就停在注入态**。实况：
+复核者的探针脚本因 cargo 全局锁（`Blocking waiting for file lock on package cache`，`~/.cargo`
+是**跨仓库**互斥的）卡 5 分钟后被杀，`ecat-data-arangodb/src/lib.rs` **就停在探针注入态**；
+他自己发现并从备份 `cp` 回、`cmp` 逐字节一致、md5 等于冻结值才排险。
+**做法（写脚本时第一行就加）**：
+
+```bash
+cp "$F" "$BAK"                      # 先备份
+trap 'cp -f "$BAK" "$F"; cmp -s "$BAK" "$F" && echo RESTORED_OK' EXIT TERM INT
+# …注入 → 跑 → 判据…
+```
+`trap ... EXIT TERM INT` 让「被 kill 也还原」成立 —— 比「跑完记得还原」可靠一个量级，
+因为后者假设脚本能跑完。**跑完仍要 `cmp` + md5 自证**（`trap` 是保险，不是证据）。
+
+**推论：任何时刻仓库都不该停在注入态 —— 提交前必查一次 `git status --porcelain`**，
+它同时能抓住「探针没还原」与「误碰别人的文件」（本批两种都真发生过）。
+
 ---
 
 ## 3. 加 `Breaker` 字段
