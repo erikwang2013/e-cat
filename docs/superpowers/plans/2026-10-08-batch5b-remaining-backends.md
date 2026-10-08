@@ -1751,6 +1751,12 @@ async fn unsupported_ops_do_not_trip_the_breaker() {
 
 **做法**：**逐字照做 Task 4 的全部 11 步**，只换这些词：
 
+⚠️ **两条 Task 4 落地时实测出来的更正**（照抄前必读，否则会撞）：
+
+1. **模式 ④ 片段要删掉 `let second =` 绑定**：计划 Task 4 Step 8 写的是 `let second = tokio::time::timeout(…).await.expect(…).expect(…)`，但 `index` 返回 `()` ⇒ `second` 未被使用 ⇒ **clippy `-D warnings` 会红**（`unused_variables`）。Task 4 实测后去掉绑定、只留两条 `.expect(…)`。
+   opensearch 的 `index` 同样返回 `()`，**照做时会撞同一条**。
+2. **`src/lib.rs` 行数余量只剩 52**：Task 4 落完是 **448 行**（= 500 的 90%）。opensearch 基线 336，按同构估计落在 **~437**；**若还需要加用例或注释，先按 T0-H 拆 `src/tests.rs`**（influxdb 那套做法），别让它顶破 500。
+
 - crate 名 `ecat-data-elasticsearch` → `ecat-data-opensearch`；`src/lib.rs` 行号：三个方法的
   原体在 `:101-161`，`mod tests` 在 `:164`。
 - 标签 `"elasticsearch"` → `"opensearch"`（metrics.rs 3 处 + `breaker_error_to_backend_error` 一处）。

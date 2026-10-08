@@ -548,6 +548,18 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Cl
   写者」后误路由探针 **5/5 假绿**。判断单写者要**枚举写者**（`grep` 全 crate 的
   `BackendKind::<那个槽>`，**含 `--features metrics` 那个编译单元**），不是靠跑。
 
+**(c1) 多方法 crate：每条 I/O 路径都要有自己的一条红灯源。**
+单方法 crate 的两个探针（删 `mod resilience;` / 拆 `run_with_timeout`）在多方法 crate 上**只证明「至少一条路径包了」** —— 拆 `run_with_timeout` 会同时打红所有超时用例，却分不出是哪条路径漏包。要证明「每条路径都包」必须**逐条拆方法**（每个被包方法各拆一次，每次应打红**一条不同**的用例）。样例：`ecat-data-elasticsearch/src/tests/resilience.rs` 的 `every_io_method_times_out_when_the_backend_stalls`，它的 `label` 参数就是漏包定位器。
+
+**(c2) 把守测试的空验收是「反向」的。**
+「删掉本任务新增物、看它是否还绿」这个口径对**把守测试**（如 `unsupported_ops_do_not_trip_the_breaker`）**不适用** —— 那类测试守的是「trait 默认实现不被我们包上」，本任务**根本没有实现代码可删**。它的红探针只能是**临时加**一个包了 `guarded` 的覆写，看它变红（ES 实测：`left: Open, right: Closed`）。
+
+**(c3) 多方法 crate 的形态（ES 实测，Task 5-8/10 照抄）**：
+- **`guarded` 仍只有一份**，不随方法复制；每个 I/O 方法的改写是机械的：**本地构造请求留在壳外**，方法体整体塞进 `self.guarded(async { … }).await` —— 净增只有 2-3 行/方法。
+- **`kind` 仍写死**，不要因为方法多就改成参数：同一 trait 的方法同属一个**家族**维度。ClickHouse 收参数是因为它跨**家族**（`SqlExecutor`→Rdbms 与 `TsdbClient`→Tsdb），本批 10 个 HTTP 后端都不是。
+- **不包的方法不留代码、只留注释**（说明「默认返回不支持 = 调用方用法错，不进熔断窗口」）；**不要**为了「显式」去覆写一份再包 —— 那正是 (c2) 要抓的错。
+- 参考实现：`ecat-data-elasticsearch/src/{lib.rs,metrics.rs,tests/resilience.rs}`。
+
 **(c0) 探针的作用域要精确到「那一行」**：变异探针（把某行改坏、看测试是否红）**只改被测的那一处**。
 本批实测踩到：Task 3 的探针写「把 `metrics.rs` 里的 `timeout_counter(BackendKind::Graph)` 换成别的槽」，
 而该串在文件里出现 **3 次**（注册行 + 测试自己的 `fetch_add` + rustdoc）—— 全局替换把**写槽**也改了，
