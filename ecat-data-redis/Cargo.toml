@@ -19,6 +19,18 @@ serde_json.workspace = true
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 uuid = { version = "1", features = ["v4"] }
 ecat-tls = { version = "5.0.0", path = "../ecat-tls" }
+# 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
+ecat-circuit-breaker.workspace = true
+# 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+
+[features]
+# 只有 ecat-metrics：三个出站指标家族的唯一 collector 在那边（批次 5a「出入 11」），
+# 本 crate 不需要直接依赖 prometheus。
+metrics = ["dep:ecat-metrics"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+# net 给假 RESP 服务端的 TcpListener；io-util 给它读写 socket 的
+# AsyncReadExt/AsyncWriteExt（计划片段漏了这个 feature，实测编译失败：E0599）；
+# time 给超时测试的 sleep。
+tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

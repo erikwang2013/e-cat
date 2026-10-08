@@ -1588,9 +1588,11 @@ name = "ecat-data-redis"
 version = "5.0.0"
 dependencies = [
  "async-trait",
+ "ecat-circuit-breaker",
  "ecat-data",
  "ecat-errors",
  "ecat-lock",
+ "ecat-metrics",
  "ecat-tls",
  "redis",
  "serde",

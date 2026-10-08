@@ -1,6 +1,21 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! Redis 缓存客户端（`Cache` trait 实现）。
+//!
+//! # 能力边界
+//!
+//! 本 client 用 `MultiplexedConnection`（一条 TCP 服务所有并发），**不是连接池** ——
+//! 对缓存负载这比池更优：连接数与往返都更低。代价是**有状态命令序列不能用它**：
+//! `MULTI`/`EXEC` 事务、`WATCH`、`SUBSCRIBE`、`BLOCKING` 命令需要独占连接，
+//! 多路复用下会与其它命令交错。需要时用 `redis::Client::get_async_connection()`
+//! 另开一条专用连接。
+//!
+//! `Cache` 的六个方法都经过 `guarded`（熔断在外、超时在内，见批次 5a「出入 4」）；
+//! [`RedisLock`] 不在出站韧性范围内。
 use async_trait::async_trait;
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
 use ecat_data::Cache;
+use ecat_data::breaker_error_to_backend_error;
+use ecat_data::{BackendKind, run_with_timeout};
 use ecat_errors::{Error, ErrorCode};
 use ecat_lock::{DistributedLock, LockError};
 use ecat_tls::TlsClientConfig;
@@ -8,8 +23,14 @@ use redis::AsyncCommands;
 use redis::ConnectionInfo;
 use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
+use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisConfig {
@@ -20,6 +41,26 @@ pub struct RedisConfig {
     /// Cert paths are for future TLS connection parameter support.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次命令超时秒数。`0` = 禁用；未配置 = 30 秒。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    ///
+    /// 熔断**默认开启** —— 保守阈值下只在持续失败时打开。**当前没有总开关**：
+    /// `BreakerConfig` 只有阈值字段，没有 `enabled`（计划 Task 7 也点名不许写
+    /// `{"enabled": false}`：那是反序列化错误，或被 `#[serde(default)]` 静默吞掉
+    /// 后以为关掉了）。真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+}
+
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
+    }
 }
 
 fn build_url(cfg: &RedisConfig) -> String {
@@ -32,6 +73,9 @@ fn build_url(cfg: &RedisConfig) -> String {
 
 pub struct RedisCache {
     conn: MultiplexedConnection,
+    query_timeout: Option<Duration>,
+    /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
+    breaker: Arc<Breaker>,
 }
 
 impl RedisCache {
@@ -42,7 +86,11 @@ impl RedisCache {
             .get_multiplexed_async_connection()
             .await
             .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+        })
     }
 
     pub async fn connect_with_password(url: &str, password: &str) -> Result<Self, Error> {
@@ -57,7 +105,11 @@ impl RedisCache {
             .get_multiplexed_async_connection()
             .await
             .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+        })
     }
 
     // Reconnection behavior: there is no explicit reconnect logic here.
@@ -66,78 +118,126 @@ impl RedisCache {
     // on the next command, which will return an error.
     pub async fn from_config(cfg: RedisConfig) -> Result<Self, Error> {
         let url = build_url(&cfg);
-        match &cfg.password {
-            Some(pw) if !pw.is_empty() => Self::connect_with_password(&url, pw).await,
-            _ => Self::connect(&url).await,
-        }
+        let client = match &cfg.password {
+            Some(pw) if !pw.is_empty() => Self::connect_with_password(&url, pw).await?,
+            _ => Self::connect(&url).await?,
+        };
+        Ok(Self {
+            conn: client.conn,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+        })
     }
 
     pub fn from_connection(conn: MultiplexedConnection) -> Self {
-        Self { conn }
+        Self {
+            conn,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+        }
+    }
+
+    /// 本 client 的熔断器。`metrics` feature 注册指标时要读它的状态与打开次数。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 一次出站调用的公共外壳：**熔断在外、超时在内**。
+    ///
+    /// 顺序与 spec §3 相反（理由见批次 5a 计划的「与 spec 的出入 4」）：
+    /// 超时若在外层，`tokio::time::timeout` 会把熔断器的 future 直接 drop 掉，
+    /// 于是每次「后端没在预算内作答」都**什么都不记** —— 卡死的后端永远打不开熔断器，
+    /// 而卡死正是本设计要防的头号场景。熔断在外时超时是一次普通的 `Err`，如实计入失败。
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Cache, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "redis"))
     }
 }
 
 #[async_trait]
 impl Cache for RedisCache {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
-        let mut conn = self.conn.clone();
-        conn.get(key)
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis get: {e}")))
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            conn.get(key)
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis get: {e}")))
+        })
+        .await
     }
 
     async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), Error> {
-        let mut conn = self.conn.clone();
-        let millis = ttl.as_millis();
-        if millis > 0 {
-            let ms = if millis > u64::MAX as u128 {
-                u64::MAX
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            let millis = ttl.as_millis();
+            if millis > 0 {
+                let ms = if millis > u64::MAX as u128 {
+                    u64::MAX
+                } else {
+                    millis as u64
+                };
+                let (): () = conn.pset_ex(key, value, ms).await.map_err(|e| {
+                    Error::new(ErrorCode::Internal, "redis", format!("redis psetex: {e}"))
+                })?;
             } else {
-                millis as u64
-            };
-            let (): () = conn.pset_ex(key, value, ms).await.map_err(|e| {
-                Error::new(ErrorCode::Internal, "redis", format!("redis psetex: {e}"))
-            })?;
-        } else {
-            let (): () = conn
-                .set(key, value)
-                .await
-                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis set: {e}")))?;
-        }
-        Ok(())
+                let (): () = conn.set(key, value).await.map_err(|e| {
+                    Error::new(ErrorCode::Internal, "redis", format!("redis set: {e}"))
+                })?;
+            }
+            Ok(())
+        })
+        .await
     }
 
     async fn delete(&self, key: &str) -> Result<(), Error> {
-        let mut conn = self.conn.clone();
-        conn.del(key)
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis del: {e}")))
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            conn.del(key)
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis del: {e}")))
+        })
+        .await
     }
 
     async fn increment(&self, key: &str, delta: i64) -> Result<i64, Error> {
-        let mut conn = self.conn.clone();
-        conn.incr(key, delta)
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis incr: {e}")))
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            conn.incr(key, delta)
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis incr: {e}")))
+        })
+        .await
     }
 
     async fn ttl(&self, key: &str) -> Result<Option<Duration>, Error> {
-        let mut conn = self.conn.clone();
-        let ttl: i64 = conn
-            .ttl(key)
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis ttl: {e}")))?;
-        Ok(ttl_to_duration(ttl))
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            let ttl: i64 = conn
+                .ttl(key)
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis ttl: {e}")))?;
+            Ok(ttl_to_duration(ttl))
+        })
+        .await
     }
 
     async fn multi_get(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>, Error> {
+        // 纯本地判断：没发 I/O，就不该经过外壳（否则一次空调用会被记进熔断窗口）。
         if keys.is_empty() {
             return Ok(Vec::new());
         }
-        let mut conn = self.conn.clone();
-        conn.mget(keys)
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis mget: {e}")))
+        self.guarded(async {
+            let mut conn = self.conn.clone();
+            conn.mget(keys)
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis mget: {e}")))
+        })
+        .await
     }
 }
 
@@ -242,154 +342,4 @@ impl DistributedLock for RedisLock {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn connect_fails_bad_url() {
-        let result = RedisCache::connect("redis://nonexistent:9999").await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn lock_connect_fails_bad_url() {
-        let result = RedisLock::connect("redis://nonexistent:9999").await;
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn ttl_to_duration_maps_redis_semantics() {
-        assert_eq!(ttl_to_duration(-2), None, "missing key");
-        assert_eq!(ttl_to_duration(-1), None, "no expiry");
-        assert_eq!(ttl_to_duration(0), Some(Duration::ZERO));
-        assert_eq!(ttl_to_duration(120), Some(Duration::from_secs(120)));
-    }
-
-    fn arg_bytes(a: redis::Arg<&[u8]>) -> Vec<u8> {
-        match a {
-            redis::Arg::Simple(bytes) => bytes.to_vec(),
-            redis::Arg::Cursor => b"*".to_vec(),
-        }
-    }
-
-    #[test]
-    fn incrby_cmd_targets_key_and_delta() {
-        let mut cmd = redis::cmd("INCRBY");
-        cmd.arg("rl:key").arg(3i64);
-        let args: Vec<Vec<u8>> = cmd.args_iter().map(arg_bytes).collect();
-        assert_eq!(
-            args,
-            vec![b"INCRBY".to_vec(), b"rl:key".to_vec(), b"3".to_vec()]
-        );
-    }
-
-    #[test]
-    fn mget_cmd_targets_all_keys() {
-        let mut cmd = redis::cmd("MGET");
-        cmd.arg("k1").arg("k2").arg("k3");
-        let args: Vec<Vec<u8>> = cmd.args_iter().map(arg_bytes).collect();
-        assert_eq!(
-            args,
-            vec![
-                b"MGET".to_vec(),
-                b"k1".to_vec(),
-                b"k2".to_vec(),
-                b"k3".to_vec()
-            ]
-        );
-    }
-
-    #[test]
-    fn config_deserializes_with_password() {
-        let cfg: RedisConfig =
-            serde_json::from_str(r#"{"url": "redis://localhost:6379", "password": "secret"}"#)
-                .unwrap();
-        assert_eq!(cfg.url, "redis://localhost:6379");
-        assert_eq!(cfg.password.as_deref(), Some("secret"));
-        assert!(cfg.tls.is_none());
-    }
-
-    #[test]
-    fn config_missing_url_is_error() {
-        let result: Result<RedisConfig, _> = serde_json::from_str(r#"{"password": "x"}"#);
-        assert!(result.is_err());
-    }
-
-    fn tls_enabled() -> TlsClientConfig {
-        TlsClientConfig {
-            ca_cert: None,
-            client_cert: None,
-            client_key: None,
-            skip_verify: Some(true),
-        }
-    }
-
-    fn tls_disabled() -> TlsClientConfig {
-        TlsClientConfig {
-            ca_cert: None,
-            client_cert: None,
-            client_key: None,
-            skip_verify: None,
-        }
-    }
-
-    #[test]
-    fn build_url_swaps_to_rediss_when_tls_enabled() {
-        let cfg = RedisConfig {
-            url: "redis://localhost:6379".into(),
-            password: None,
-            tls: Some(tls_enabled()),
-        };
-        assert_eq!(build_url(&cfg), "rediss://localhost:6379");
-    }
-
-    #[test]
-    fn build_url_keeps_redis_when_tls_disabled() {
-        let cfg = RedisConfig {
-            url: "redis://localhost:6379".into(),
-            password: None,
-            tls: Some(tls_disabled()),
-        };
-        assert_eq!(build_url(&cfg), "redis://localhost:6379");
-    }
-
-    #[test]
-    fn build_url_keeps_non_redis_scheme_unchanged() {
-        // TLS 只换 redis:// 前缀；非标准 scheme 原样保留
-        let cfg = RedisConfig {
-            url: "unix:///tmp/redis.sock".into(),
-            password: None,
-            tls: Some(tls_enabled()),
-        };
-        assert_eq!(build_url(&cfg), "unix:///tmp/redis.sock");
-    }
-
-    #[tokio::test]
-    async fn from_config_with_password_path_fails_on_unreachable() {
-        // 走 connect_with_password 分支：密码经 ConnectionInfo 传递而非嵌入 URL
-        let cfg = RedisConfig {
-            url: "redis://127.0.0.1:59999".into(),
-            password: Some("pw".into()),
-            tls: None,
-        };
-        // RedisCache 无 Debug，用 match 拿错误文本
-        match RedisCache::from_config(cfg).await {
-            Err(e) => assert!(!e.to_string().contains("pw"), "password leaked: {e}"),
-            Ok(_) => panic!("unreachable redis should fail"),
-        }
-    }
-
-    #[tokio::test]
-    async fn lock_from_config_with_password_path_fails_on_unreachable() {
-        let cfg = RedisConfig {
-            url: "redis://127.0.0.1:59999".into(),
-            password: Some("pw".into()),
-            tls: None,
-        };
-        // RedisLock 无 Debug，用 match 拿错误文本
-        match RedisLock::from_config(cfg).await {
-            Err(e) => assert!(!e.to_string().contains("pw"), "password leaked: {e}"),
-            Ok(_) => panic!("unreachable redis should fail"),
-        }
-    }
-}
+mod tests;
