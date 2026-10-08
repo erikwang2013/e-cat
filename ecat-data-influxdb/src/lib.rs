@@ -6,10 +6,22 @@
 //! 合法）。tag/field 输出按 key 排序，保证行协议确定性。
 
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, TsdbClient};
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
+use ecat_data::{
+    BackendKind, DataPoint, FieldValue, TsdbClient, breaker_error_to_backend_error,
+    run_with_timeout,
+};
 use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct InfluxConfig {
@@ -19,6 +31,27 @@ pub struct InfluxConfig {
     pub token: String,
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次调用超时秒数。`0` = 禁用；未配置 = 30 秒。
+    ///
+    /// 这是**外层**预算，与 reqwest 自带的总超时（`from_config` 建的 client 有
+    /// 30 秒、`new` 没有）取先到者。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    ///
+    /// 熔断**默认开启** —— 保守阈值下只在持续失败时打开。**当前没有总开关**：
+    /// `BreakerConfig` 只有阈值字段，没有 `enabled`（不许写 `{"enabled": false}`：
+    /// 那是反序列化错误，或被 `#[serde(default)]` 静默吞掉后以为关掉了）。
+    /// 真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 pub struct InfluxClient {
@@ -28,6 +61,11 @@ pub struct InfluxClient {
     org: String,
     bucket: String,
     token: String,
+    query_timeout: Option<Duration>,
+    /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
+    breaker: Arc<Breaker>,
+    /// `None` = 不限并发（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 
 impl InfluxClient {
@@ -45,6 +83,9 @@ impl InfluxClient {
             bucket: bucket.into(),
             token: token.into(),
             client: reqwest::Client::new(),
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
         }
     }
 
@@ -59,7 +100,64 @@ impl InfluxClient {
             bucket: cfg.bucket,
             token: cfg.token,
             client,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            semaphore: match cfg.max_concurrency {
+                // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
+                // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
+                // —— `guarded` 的第一句就是 `permit().await`，超时层在它里面。
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
         })
+    }
+
+    /// 本 client 的熔断器。`metrics` feature 注册指标时要读它的状态与打开次数。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
+    }
+
+    /// 一次出站调用的公共外壳：**许可 → 熔断 → 超时**。
+    ///
+    /// 这个顺序不能改：**超时若在外层，熔断器会对卡死的后端永久失明** ——
+    /// 超时触发时 `tokio::time::timeout` 会 drop 内层 future，而熔断器记失败的那句
+    /// 在 `f().await` **之后**，于是每次都只留下一次 drop、窗口里什么都不记，
+    /// 熔断器永远不打开（这正是本设计要防的头号场景）。详见批次 5a 计划的「出入 4」。
+    ///
+    /// 许可在最外：还在排队的请求**还没碰后端**，不该计入熔断失败、也不该被超时掐断。
+    ///
+    /// `kind` **写死**不收参数：本 crate 的两个 I/O 方法同属 `TsdbClient` 一个家族
+    /// （ClickHouse 收参数是因为它有 `SqlExecutor` / `TsdbClient` 两条**不同家族**的路径
+    /// 共用外壳）。多一个永不变化的入参就多一个填错的机会，
+    /// 而填错只是静默少数（`ecat-data/src/timeout.rs:15-35`），没有编译期保护。
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Tsdb, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "influxdb"))
+    }
+}
+
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
     }
 }
 
@@ -140,287 +238,69 @@ impl TsdbClient for InfluxClient {
             lines.push('\n');
         }
 
-        let resp = self
-            .client
-            .post(&self.write_url)
-            .header("Authorization", format!("Token {}", self.token))
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .query(&[
-                ("org", &self.org),
-                ("bucket", &self.bucket),
-                ("precision", &"ns".to_string()),
-            ])
-            .body(lines)
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("write: {e}")))?;
+        // 行协议构造（上面整个 `for p in points` 循环）是**纯本地**的，留在壳外：
+        // 记账口径是「后端的表现」，本地字符串拼接不该进熔断窗口、也不该占超时预算。
+        self.guarded(async {
+            let resp = self
+                .client
+                .post(&self.write_url)
+                .header("Authorization", format!("Token {}", self.token))
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .query(&[
+                    ("org", &self.org),
+                    ("bucket", &self.bucket),
+                    ("precision", &"ns".to_string()),
+                ])
+                .body(lines)
+                .send()
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("write: {e}")))?;
 
-        if !resp.status().is_success() {
-            return Err(Error::new(
-                ErrorCode::Internal,
-                "influx",
-                format!("write failed: {}", resp.text().await.unwrap_or_default()),
-            ));
-        }
-        Ok(())
+            if !resp.status().is_success() {
+                return Err(Error::new(
+                    ErrorCode::Internal,
+                    "influx",
+                    format!("write failed: {}", resp.text().await.unwrap_or_default()),
+                ));
+            }
+            Ok(())
+        })
+        .await
     }
 
     async fn query(&self, query: &str) -> Result<serde_json::Value, Error> {
-        let resp = self
-            .client
-            .post(&self.query_url)
-            .header("Authorization", format!("Token {}", self.token))
-            .header("Content-Type", "application/vnd.flux")
-            .query(&[("org", &self.org)])
-            .body(query.to_string())
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("query: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(Error::new(
-                ErrorCode::Internal,
-                "influx",
-                format!("query failed: {}", resp.text().await.unwrap_or_default()),
-            ));
-        }
-        resp.json()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("parse: {e}")))
+        // `query.to_string()` 是纯本地的，放壳里更省事，也不影响记账口径（这一步不发 HTTP）。
+        self.guarded(async {
+            let resp = self
+                .client
+                .post(&self.query_url)
+                .header("Authorization", format!("Token {}", self.token))
+                .header("Content-Type", "application/vnd.flux")
+                .query(&[("org", &self.org)])
+                .body(query.to_string())
+                .send()
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("query: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(Error::new(
+                    ErrorCode::Internal,
+                    "influx",
+                    format!("query failed: {}", resp.text().await.unwrap_or_default()),
+                ));
+            }
+            resp.json()
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "influx", format!("parse: {e}")))
+        })
+        .await
     }
+
+    // `delete` 走 `TsdbClient` 的 trait 默认实现（`ecat-data/src/tsdb.rs:55`），
+    // **不包 `guarded`**：默认实现的「不支持」是**调用方的用法错**，不是后端故障。
+    // 包了之后 8 次「不支持」就会打开熔断器，之后**正常写入/查询全被拒绝**。守测试见
+    // `tests/resilience.rs::delete_default_does_not_trip_the_breaker`。
+    // `escape_line_part` / `escape_field_string` 是纯本地 helper，同样不进壳。
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn client_constructs() {
-        let _client = InfluxClient::new("http://localhost:8086", "myorg", "mybucket", "mytoken");
-    }
-
-    #[test]
-    fn data_point_builder() {
-        let p = DataPoint::new("cpu")
-            .with_tag("host", "server01")
-            .with_field("usage", FieldValue::Float(0.85))
-            .with_timestamp(1625097600000000000);
-        assert_eq!(p.measurement, "cpu");
-        assert_eq!(p.tags.get("host").unwrap(), "server01");
-    }
-
-    #[test]
-    fn escapes_line_parts() {
-        assert_eq!(escape_line_part("a,b c=d\\e"), "a\\,b\\ c\\=d\\\\e");
-        assert_eq!(escape_line_part("plain"), "plain");
-    }
-
-    #[test]
-    fn escapes_field_strings() {
-        // 引号与反斜杠转义；空格、逗号在引号值内原样保留（line protocol 规范）
-        assert_eq!(escape_field_string("say \"hi\""), "say \\\"hi\\\"");
-        assert_eq!(escape_field_string("a\\b"), "a\\\\b");
-        assert_eq!(escape_field_string("x y,z"), "x y,z");
-    }
-
-    /// mock InfluxDB 的 /api/v2/query 端点，返回给定状态码与错误体。
-    async fn spawn_mock_query(status: u16, body: &'static str) -> String {
-        let app = axum::Router::new().route(
-            "/api/v2/query",
-            axum::routing::post(move || async move {
-                (
-                    axum::http::StatusCode::from_u16(status).unwrap(),
-                    axum::response::Response::new(axum::body::Body::from(body)),
-                )
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}")
-    }
-
-    #[tokio::test]
-    async fn query_returns_err_on_http_400() {
-        let base_url = spawn_mock_query(400, r#"{"error":"invalid flux"}"#).await;
-        let client = InfluxClient::new(base_url, "org", "bucket", "token");
-        let err = client.query("from(bucket: \"x\")").await.unwrap_err();
-        assert!(err.to_string().contains("invalid flux"));
-    }
-
-    #[derive(Clone)]
-    struct WriteCapture {
-        path: String,
-        headers: Vec<(String, String)>,
-        query: Vec<(String, String)>,
-        body: String,
-    }
-
-    impl WriteCapture {
-        fn header(&self, name: &str) -> Option<&str> {
-            self.headers
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(name))
-                .map(|(_, v)| v.as_str())
-        }
-    }
-
-    /// mock InfluxDB 的 /api/v2/write 端点：捕获请求路径/头/查询参数/体，
-    /// 按给定状态码与错误体应答。
-    async fn spawn_mock_write(
-        captured: std::sync::Arc<std::sync::Mutex<Vec<WriteCapture>>>,
-        status: u16,
-        body: &'static str,
-    ) -> String {
-        let app = axum::Router::new().route(
-            "/api/v2/write",
-            axum::routing::post(
-                move |req: axum::http::Request<axum::body::Body>| async move {
-                    let path = req.uri().path().to_string();
-                    let (parts, req_body) = req.into_parts();
-                    let headers: Vec<(String, String)> = parts
-                        .headers
-                        .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.as_str().to_string(),
-                                v.to_str().unwrap_or_default().to_string(),
-                            )
-                        })
-                        .collect();
-                    let query: Vec<(String, String)> = parts
-                        .uri
-                        .query()
-                        .map(|q| {
-                            q.split('&')
-                                .filter_map(|kv| {
-                                    let (k, v) = kv.split_once('=')?;
-                                    Some((k.to_string(), v.to_string()))
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let req_body = axum::body::to_bytes(req_body, usize::MAX)
-                        .await
-                        .unwrap_or_default();
-                    captured
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .push(WriteCapture {
-                            path,
-                            headers,
-                            query,
-                            body: String::from_utf8_lossy(&req_body).into_owned(),
-                        });
-                    if status == 200 {
-                        axum::response::Response::new(axum::body::Body::from(""))
-                    } else {
-                        use axum::response::IntoResponse;
-                        (
-                            axum::http::StatusCode::from_u16(status).unwrap(),
-                            axum::response::Response::new(axum::body::Body::from(body)),
-                        )
-                            .into_response()
-                    }
-                },
-            ),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}")
-    }
-
-    #[tokio::test]
-    async fn write_builds_line_protocol_with_escaping() {
-        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let base_url = spawn_mock_write(captured.clone(), 200, "").await;
-        let client = InfluxClient::new(base_url, "myorg", "mybucket", "mytoken");
-
-        let point = DataPoint::new("cpu load")
-            .with_tag("host name", "srv,1")
-            .with_tag("env", "prod")
-            .with_field("usage", FieldValue::Float(0.85))
-            .with_field("count", FieldValue::Int(3))
-            .with_field("note", FieldValue::String("say \"hi\"".into()))
-            .with_field("up", FieldValue::Bool(true))
-            .with_timestamp(1_700_000_000_000);
-        client.write(&[point]).await.unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 1);
-        assert_eq!(reqs[0].path, "/api/v2/write");
-        assert_eq!(
-            reqs[0].header("authorization"),
-            Some("Token mytoken"),
-            "Token 认证头缺失"
-        );
-        // 查询参数：org/bucket/precision=ns
-        let qs = &reqs[0].query;
-        assert!(qs.contains(&("org".into(), "myorg".into())), "{qs:?}");
-        assert!(qs.contains(&("bucket".into(), "mybucket".into())), "{qs:?}");
-        assert!(qs.contains(&("precision".into(), "ns".into())), "{qs:?}");
-
-        // 行协议：measurement 转义空格，tag 转义逗号/空格，字符串值只转义引号
-        // （引号内空格合法）；tag/field 按 key 排序（BTreeMap），整行输出确定。
-        assert_eq!(
-            reqs[0].body,
-            "cpu\\ load,env=prod,host\\ name=srv\\,1 count=3i,note=\"say \\\"hi\\\"\",up=true,usage=0.85 1700000000000\n"
-        );
-    }
-
-    #[tokio::test]
-    async fn write_sends_multiple_points_as_multiple_lines() {
-        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let base_url = spawn_mock_write(captured.clone(), 200, "").await;
-        let client = InfluxClient::new(base_url, "org", "bucket", "t");
-
-        let p1 = DataPoint::new("cpu").with_field("u", FieldValue::Float(0.1));
-        let p2 = DataPoint::new("mem").with_field("u", FieldValue::Float(0.2));
-        client.write(&[p1, p2]).await.unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 1);
-        let lines: Vec<&str> = reqs[0].body.lines().collect();
-        assert_eq!(lines.len(), 2);
-        assert!(lines[0].starts_with("cpu u=0.1"));
-        assert!(lines[1].starts_with("mem u=0.2"));
-    }
-
-    #[tokio::test]
-    async fn write_propagates_server_error() {
-        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let base_url = spawn_mock_write(captured.clone(), 400, "line parse error").await;
-        let client = InfluxClient::new(base_url, "org", "bucket", "t");
-        let err = client
-            .write(&[DataPoint::new("cpu").with_field("u", FieldValue::Float(1.0))])
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("line parse error"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn query_parses_successful_json_response() {
-        let body = r#"{"results":[{"series":[{"name":"cpu"}]}]}"#;
-        let base_url = spawn_mock_query(200, body).await;
-        let client = InfluxClient::new(base_url, "org", "bucket", "token");
-        let v = client.query("from(bucket: \"x\")").await.unwrap();
-        assert_eq!(v["results"][0]["series"][0]["name"], "cpu");
-    }
-
-    #[tokio::test]
-    async fn write_without_timestamp_omits_ts_suffix() {
-        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let base_url = spawn_mock_write(captured.clone(), 200, "").await;
-        let client = InfluxClient::new(base_url, "org", "bucket", "t");
-        client
-            .write(&[DataPoint::new("cpu").with_field("u", FieldValue::Int(1))])
-            .await
-            .unwrap();
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs[0].body, "cpu u=1i\n");
-    }
-}
+mod tests;
