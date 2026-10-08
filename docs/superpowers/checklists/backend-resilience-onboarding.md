@@ -49,12 +49,19 @@ HTTP 后端**再加**第三个（`ecat-data-clickhouse/src/lib.rs:58-62`）；�
 （Redis 就是反例）**没有这个字段** —— 多路复用连接不需要它：
 
 ```rust
-    /// 并发上限。reqwest **只有** `pool_max_idle_per_host`（空闲保留数），
-    /// 没有「最大总连接数」—— 默认无上限意味着并发无背压。
-    /// 未配置 = 32。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
     #[serde(default)]
     pub max_concurrency: Option<usize>,
 ```
+
+（**2026-10-08 回填**：这一行的「`0` = **不限并发**」原先只写在下面的 ⚠️ 段里、没进逐字块，
+而 11 个落地的 crate 的代码都把它写进了字段 rustdoc（每个 crate 4 处「不限并发」）。
+**代码比模板新，以代码为准** —— 字段的 rustdoc 是用户唯一会读到的地方，
+`Some(0)` 的语义不能只在任务书里。）
 
 ⚠️ **`max_concurrency: Some(0)` 必须是「不限并发」，不能落成 `Semaphore::new(0)`**：
 `guarded` 的第一句是 `let _permit = self.permit().await;`，而**超时层在许可里层** —— 0 个许可 ⇒
@@ -746,13 +753,19 @@ async fn repeated_timeouts_open_the_breaker_and_fail_fast() {
     let start = std::time::Instant::now();
     let err = cache.get("k").await.expect_err("熔断已打开");
     assert!(
-        start.elapsed() < Duration::from_millis(20),
+        start.elapsed() < Duration::from_millis(500),
         "熔断打开后必须立即返回，实际耗时 {:?}",
         start.elapsed()
     );
     assert_eq!(err.code, ErrorCode::Unavailable, "got: {err}");
 }
 ```
+
+**阈值取 `500ms` 而不是 `20ms`（2026-10-08 统一，11 个落地的 crate 实测都是 500ms）**：
+这里要证的语义是「熔断拒绝**没走网络**」，而被测调用对面是 `spawn_slow(5s)` 的 mock ——
+500ms 已经能干净区分「没走网络」与「真的发了请求」。压到 20ms 只是徒增 flake：
+本机在 I/O 停摆时 load 会到 29、调度抖动远超 20ms（复审实测过这个环境），
+一条会随机变红的断言比一条宽 25 倍的断言更糟。**别为了「更严格」把它调小。**
 
 **判据要选准**（Task 4 复核用 A/B 探针实测的结论）：
 
