@@ -96,13 +96,24 @@ impl OpenSearchClient {
     pub fn from_config(cfg: OpenSearchConfig) -> Result<Self, Error> {
         let client = ecat_tls::build_reqwest_client(&cfg.tls)
             .map_err(|e| Error::new(ErrorCode::Internal, "opensearch", format!("TLS: {e}")))?;
+        let breaker = Arc::new(Breaker::new(cfg.breaker.unwrap_or_default()));
+        // 自动接线（lead 裁决 2026-10-08）：`metrics` feature 下**构造即注册**，
+        // 用户代码零变化。`ecat_metrics::register_outbound_metrics` 幂等（同 backend
+        // 重复注册 = 覆盖闭包）。探针：注释掉 `#[cfg(feature = "metrics")]` 那条语句
+        // ⇒ `from_config_registers_outbound_metrics` 红（须用测试名过滤单独跑，否则
+        // 同二进制的既有用例会掩盖）。上面那行是测试期锁（仅测试构建存在）：覆盖语义
+        // 下观察者用例需要「观察窗内无别的写者」，见 `metrics.rs` 的 `TEST_SERIAL`。
+        #[cfg(all(test, feature = "metrics"))]
+        let _g = crate::metrics::lock_test_serial();
+        #[cfg(feature = "metrics")]
+        crate::register_outbound_metrics(Arc::clone(&breaker));
         Ok(Self {
             client,
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
             query_timeout: query_timeout(cfg.query_timeout_secs),
-            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            breaker,
             semaphore: match cfg.max_concurrency {
                 // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
                 // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
