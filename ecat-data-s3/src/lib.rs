@@ -15,14 +15,23 @@ mod signing;
 mod xml;
 
 use async_trait::async_trait;
-use ecat_data::StorageClient;
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
+use ecat_data::{BackendKind, StorageClient, breaker_error_to_backend_error, run_with_timeout};
 use ecat_errors::{Error as StorageError, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use signing::{Credentials, SigTime, canonical_query, encode_uri_component, hex, sign};
+use std::sync::Arc;
+use std::time::Duration;
 use time::OffsetDateTime;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct S3Config {
@@ -32,6 +41,27 @@ pub struct S3Config {
     pub secret_key: String,
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次调用超时秒数。`0` = 禁用；未配置 = 30 秒。
+    ///
+    /// 这是**外层**预算，与 reqwest 自带的总超时（`from_config` 建的 client 有
+    /// 30 秒）取先到者（本 crate 只有 `from_config` 一个构造器）。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    ///
+    /// 熔断**默认开启** —— 保守阈值下只在持续失败时打开。**当前没有总开关**：
+    /// `BreakerConfig` 只有阈值字段，没有 `enabled`（不许写 `{"enabled": false}`：
+    /// 那是反序列化错误，或被 `#[serde(default)]` 静默吞掉后以为关掉了）。
+    /// 真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 pub struct S3Client {
@@ -41,6 +71,11 @@ pub struct S3Client {
     region: String,
     access_key: String,
     secret_key: String,
+    query_timeout: Option<Duration>,
+    /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
+    breaker: Arc<Breaker>,
+    /// `None` = 不限并发（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 
 impl S3Client {
@@ -66,7 +101,61 @@ impl S3Client {
             region: cfg.region,
             access_key: cfg.access_key,
             secret_key: cfg.secret_key,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            semaphore: match cfg.max_concurrency {
+                // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
+                // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
+                // —— `guarded` 的第一句就是 `permit().await`，超时层在它里面。
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
         })
+    }
+
+    /// 本 client 的熔断器。`metrics` feature 注册指标时要读它的状态与打开次数。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
+    }
+
+    /// 一次出站调用的公共外壳：**许可 → 熔断 → 超时**。
+    ///
+    /// 这个顺序不能改：**超时若在外层，熔断器会对卡死的后端永久失明** ——
+    /// 超时触发时 `tokio::time::timeout` 会 drop 内层 future，而熔断器记失败的那句
+    /// 在 `f().await` **之后**，于是每次都只留下一次 drop、窗口里什么都不记，
+    /// 熔断器永远不打开（这正是本设计要防的头号场景）。详见批次 5a 计划的「出入 4」。
+    ///
+    /// 许可在最外：还在排队的请求**还没碰后端**，不该计入熔断失败、也不该被超时掐断。
+    ///
+    /// `kind` **写死**不收参数：本 crate 的四个 I/O 方法同属 `StorageClient` 一个家族
+    /// （ClickHouse 收参数是因为它有 `SqlExecutor` / `TsdbClient` 两条**不同家族**的路径
+    /// 共用外壳）。多一个永不变化的入参就多一个填错的机会，
+    /// 而填错只是静默少数（`ecat-data/src/timeout.rs:15-35`），没有编译期保护。
+    ///
+    /// **壳的边界 = 公开方法**：`list` 的翻页循环每页各发一次 HTTP，所以**整个
+    /// 翻页循环**在这一个壳内；`signed_request` / `object_path` / `check_status`
+    /// 是纯本地 helper（不发 HTTP）**不许包** —— 包了会在半开态下把探测名额
+    /// 以 `Ok` 白白消耗。判据：问「这一步发 HTTP 吗？」——
+    /// `whole_call_budget_covers_every_page_in_list` 盯着前一条。
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, StorageError>
+    where
+        F: std::future::Future<Output = Result<T, StorageError>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Storage, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "s3"))
     }
 
     /// 返回原始（未编码）路径；编码统一在 signed_request 的 URL 构建与
@@ -129,76 +218,43 @@ impl S3Client {
     }
 }
 
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
+    }
+}
+
 #[async_trait]
 impl StorageClient for S3Client {
     async fn put(&self, bucket: &str, key: &str, data: &[u8]) -> Result<(), StorageError> {
         let path = self.object_path(bucket, key);
         let (url, auth, amz_date, payload_hash) = self.signed_request("PUT", &path, &[], data);
-        let resp = self
-            .client
-            .put(url)
-            .header(AUTHORIZATION, auth)
-            .header("x-amz-date", amz_date)
-            .header("x-amz-content-sha256", payload_hash)
-            .body(data.to_vec())
-            .send()
-            .await
-            .map_err(|e| StorageError::new(ErrorCode::Internal, "s3", format!("s3 put: {e}")))?;
-        Self::check_status(resp, "put").await?;
-        Ok(())
+        self.guarded(async {
+            let resp = self
+                .client
+                .put(url)
+                .header(AUTHORIZATION, auth)
+                .header("x-amz-date", amz_date)
+                .header("x-amz-content-sha256", payload_hash)
+                .body(data.to_vec())
+                .send()
+                .await
+                .map_err(|e| {
+                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 put: {e}"))
+                })?;
+            Self::check_status(resp, "put").await?;
+            Ok(())
+        })
+        .await
     }
 
     async fn get(&self, bucket: &str, key: &str) -> Result<Vec<u8>, StorageError> {
         let path = self.object_path(bucket, key);
         let (url, auth, amz_date, payload_hash) = self.signed_request("GET", &path, &[], b"");
-        let resp = self
-            .client
-            .get(url)
-            .header(AUTHORIZATION, auth)
-            .header("x-amz-date", amz_date)
-            .header("x-amz-content-sha256", payload_hash)
-            .send()
-            .await
-            .map_err(|e| StorageError::new(ErrorCode::Internal, "s3", format!("s3 get: {e}")))?;
-        let resp = Self::check_status(resp, "get").await?;
-        Ok(resp
-            .bytes()
-            .await
-            .map_err(|e| StorageError::new(ErrorCode::Internal, "s3", format!("s3 get body: {e}")))?
-            .to_vec())
-    }
-
-    async fn delete(&self, bucket: &str, key: &str) -> Result<(), StorageError> {
-        let path = self.object_path(bucket, key);
-        let (url, auth, amz_date, payload_hash) = self.signed_request("DELETE", &path, &[], b"");
-        let resp = self
-            .client
-            .delete(url)
-            .header(AUTHORIZATION, auth)
-            .header("x-amz-date", amz_date)
-            .header("x-amz-content-sha256", payload_hash)
-            .send()
-            .await
-            .map_err(|e| StorageError::new(ErrorCode::Internal, "s3", format!("s3 delete: {e}")))?;
-        Self::check_status(resp, "delete").await?;
-        Ok(())
-    }
-
-    /// List object keys under `prefix`, following continuation tokens across
-    /// pages (same behavior as the previous rust-s3 backend).
-    async fn list(&self, bucket: &str, prefix: &str) -> Result<Vec<String>, StorageError> {
-        let path = format!("/{bucket}");
-        let mut keys = Vec::new();
-        let mut token: Option<String> = None;
-        loop {
-            let mut query: Vec<(&str, &str)> = vec![("list-type", "2"), ("prefix", prefix)];
-            let token_owned;
-            if let Some(t) = &token {
-                token_owned = t.clone();
-                query.push(("continuation-token", &token_owned));
-            }
-            let (url, auth, amz_date, payload_hash) =
-                self.signed_request("GET", &path, &query, b"");
+        self.guarded(async {
             let resp = self
                 .client
                 .get(url)
@@ -208,212 +264,89 @@ impl StorageClient for S3Client {
                 .send()
                 .await
                 .map_err(|e| {
-                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 list: {e}"))
+                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 get: {e}"))
                 })?;
-            let resp = Self::check_status(resp, "list").await?;
-            let body = resp.text().await.map_err(|e| {
-                StorageError::new(ErrorCode::Internal, "s3", format!("s3 list body: {e}"))
-            })?;
-            let (page_keys, next) = xml::parse_list_xml(&body);
-            keys.extend(page_keys);
-            match next {
-                Some(t) => token = Some(t),
-                None => break,
+            let resp = Self::check_status(resp, "get").await?;
+            Ok(resp
+                .bytes()
+                .await
+                .map_err(|e| {
+                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 get body: {e}"))
+                })?
+                .to_vec())
+        })
+        .await
+    }
+
+    async fn delete(&self, bucket: &str, key: &str) -> Result<(), StorageError> {
+        let path = self.object_path(bucket, key);
+        let (url, auth, amz_date, payload_hash) = self.signed_request("DELETE", &path, &[], b"");
+        self.guarded(async {
+            let resp = self
+                .client
+                .delete(url)
+                .header(AUTHORIZATION, auth)
+                .header("x-amz-date", amz_date)
+                .header("x-amz-content-sha256", payload_hash)
+                .send()
+                .await
+                .map_err(|e| {
+                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 delete: {e}"))
+                })?;
+            Self::check_status(resp, "delete").await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// List object keys under `prefix`, following continuation tokens across
+    /// pages (same behavior as the previous rust-s3 backend).
+    ///
+    /// **整个翻页循环一个预算**：一次 `list` 可能发很多次 GET（continuation token），
+    /// 预算必须罩住整次调用，否则一次调用会变成 N 个独立预算
+    /// （`whole_call_budget_covers_every_page_in_list` 盯着这条）。
+    async fn list(&self, bucket: &str, prefix: &str) -> Result<Vec<String>, StorageError> {
+        let path = format!("/{bucket}");
+        self.guarded(async {
+            let mut keys = Vec::new();
+            let mut token: Option<String> = None;
+            loop {
+                let mut query: Vec<(&str, &str)> = vec![("list-type", "2"), ("prefix", prefix)];
+                // 每页的签名与 URL 都是纯本地构造，随循环留在**同一个**壳内。
+                let token_owned;
+                if let Some(t) = &token {
+                    token_owned = t.clone();
+                    query.push(("continuation-token", &token_owned));
+                }
+                let (url, auth, amz_date, payload_hash) =
+                    self.signed_request("GET", &path, &query, b"");
+                let resp = self
+                    .client
+                    .get(url)
+                    .header(AUTHORIZATION, auth)
+                    .header("x-amz-date", amz_date)
+                    .header("x-amz-content-sha256", payload_hash)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        StorageError::new(ErrorCode::Internal, "s3", format!("s3 list: {e}"))
+                    })?;
+                let resp = Self::check_status(resp, "list").await?;
+                let body = resp.text().await.map_err(|e| {
+                    StorageError::new(ErrorCode::Internal, "s3", format!("s3 list body: {e}"))
+                })?;
+                let (page_keys, next) = xml::parse_list_xml(&body);
+                keys.extend(page_keys);
+                match next {
+                    Some(t) => token = Some(t),
+                    None => break,
+                }
             }
-        }
-        Ok(keys)
+            Ok(keys)
+        })
+        .await
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{Read, Write};
-
-    #[test]
-    fn config_deserializes_with_tls() {
-        let cfg: S3Config = serde_json::from_value(serde_json::json!({
-            "endpoint": "localhost:9000",
-            "region": "us-east-1",
-            "access_key": "minioadmin",
-            "secret_key": "minioadmin",
-            "tls": {"skip_verify": true},
-        }))
-        .unwrap();
-        assert_eq!(cfg.region, "us-east-1");
-        assert!(cfg.tls.unwrap().skip_verify == Some(true));
-    }
-
-    #[test]
-    fn client_defaults_to_https_without_scheme() {
-        let client = S3Client::from_config(S3Config {
-            endpoint: "localhost:9000".into(),
-            region: "us-east-1".into(),
-            access_key: "minioadmin".into(),
-            secret_key: "minioadmin".into(),
-            tls: None,
-        })
-        .unwrap();
-        assert_eq!(client.endpoint, "https://localhost:9000");
-        assert_eq!(client.host, "localhost:9000");
-    }
-
-    #[test]
-    fn client_keeps_explicit_http_for_local_dev() {
-        let client = S3Client::from_config(S3Config {
-            endpoint: "http://localhost:9000".into(),
-            region: "us-east-1".into(),
-            access_key: "minioadmin".into(),
-            secret_key: "minioadmin".into(),
-            tls: None,
-        })
-        .unwrap();
-        assert_eq!(client.endpoint, "http://localhost:9000");
-        assert_eq!(client.host, "localhost:9000");
-    }
-
-    #[test]
-    fn client_constructs_https_when_tls_enabled() {
-        let client = S3Client::from_config(S3Config {
-            endpoint: "localhost:9000".into(),
-            region: "us-east-1".into(),
-            access_key: "a".into(),
-            secret_key: "b".into(),
-            tls: Some(TlsClientConfig {
-                ca_cert: None,
-                client_cert: None,
-                client_key: None,
-                skip_verify: Some(true),
-            }),
-        })
-        .unwrap();
-        assert_eq!(client.endpoint, "https://localhost:9000");
-    }
-
-    fn test_client() -> S3Client {
-        S3Client::from_config(S3Config {
-            endpoint: "localhost:9000".into(),
-            region: "us-east-1".into(),
-            access_key: "minioadmin".into(),
-            secret_key: "minioadmin".into(),
-            tls: None,
-        })
-        .unwrap()
-    }
-
-    #[test]
-    fn object_path_returns_raw_key() {
-        let client = test_client();
-        assert_eq!(
-            client.object_path("bucket", "a b#c?d%e.txt"),
-            "/bucket/a b#c?d%e.txt"
-        );
-    }
-
-    #[test]
-    fn signed_request_url_encodes_path_exactly_once() {
-        let client = test_client();
-        let path = client.object_path("bucket", "a b#c?d%e.txt");
-        let (url, _, _, _) = client.signed_request("PUT", &path, &[], b"data");
-        assert!(url.contains("/bucket/a%20b%23c%3Fd%25e.txt"), "url: {url}");
-        assert!(!url.contains("%2520"), "double encoding: {url}");
-    }
-
-    #[test]
-    fn signed_request_returns_headers_matching_signature() {
-        let client = test_client();
-        let path = client.object_path("bucket", "key");
-        let (_, auth, amz_date, payload_hash) = client.signed_request("PUT", &path, &[], b"data");
-        // 签名使用的时间与 payload 哈希必须与请求装配值一致（同一来源）。
-        let expected_hash = hex(&Sha256::digest(b"data"));
-        assert_eq!(payload_hash, expected_hash);
-        assert!(
-            amz_date.ends_with('Z') && amz_date.len() == 16,
-            "amz_date: {amz_date}"
-        );
-        // Authorization 的 SignedHeaders 与 credential scope 使用同一 amz_date。
-        let scope_date = amz_date[..8].to_string();
-        assert!(auth.contains(&format!("{scope_date}/us-east-1/s3/aws4_request")));
-        assert!(auth.contains("SignedHeaders=host;x-amz-content-sha256;x-amz-date"));
-        // 空 payload（GET/DELETE/list）哈希固定。
-        let (_, _, _, empty_hash) = client.signed_request("GET", &path, &[], b"");
-        assert_eq!(
-            empty_hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-    }
-
-    #[tokio::test]
-    async fn put_surfaces_http_error_status() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            if let Ok((mut sock, _)) = listener.accept() {
-                let mut buf = [0u8; 8192];
-                let _ = sock.read(&mut buf);
-                let _ = sock.write_all(
-                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
-            }
-        });
-        let client = S3Client::from_config(S3Config {
-            endpoint: format!("http://{addr}"),
-            region: "us-east-1".into(),
-            access_key: "a".into(),
-            secret_key: "b".into(),
-            tls: None,
-        })
-        .unwrap();
-        let err = client.put("bucket", "key", b"data").await.unwrap_err();
-        assert!(err.to_string().contains("HTTP 500"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn requests_carry_all_signed_headers() {
-        // 请求装配层：SignedHeaders 列出的头必须实际出现在请求中，
-        // 否则真实 S3 对所有操作返回 403 SignatureDoesNotMatch。
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let (got_tx, got_rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            if let Ok((mut sock, _)) = listener.accept() {
-                let mut buf = [0u8; 8192];
-                let n = sock.read(&mut buf).unwrap();
-                let _ = got_tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
-                let _ = sock.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
-            }
-        });
-        let client = S3Client::from_config(S3Config {
-            endpoint: format!("http://{addr}"),
-            region: "us-east-1".into(),
-            access_key: "a".into(),
-            secret_key: "b".into(),
-            tls: None,
-        })
-        .unwrap();
-        client.put("bucket", "key", b"data").await.unwrap();
-        let raw = got_rx.recv().unwrap();
-        let (head, _) = raw.split_once("\r\n\r\n").unwrap();
-        let auth = head
-            .lines()
-            .find_map(|l| l.strip_prefix("authorization: "))
-            .or_else(|| head.lines().find_map(|l| l.strip_prefix("Authorization: ")))
-            .unwrap();
-        let signed = auth
-            .split(", ")
-            .find_map(|p| p.strip_prefix("SignedHeaders="))
-            .unwrap();
-        for name in signed.split(';') {
-            assert!(
-                head.to_ascii_lowercase().contains(&format!("{name}:")),
-                "missing signed header {name} in:\n{head}"
-            );
-        }
-        // payload 哈希头与 body 一致。
-        assert!(head.contains(
-            "x-amz-content-sha256: 3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7"
-        ), "hash mismatch in:\n{head}");
-    }
-}
+mod tests;

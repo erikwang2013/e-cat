@@ -21,6 +21,18 @@ hmac = "0.12"
 sha2.workspace = true
 time = { version = "0.3", features = ["formatting", "macros"] }
 quick-xml = "0.41"
+# 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
+ecat-circuit-breaker.workspace = true
+# 并发上限用 Semaphore。tokio 现在只在 dev-dependencies 里，必须提到这里。
+tokio = { workspace = true, features = ["sync"] }
+# 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+
+[features]
+# 只有 ecat-metrics：三个出站指标家族的唯一 collector 在那边（批次 5a「出入 11」），
+# 本 crate 不需要直接依赖 prometheus。
+metrics = ["dep:ecat-metrics"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
