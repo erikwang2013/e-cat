@@ -141,22 +141,22 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ 타임아웃 + 서킷 브레이커 |
-| 캐시 | Redis | `ecat-data-redis` | ✅ 구현됨 | — |
-| 검색 | OpenSearch | `ecat-data-opensearch` | ✅ 구현됨 | — |
-| 검색 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 구현됨 | — |
+| 캐시 | Redis | `ecat-data-redis` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
+| 검색 | OpenSearch | `ecat-data-opensearch` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
+| 검색 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
 | 캐시 | Memcached | `ecat-data-memcached` | ⚠️ 메모리 구현(비프로덕션, 영구 캐시로 사용 금지) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 구현됨 | ✅ 서킷 브레이커 |
-| 그래프 | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| 그래프 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| 그래프 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| 시계열 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| 시계열 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| 시계열 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 서킷 브레이커 |
-| 시계열 | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| 문서 | MongoDB | `ecat-data-mongodb` | ✅ 네이티브 드라이버 | — |
-| 객체 스토리지 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 구현됨 | ✅ 타임아웃 + 서킷 브레이커 |
+| 그래프 | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ 타임아웃 + 서킷 브레이커 |
+| 그래프 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ 타임아웃 + 서킷 브레이커 |
+| 그래프 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ 타임아웃 + 서킷 브레이커 |
+| 시계열 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ 타임아웃 + 서킷 브레이커 |
+| 시계열 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ 타임아웃 + 서킷 브레이커 |
+| 시계열 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 타임아웃 + 서킷 브레이커 |
+| 시계열 | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ 타임아웃 + 서킷 브레이커 |
+| 문서 | MongoDB | `ecat-data-mongodb` | ✅ 네이티브 드라이버 | ✅ 타임아웃 + 서킷 브레이커 |
+| 객체 스토리지 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ 타임아웃 + 서킷 브레이커 |
 
-> **타임아웃/서킷 브레이커**: 타임아웃 = 쿼리 타임아웃 `query_timeout_secs`(기본 30초, `0` = 비활성; 현재 sqlx / mssql에서만 설정 가능); 서킷 브레이커 = `ecat_data::CircuitBreakerExecutor`(모든 `SqlExecutor` 백엔드를 감쌀 수 있음). 읽기/쓰기 분리는 `ecat_data::RdbmsRouting`을 사용합니다: 쓰기는 프라이머리, 읽기는 레플리카를 라운드로빈하며 **서킷 브레이커가 열린 레플리카는 건너뜁니다**. 사용할 수 있는 레플리카가 없으면 기본적으로 프라이머리로 폴백하고, `fallback_to_primary(false)`이면 `RdbmsError::NoAvailableReplica`를 반환합니다.
+> **타임아웃/서킷 브레이커**: 타임아웃 = 쿼리 타임아웃 `query_timeout_secs`(기본 30초, `0` = 비활성; memcached 메모리 구현을 제외한 **모든** 데이터 백엔드에서 설정할 수 있고, MongoDB의 동시성 백프레셔는 드라이버 연결 풀 `max_pool_size`가 담당합니다); 서킷 브레이커 = **각 client가 전용으로 보유하는** `ecat_circuit_breaker::Breaker`(실패율 0.5 / 윈도 30초 / 하프 오픈 프로브 3 / 오픈 10초, `enabled` 같은 총괄 스위치는 없음); HTTP 백엔드에는 `max_concurrency`(기본 32)도 있습니다. `ecat_data::CircuitBreakerExecutor`는 여전히 모든 `SqlExecutor` 백엔드를 감쌀 수 있습니다. 읽기/쓰기 분리는 `ecat_data::RdbmsRouting`을 사용합니다: 쓰기는 프라이머리, 읽기는 레플리카를 라운드로빈하며 **서킷 브레이커가 열린 레플리카는 건너뜁니다**. 사용할 수 있는 레플리카가 없으면 기본적으로 프라이머리로 폴백하고, `fallback_to_primary(false)`이면 `RdbmsError::NoAvailableReplica`를 반환합니다.
 
 > 모든 데이터 백엔드는 통일된 trait 추상화(`RdbmsClient`는 트랜잭션, `SqlExecutor`는 실행과 방언 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)를 통해 제공되며, 필요에 따라 해당 contrib crate를 가져와 사용합니다. 각 백엔드는 `XxxConfig` 구조체(`#[derive(Deserialize)]`)를 제공하여 JSON/YAML 설정 파일에서 연결 정보를 로드할 수 있습니다.
 

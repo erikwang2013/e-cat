@@ -141,22 +141,22 @@ It offers an API-first development experience, a pluggable component architectur
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implemented | ✅ Timeout + Breaker |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + Breaker |
-| Cache | Redis | `ecat-data-redis` | ✅ Implemented | — |
-| Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented | — |
-| Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented | — |
+| Cache | Redis | `ecat-data-redis` | ✅ Implemented | ✅ Timeout + Breaker |
+| Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented | ✅ Timeout + Breaker |
+| Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented | ✅ Timeout + Breaker |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory implementation (not for production, do not use for persistent caching) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented | ✅ Breaker |
-| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| Time series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| Time series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| Time series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Breaker |
-| Time series | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver | — |
-| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented | ✅ Timeout + Breaker |
+| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Timeout + Breaker |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Timeout + Breaker |
+| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Timeout + Breaker |
+| Time series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ Timeout + Breaker |
+| Time series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ Timeout + Breaker |
+| Time series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Timeout + Breaker |
+| Time series | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Timeout + Breaker |
+| Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver | ✅ Timeout + Breaker |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + Breaker |
 
-> **Timeout/breaker**: timeout = the query timeout `query_timeout_secs` (default 30 s, `0` = disabled; currently configurable on sqlx / mssql only); breaker = `ecat_data::CircuitBreakerExecutor` (wraps any `SqlExecutor` backend). Read/write splitting uses `ecat_data::RdbmsRouting`: writes go to the primary, reads round-robin across replicas and **skip replicas whose breaker is open**; when no replica is available it falls back to the primary by default, or returns `RdbmsError::NoAvailableReplica` with `fallback_to_primary(false)`.
+> **Timeout/breaker**: timeout = the query timeout `query_timeout_secs` (default 30 s, `0` = disabled; configurable on **all** data backends except the memcached in-memory implementation; MongoDB's concurrency backpressure goes through the driver connection pool `max_pool_size`); breaker = **every client carries its own** `ecat_circuit_breaker::Breaker` (failure ratio 0.5 / window 30 s / half-open probes 3 / open 10 s, no `enabled` master switch); HTTP backends additionally have `max_concurrency` (default 32). `ecat_data::CircuitBreakerExecutor` can still wrap any `SqlExecutor` backend. Read/write splitting uses `ecat_data::RdbmsRouting`: writes go to the primary, reads round-robin across replicas and **skip replicas whose breaker is open**; when no replica is available it falls back to the primary by default, or returns `RdbmsError::NoAvailableReplica` with `fallback_to_primary(false)`.
 
 > All data backends are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); import the corresponding contrib crate as needed. Each backend provides an `XxxConfig` struct (`#[derive(Deserialize)]`) that supports loading connection information from JSON/YAML config files.
 

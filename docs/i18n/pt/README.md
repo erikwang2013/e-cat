@@ -141,22 +141,22 @@ Oferece uma experiência de desenvolvimento API-first, arquitetura de componente
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementado | ✅ Timeout + disjuntor |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementado | ✅ Timeout + disjuntor |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + disjuntor |
-| Cache | Redis | `ecat-data-redis` | ✅ Implementado | — |
-| Busca | OpenSearch | `ecat-data-opensearch` | ✅ Implementado | — |
-| Busca | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementado | — |
+| Cache | Redis | `ecat-data-redis` | ✅ Implementado | ✅ Timeout + disjuntor |
+| Busca | OpenSearch | `ecat-data-opensearch` | ✅ Implementado | ✅ Timeout + disjuntor |
+| Busca | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementado | ✅ Timeout + disjuntor |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementação em memória (não para produção, não use para cache persistente) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementado | ✅ disjuntor |
-| Grafo | Neo4j | `ecat-data-neo4j` | ✅ API REST | — |
-| Grafo | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST | — |
-| Grafo | ArangoDB | `ecat-data-arangodb` | ✅ API REST | — |
-| Séries temporais | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP | — |
-| Séries temporais | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST | — |
-| Séries temporais | QuestDB | `ecat-data-questdb` | ✅ API HTTP | ✅ disjuntor |
-| Séries temporais | TDengine | `ecat-data-tdengine` | ✅ API REST | — |
-| Documentos | MongoDB | `ecat-data-mongodb` | ✅ Driver nativo | — |
-| Armazenamento de objetos | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementado | ✅ Timeout + disjuntor |
+| Grafo | Neo4j | `ecat-data-neo4j` | ✅ API REST | ✅ Timeout + disjuntor |
+| Grafo | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST | ✅ Timeout + disjuntor |
+| Grafo | ArangoDB | `ecat-data-arangodb` | ✅ API REST | ✅ Timeout + disjuntor |
+| Séries temporais | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP | ✅ Timeout + disjuntor |
+| Séries temporais | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST | ✅ Timeout + disjuntor |
+| Séries temporais | QuestDB | `ecat-data-questdb` | ✅ API HTTP | ✅ Timeout + disjuntor |
+| Séries temporais | TDengine | `ecat-data-tdengine` | ✅ API REST | ✅ Timeout + disjuntor |
+| Documentos | MongoDB | `ecat-data-mongodb` | ✅ Driver nativo | ✅ Timeout + disjuntor |
+| Armazenamento de objetos | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + disjuntor |
 
-> **Timeout/disjuntor**: Timeout = o timeout de consulta `query_timeout_secs` (padrão 30 s, `0` = desativado; por enquanto configurável apenas em sqlx / mssql); disjuntor = `ecat_data::CircuitBreakerExecutor` (envolve qualquer backend `SqlExecutor`). A separação leitura/escrita usa `ecat_data::RdbmsRouting`: escritas vão para o primário, leituras alternam entre réplicas e **ignoram as réplicas com o disjuntor aberto**; sem réplica disponível, o padrão é degradar para o primário, e com `fallback_to_primary(false)` retorna `RdbmsError::NoAvailableReplica`.
+> **Timeout/disjuntor**: Timeout = o timeout de consulta `query_timeout_secs` (padrão 30 s, `0` = desativado; configurável em **todos** os backends de dados exceto na implementação em memória do memcached; a contrapressão de concorrência do MongoDB fica por conta do pool de conexões do driver `max_pool_size`); disjuntor = **cada client tem o seu próprio** `ecat_circuit_breaker::Breaker` (taxa de falhas 0.5 / janela 30 s / sondagens semiabertas 3 / aberto 10 s, sem interruptor geral `enabled`); backends HTTP têm ainda `max_concurrency` (padrão 32). O `ecat_data::CircuitBreakerExecutor` continua podendo envolver qualquer backend `SqlExecutor`. A separação leitura/escrita usa `ecat_data::RdbmsRouting`: escritas vão para o primário, leituras alternam entre réplicas e **ignoram as réplicas com o disjuntor aberto**; sem réplica disponível, o padrão é degradar para o primário, e com `fallback_to_primary(false)` retorna `RdbmsError::NoAvailableReplica`.
 
 > Todos os backends de dados são abstraídos por traits unificados (`RdbmsClient` para transações, `SqlExecutor` para execução e dialeto / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); importe o crate contrib correspondente conforme necessário. Cada backend fornece uma struct `XxxConfig` (`#[derive(Deserialize)]`) que suporta carregar as informações de conexão a partir de arquivos de configuração JSON/YAML.
 

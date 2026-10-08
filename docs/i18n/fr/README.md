@@ -141,22 +141,22 @@ Il offre une expérience de développement API-first, une architecture de compos
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implémenté | ✅ Timeout + disjoncteur |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + disjoncteur |
-| Cache | Redis | `ecat-data-redis` | ✅ Implémenté | — |
-| Recherche | OpenSearch | `ecat-data-opensearch` | ✅ Implémenté | — |
-| Recherche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implémenté | — |
+| Cache | Redis | `ecat-data-redis` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| Recherche | OpenSearch | `ecat-data-opensearch` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| Recherche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implémenté | ✅ Timeout + disjoncteur |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Implémentation en mémoire (non destinée à la production, ne pas utiliser pour un cache persistant) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implémenté | ✅ disjoncteur |
-| Graphe | Neo4j | `ecat-data-neo4j` | ✅ API REST | — |
-| Graphe | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST | — |
-| Graphe | ArangoDB | `ecat-data-arangodb` | ✅ API REST | — |
-| Séries temporelles | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP | — |
-| Séries temporelles | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST | — |
-| Séries temporelles | QuestDB | `ecat-data-questdb` | ✅ API HTTP | ✅ disjoncteur |
-| Séries temporelles | TDengine | `ecat-data-tdengine` | ✅ API REST | — |
-| Documents | MongoDB | `ecat-data-mongodb` | ✅ Pilote natif | — |
-| Stockage d'objets | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implémenté | ✅ Timeout + disjoncteur |
+| Graphe | Neo4j | `ecat-data-neo4j` | ✅ API REST | ✅ Timeout + disjoncteur |
+| Graphe | NebulaGraph | `ecat-data-nebulagraph` | ✅ API REST | ✅ Timeout + disjoncteur |
+| Graphe | ArangoDB | `ecat-data-arangodb` | ✅ API REST | ✅ Timeout + disjoncteur |
+| Séries temporelles | InfluxDB | `ecat-data-influxdb` | ✅ API HTTP | ✅ Timeout + disjoncteur |
+| Séries temporelles | Apache IoTDB | `ecat-data-iotdb` | ✅ API REST | ✅ Timeout + disjoncteur |
+| Séries temporelles | QuestDB | `ecat-data-questdb` | ✅ API HTTP | ✅ Timeout + disjoncteur |
+| Séries temporelles | TDengine | `ecat-data-tdengine` | ✅ API REST | ✅ Timeout + disjoncteur |
+| Documents | MongoDB | `ecat-data-mongodb` | ✅ Pilote natif | ✅ Timeout + disjoncteur |
+| Stockage d'objets | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + disjoncteur |
 
-> **Timeout/disjoncteur** : Timeout = le délai d'expiration des requêtes `query_timeout_secs` (30 s par défaut, `0` = désactivé ; configurable aujourd'hui uniquement sur sqlx / mssql) ; disjoncteur = `ecat_data::CircuitBreakerExecutor` (enveloppe n'importe quel backend `SqlExecutor`). La séparation lecture/écriture s'appuie sur `ecat_data::RdbmsRouting` : les écritures vont au primaire, les lectures sont réparties en tourniquet sur les réplicas en **ignorant celles dont le disjoncteur est ouvert** ; si aucune réplica n'est disponible, repli sur le primaire par défaut, ou `RdbmsError::NoAvailableReplica` avec `fallback_to_primary(false)`.
+> **Timeout/disjoncteur** : Timeout = le délai d'expiration des requêtes `query_timeout_secs` (30 s par défaut, `0` = désactivé ; configurable sur **tous** les backends de données sauf l'implémentation en mémoire de memcached ; la contre-pression de concurrence de MongoDB passe par le pool de connexions du pilote `max_pool_size`) ; disjoncteur = **chaque client possède le sien** `ecat_circuit_breaker::Breaker` (taux d'échec 0.5 / fenêtre 30 s / sondes semi-ouvertes 3 / ouvert 10 s, sans interrupteur général `enabled`) ; les backends HTTP ont en plus `max_concurrency` (32 par défaut). `ecat_data::CircuitBreakerExecutor` peut toujours envelopper n'importe quel backend `SqlExecutor`. La séparation lecture/écriture s'appuie sur `ecat_data::RdbmsRouting` : les écritures vont au primaire, les lectures sont réparties en tourniquet sur les réplicas en **ignorant celles dont le disjoncteur est ouvert** ; si aucune réplica n'est disponible, repli sur le primaire par défaut, ou `RdbmsError::NoAvailableReplica` avec `fallback_to_primary(false)`.
 
 > Tous les backends de données sont abstraits via des traits unifiés (`RdbmsClient` pour les transactions, `SqlExecutor` pour l'exécution et le dialecte / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) ; il suffit d'importer le crate contrib correspondant. Chaque backend fournit une structure `XxxConfig` (`#[derive(Deserialize)]`) qui permet de charger les informations de connexion depuis un fichier de configuration JSON/YAML.
 

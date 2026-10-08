@@ -141,22 +141,22 @@ API-first подход к разработке, плагинная архите�
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Таймаут + Circuit Breaker |
-| Кэш | Redis | `ecat-data-redis` | ✅ Реализовано | — |
-| Поиск | OpenSearch | `ecat-data-opensearch` | ✅ Реализовано | — |
-| Поиск | Elasticsearch | `ecat-data-elasticsearch` | ✅ Реализовано | — |
+| Кэш | Redis | `ecat-data-redis` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| Поиск | OpenSearch | `ecat-data-opensearch` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| Поиск | Elasticsearch | `ecat-data-elasticsearch` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
 | Кэш | Memcached | `ecat-data-memcached` | ⚠️ Реализация в памяти (не для продакшена, не использовать для постоянного кэша) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Реализовано | ✅ Circuit Breaker |
-| Граф | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| Граф | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| Граф | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| Врем. ряды | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| Врем. ряды | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| Врем. ряды | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Circuit Breaker |
-| Врем. ряды | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| Документы | MongoDB | `ecat-data-mongodb` | ✅ Нативный драйвер | — |
-| Объекты | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Реализовано | ✅ Таймаут + Circuit Breaker |
+| Граф | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Таймаут + Circuit Breaker |
+| Граф | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Таймаут + Circuit Breaker |
+| Граф | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Таймаут + Circuit Breaker |
+| Врем. ряды | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ Таймаут + Circuit Breaker |
+| Врем. ряды | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ Таймаут + Circuit Breaker |
+| Врем. ряды | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Таймаут + Circuit Breaker |
+| Врем. ряды | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Таймаут + Circuit Breaker |
+| Документы | MongoDB | `ecat-data-mongodb` | ✅ Нативный драйвер | ✅ Таймаут + Circuit Breaker |
+| Объекты | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Таймаут + Circuit Breaker |
 
-> **Таймаут/Circuit Breaker**: Таймаут = таймаут запроса `query_timeout_secs` (по умолчанию 30 с, `0` = отключено; настраивается пока только для sqlx / mssql); предохранитель = `ecat_data::CircuitBreakerExecutor` (оборачивает любой бэкенд `SqlExecutor`). Разделение чтения/записи — `ecat_data::RdbmsRouting`: запись идёт в primary, чтение по кругу в реплики с **пропуском реплик с открытым предохранителем**; если ни одна реплика недоступна, по умолчанию идёт деградация на primary, а с `fallback_to_primary(false)` возвращается `RdbmsError::NoAvailableReplica`.
+> **Таймаут/Circuit Breaker**: Таймаут = таймаут запроса `query_timeout_secs` (по умолчанию 30 с, `0` = отключено; настраивается у **всех** бэкендов данных, кроме реализации memcached в памяти; обратное давление по конкурентности в MongoDB обеспечивает пул соединений драйвера `max_pool_size`); предохранитель = **у каждого client свой собственный** `ecat_circuit_breaker::Breaker` (доля отказов 0.5 / окно 30 с / полуоткрытых проб 3 / открыт 10 с, общего выключателя `enabled` нет); у HTTP-бэкендов есть ещё `max_concurrency` (по умолчанию 32). `ecat_data::CircuitBreakerExecutor` по-прежнему оборачивает любой бэкенд `SqlExecutor`. Разделение чтения/записи — `ecat_data::RdbmsRouting`: запись идёт в primary, чтение по кругу в реплики с **пропуском реплик с открытым предохранителем**; если ни одна реплика недоступна, по умолчанию идёт деградация на primary, а с `fallback_to_primary(false)` возвращается `RdbmsError::NoAvailableReplica`.
 
 > Все бэкенды данных абстрагированы через единый trait (`RdbmsClient` для транзакций, `SqlExecutor` для выполнения и диалекта / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); подключайте нужный contrib crate по необходимости. Каждый бэкенд предоставляет структуру `XxxConfig` (`#[derive(Deserialize)]`) для загрузки параметров подключения из JSON/YAML-конфигурации.
 

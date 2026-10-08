@@ -141,22 +141,22 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + pemutus sirkuit |
-| Cache | Redis | `ecat-data-redis` | ✅ Terimplementasi | — |
-| Pencarian | OpenSearch | `ecat-data-opensearch` | ✅ Terimplementasi | — |
-| Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi | — |
+| Cache | Redis | `ecat-data-redis` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| Pencarian | OpenSearch | `ecat-data-opensearch` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementasi memori (bukan produksi, jangan gunakan untuk cache persisten) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Terimplementasi | ✅ pemutus sirkuit |
-| Graf | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| Graf | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| Graf | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| Time-series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| Time-series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| Time-series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ pemutus sirkuit |
-| Time-series | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native | — |
-| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| Graf | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| Graf | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| Graf | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| Time-series | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ Timeout + pemutus sirkuit |
+| Time-series | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| Time-series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Timeout + pemutus sirkuit |
+| Time-series | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native | ✅ Timeout + pemutus sirkuit |
+| Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + pemutus sirkuit |
 
-> **Timeout/pemutus sirkuit**: Timeout = timeout kueri `query_timeout_secs` (default 30 detik, `0` = nonaktif; saat ini hanya dapat dikonfigurasi pada sqlx / mssql); pemutus sirkuit = `ecat_data::CircuitBreakerExecutor` (membungkus backend `SqlExecutor` apa pun). Pemisahan baca/tulis memakai `ecat_data::RdbmsRouting`: tulis ke primary, baca bergiliran ke replika dan **melewati replika yang pemutus sirkuitnya terbuka**; bila tidak ada replika yang tersedia, default-nya turun ke primary, dan dengan `fallback_to_primary(false)` mengembalikan `RdbmsError::NoAvailableReplica`.
+> **Timeout/pemutus sirkuit**: Timeout = timeout kueri `query_timeout_secs` (default 30 detik, `0` = nonaktif; dapat dikonfigurasi pada **semua** backend data kecuali implementasi in-memory memcached; backpressure konkurensi MongoDB ditangani pool koneksi driver `max_pool_size`); pemutus sirkuit = **setiap client membawa miliknya sendiri** `ecat_circuit_breaker::Breaker` (rasio kegagalan 0.5 / jendela 30 detik / probe setengah terbuka 3 / terbuka 10 detik, tanpa sakelar utama `enabled`); backend HTTP juga memiliki `max_concurrency` (default 32). `ecat_data::CircuitBreakerExecutor` tetap dapat membungkus backend `SqlExecutor` apa pun. Pemisahan baca/tulis memakai `ecat_data::RdbmsRouting`: tulis ke primary, baca bergiliran ke replika dan **melewati replika yang pemutus sirkuitnya terbuka**; bila tidak ada replika yang tersedia, default-nya turun ke primary, dan dengan `fallback_to_primary(false)` mengembalikan `RdbmsError::NoAvailableReplica`.
 
 > Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
 

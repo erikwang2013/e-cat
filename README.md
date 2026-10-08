@@ -141,22 +141,22 @@ Ecat中文名：一只猫
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ 已实现 | ✅ 超时 + 熔断 |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ 超时 + 熔断 |
-| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 | — |
-| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 | — |
-| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 | — |
+| 缓存 | Redis | `ecat-data-redis` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| 搜索 | OpenSearch | `ecat-data-opensearch` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 | ✅ 超时 + 熔断 |
 | 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 | ✅ 熔断 |
-| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 熔断 |
-| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 | — |
-| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ 超时 + 熔断 |
+| 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ 超时 + 熔断 |
+| 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ 超时 + 熔断 |
+| 时序 | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ 超时 + 熔断 |
+| 时序 | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ 超时 + 熔断 |
+| 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 超时 + 熔断 |
+| 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ 超时 + 熔断 |
+| 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 | ✅ 超时 + 熔断 |
+| 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ 超时 + 熔断 |
 
-> **超时/熔断**：超时 = 查询超时 `query_timeout_secs`（默认 30 秒，`0` = 禁用；目前仅 sqlx / mssql 可配）；熔断 = `ecat_data::CircuitBreakerExecutor`（可包装任意 `SqlExecutor` 后端）。读写分离用 `ecat_data::RdbmsRouting`：写落主库、读落副本轮询，并**跳过已熔断的副本**；副本全不可用时默认降级读主，`fallback_to_primary(false)` 则报 `RdbmsError::NoAvailableReplica`。
+> **超时/熔断**：超时 = 查询超时 `query_timeout_secs`（默认 30 秒，`0` = 禁用；除 memcached 内存实现外，**所有**数据后端均可配，MongoDB 的并发背压走驱动连接池 `max_pool_size`）；熔断 = **每个 client 自带** `ecat_circuit_breaker::Breaker`（失败率 0.5 / 窗口 30 秒 / 半开探测 3 / 打开 10 秒，无 `enabled` 总开关）；HTTP 后端另有 `max_concurrency`（默认 32）。`ecat_data::CircuitBreakerExecutor` 仍可包装任意 `SqlExecutor` 后端。读写分离用 `ecat_data::RdbmsRouting`：写落主库、读落副本轮询，并**跳过已熔断的副本**；副本全不可用时默认降级读主，`fallback_to_primary(false)` 则报 `RdbmsError::NoAvailableReplica`。
 
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 

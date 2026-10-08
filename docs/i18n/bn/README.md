@@ -141,22 +141,22 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ টাইমআউট + সার্কিট ব্রেকার |
-| ক্যাশ | Redis | `ecat-data-redis` | ✅ বাস্তবায়িত | — |
-| সার্চ | OpenSearch | `ecat-data-opensearch` | ✅ বাস্তবায়িত | — |
-| সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত | — |
+| ক্যাশ | Redis | `ecat-data-redis` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| সার্চ | OpenSearch | `ecat-data-opensearch` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | ক্যাশ | Memcached | `ecat-data-memcached` | ⚠️ মেমরি-ভিত্তিক (প্রোডাকশন নয়, স্থায়ী ক্যাশের জন্য ব্যবহার করবেন না) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ বাস্তবায়িত | ✅ সার্কিট ব্রেকার |
-| গ্রাফ | Neo4j | `ecat-data-neo4j` | ✅ REST API | — |
-| গ্রাফ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | — |
-| গ্রাফ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | — |
-| টাইম-সিরিজ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | — |
-| টাইম-সিরিজ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | — |
-| টাইম-সিরিজ | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ সার্কিট ব্রেকার |
-| টাইম-সিরিজ | TDengine | `ecat-data-tdengine` | ✅ REST API | — |
-| ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার | — |
-| অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| গ্রাফ | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| গ্রাফ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| গ্রাফ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| টাইম-সিরিজ | InfluxDB | `ecat-data-influxdb` | ✅ HTTP API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| টাইম-সিরিজ | Apache IoTDB | `ecat-data-iotdb` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| টাইম-সিরিজ | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| টাইম-সিরিজ | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ টাইমআউট + সার্কিট ব্রেকার |
 
-> **টাইমআউট/সার্কিট ব্রেকার**: টাইমআউট = কোয়েরি টাইমআউট `query_timeout_secs` (ডিফল্ট ৩০ সেকেন্ড, `0` = নিষ্ক্রিয়; আপাতত শুধু sqlx / mssql-এ কনফিগারযোগ্য); সার্কিট ব্রেকার = `ecat_data::CircuitBreakerExecutor` (যেকোনো `SqlExecutor` ব্যাকএন্ড মোড়ানো যায়)। রিড/রাইট বিভাজনে `ecat_data::RdbmsRouting`: লেখা প্রাইমারিতে, পড়া রেপ্লিকাগুলোতে পালাক্রমে, এবং **যে রেপ্লিকার সার্কিট ব্রেকার খোলা তা এড়িয়ে যাওয়া হয়**; কোনো রেপ্লিকা না থাকলে ডিফল্টভাবে প্রাইমারিতে অবনমন, আর `fallback_to_primary(false)` হলে `RdbmsError::NoAvailableReplica` ফেরে।
+> **টাইমআউট/সার্কিট ব্রেকার**: টাইমআউট = কোয়েরি টাইমআউট `query_timeout_secs` (ডিফল্ট ৩০ সেকেন্ড, `0` = নিষ্ক্রিয়; memcached-এর ইন-মেমরি বাস্তবায়ন ছাড়া **সব** ডেটা ব্যাকএন্ডে কনফিগার করা যায়, MongoDB-এর কনকারেন্সি ব্যাকপ্রেশার ড্রাইভার কানেকশন পুল `max_pool_size`-এ চলে); সার্কিট ব্রেকার = **প্রতিটি client-এর নিজস্ব** `ecat_circuit_breaker::Breaker` (ব্যর্থতার হার 0.5 / উইন্ডো ৩০ সেকেন্ড / হাফ-ওপেন প্রোব ৩ / খোলা ১০ সেকেন্ড, কোনো `enabled` মাস্টার সুইচ নেই); HTTP ব্যাকএন্ডে অতিরিক্তভাবে `max_concurrency` (ডিফল্ট ৩২) আছে। `ecat_data::CircuitBreakerExecutor` এখনও যেকোনো `SqlExecutor` ব্যাকএন্ড মোড়াতে পারে। রিড/রাইট বিভাজনে `ecat_data::RdbmsRouting`: লেখা প্রাইমারিতে, পড়া রেপ্লিকাগুলোতে পালাক্রমে, এবং **যে রেপ্লিকার সার্কিট ব্রেকার খোলা তা এড়িয়ে যাওয়া হয়**; কোনো রেপ্লিকা না থাকলে ডিফল্টভাবে প্রাইমারিতে অবনমন, আর `fallback_to_primary(false)` হলে `RdbmsError::NoAvailableReplica` ফেরে।
 
 > সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
 

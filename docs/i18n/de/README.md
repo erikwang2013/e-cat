@@ -141,22 +141,22 @@ Client-Anfrage
 | RDBMS | MySQL | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
 | RDBMS | TiDB | `ecat-data-sqlx` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
 | RDBMS | SQL Server | `ecat-data-mssql` | ✅ tiberius-ng | ✅ Timeout + Circuit Breaker |
-| Cache | Redis | `ecat-data-redis` | ✅ Implementiert | — |
-| Suche | OpenSearch | `ecat-data-opensearch` | ✅ Implementiert | — |
-| Suche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementiert | — |
+| Cache | Redis | `ecat-data-redis` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| Suche | OpenSearch | `ecat-data-opensearch` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| Suche | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Speicherimplementierung (nicht produktionsreif, nicht für persistenten Cache verwenden) | — |
-| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementiert | ✅ Circuit Breaker |
-| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST-API | — |
-| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST-API | — |
-| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST-API | — |
-| Zeitreihen | InfluxDB | `ecat-data-influxdb` | ✅ HTTP-API | — |
-| Zeitreihen | Apache IoTDB | `ecat-data-iotdb` | ✅ REST-API | — |
-| Zeitreihen | QuestDB | `ecat-data-questdb` | ✅ HTTP-API | ✅ Circuit Breaker |
-| Zeitreihen | TDengine | `ecat-data-tdengine` | ✅ REST-API | — |
-| Dokumente | MongoDB | `ecat-data-mongodb` | ✅ Nativ-Treiber | — |
-| Objektspeicher | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | — |
+| OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implementiert | ✅ Timeout + Circuit Breaker |
+| Graph | Neo4j | `ecat-data-neo4j` | ✅ REST-API | ✅ Timeout + Circuit Breaker |
+| Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST-API | ✅ Timeout + Circuit Breaker |
+| Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST-API | ✅ Timeout + Circuit Breaker |
+| Zeitreihen | InfluxDB | `ecat-data-influxdb` | ✅ HTTP-API | ✅ Timeout + Circuit Breaker |
+| Zeitreihen | Apache IoTDB | `ecat-data-iotdb` | ✅ REST-API | ✅ Timeout + Circuit Breaker |
+| Zeitreihen | QuestDB | `ecat-data-questdb` | ✅ HTTP-API | ✅ Timeout + Circuit Breaker |
+| Zeitreihen | TDengine | `ecat-data-tdengine` | ✅ REST-API | ✅ Timeout + Circuit Breaker |
+| Dokumente | MongoDB | `ecat-data-mongodb` | ✅ Nativ-Treiber | ✅ Timeout + Circuit Breaker |
+| Objektspeicher | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + Circuit Breaker |
 
-> **Timeout/Circuit Breaker**: Timeout = das Abfrage-Timeout `query_timeout_secs` (Standard 30 s, `0` = deaktiviert; derzeit nur bei sqlx / mssql konfigurierbar); Circuit Breaker = `ecat_data::CircuitBreakerExecutor` (umschließt jedes `SqlExecutor`-Backend). Für die Lese-/Schreibtrennung dient `ecat_data::RdbmsRouting`: Schreibvorgänge gehen an das Primary, Lesevorgänge per Round-Robin an die Replicas und **überspringen Replicas mit offenem Circuit Breaker**; ist keine Replica verfügbar, wird standardmäßig auf das Primary zurückgefallen, mit `fallback_to_primary(false)` stattdessen `RdbmsError::NoAvailableReplica`.
+> **Timeout/Circuit Breaker**: Timeout = das Abfrage-Timeout `query_timeout_secs` (Standard 30 s, `0` = deaktiviert; konfigurierbar bei **allen** Daten-Backends außer der In-Memory-Implementierung von memcached; das Konkurrenz-Backpressure von MongoDB läuft über den Treiber-Verbindungspool `max_pool_size`); Circuit Breaker = **jeder Client bringt seinen eigenen mit** `ecat_circuit_breaker::Breaker` (Fehlerquote 0.5 / Fenster 30 s / Half-Open-Probes 3 / offen 10 s, kein `enabled`-Hauptschalter); HTTP-Backends haben zusätzlich `max_concurrency` (Standard 32). `ecat_data::CircuitBreakerExecutor` kann weiterhin jedes `SqlExecutor`-Backend umschließen. Für die Lese-/Schreibtrennung dient `ecat_data::RdbmsRouting`: Schreibvorgänge gehen an das Primary, Lesevorgänge per Round-Robin an die Replicas und **überspringen Replicas mit offenem Circuit Breaker**; ist keine Replica verfügbar, wird standardmäßig auf das Primary zurückgefallen, mit `fallback_to_primary(false)` stattdessen `RdbmsError::NoAvailableReplica`.
 
 > Alle Daten-Backends sind über einheitliche Traits abstrahiert (`RdbmsClient` für Transaktionen, `SqlExecutor` für Ausführung und Dialekt / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); die jeweiligen Contrib-Crates werden nach Bedarf eingebunden. Jedes Backend stellt eine `XxxConfig`-Struktur (`#[derive(Deserialize)]`) bereit, die das Laden der Verbindungsinformationen aus JSON-/YAML-Konfigurationsdateien unterstützt.
 
