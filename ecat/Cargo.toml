@@ -17,7 +17,24 @@ middleware = ["dep:ecat-middleware"]
 auth = ["dep:ecat-auth"]
 client = ["dep:ecat-client"]
 events = ["dep:ecat-events"]
-metrics = ["dep:ecat-metrics"]
+# 弱依赖语法（`ecat-data-redis?/metrics`）：**只在**该后端已被启用时才透传它的
+# `metrics` 子 feature。少了后面两行时 `ecat = { features = ["metrics", "redis"] }`
+# 会拿到 `ecat-metrics`，但 `ecat-data-redis` 仍以默认特性构建 ⇒ `from_config`
+# 不自动注册 ⇒ 一个 `ecat_outbound_*` 样本都不出（实测 `cargo tree -e features`
+# 只列出 `ecat-data-redis feature "default"`）。`?` 保证「只开 metrics 不开 redis」
+# 时不会因此把 redis 拖进来。
+#
+# ⚠️ 验证这条只能用**反查**：`cargo tree -e features` 的**正查视图不显示**由弱依赖
+# 转发启用的特性（实测：正查 `grep ecat-data-redis` 只有两行、没有 metrics；反查
+# `-i ecat-data-redis` 才出现 `ecat-data-redis feature "metrics" ← ecat feature "metrics"`）。
+# 正确的 A/B：
+#   cargo tree -p ecat --features metrics,redis -e features --offline -i ecat-data-redis \
+#     | grep -c 'ecat-data-redis feature "metrics"'      # 期望 1（只开 redis 时为 0）
+metrics = [
+    "dep:ecat-metrics",
+    "ecat-data-redis?/metrics",
+    "ecat-data-mssql?/metrics",
+]
 tracing = ["dep:ecat-tracing"]
 circuit-breaker = ["dep:ecat-circuit-breaker"]
 consul = ["dep:ecat-registry-consul"]
