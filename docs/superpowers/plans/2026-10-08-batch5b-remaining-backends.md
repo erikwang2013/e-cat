@@ -3352,7 +3352,13 @@ s3:
 for f in docs/database-config-tutorial.md docs/i18n/*/database-config-tutorial.md; do
   printf '%s %s %s %s\n' "$(grep -c 'query_timeout_secs' "$f")" "$(grep -c 'max_concurrency' "$f")" "$(grep -c 'max_pool_size' "$f")" "$f"
 done
-# 期望：13 行的前三个数字**全等**（且等于根文件的值；具体数值以实现为准，先记下再比）
+# 期望：13 行的前三个数字**全等**，且**绝对值** = 31 / 22 / 2
+#   query_timeout_secs 31 = 5a 已有 9 + 8 个既有节 ×2（yaml 注释行 + 表格行）+ 3 个新节 ×2
+#   max_concurrency    22 = 5a 已有 2 + 8 个既有节 ×2 + TDengine/S3 各 2（MongoDB 无此字段）
+#   max_pool_size       2 = MongoDB 的 yaml 注释行 + 表格行，各 1
+# **为什么用绝对值**：13 份互相比只能证明「镜像彼此一致」，证明不了「改对了」——
+# 一起漏改或一起改错都全等。绝对值是按本计划的片段推算的；**落码后若实测不符，
+# 先把差异归因到具体是哪一节/哪一行，再改这份期望**（别默默改数字凑答案）。
 for f in docs/database-config-tutorial.md docs/i18n/*/database-config-tutorial.md; do
   for h in TdengineConfig MongoConfig S3Config; do grep -q "$h" "$f" || echo "MISS $h in $f"; done
 done; echo DONE
