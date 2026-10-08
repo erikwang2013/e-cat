@@ -99,9 +99,6 @@
 - **熔断没有总开关**：`BreakerConfig` 只有阈值字段，没有 `enabled`。要停用只能把阈值
   调到不可能触发（如 `failure_ratio: 1.1`）。配置教程已写明，别写 `{"enabled": false}`
   （那是反序列化错误）。
-- `ecat-data-redis` / `ecat-data-clickhouse` 的 `metrics` feature 里 `dep:prometheus`
-  在本版后成为**未使用的直接依赖**（collector 已搬去 `ecat-metrics`）。本版不删：
-  feature 列表是对外可见的，删它超出「换注册方式」的范围，留作独立清理。
 - `ecat-data-redis` 仍走 `MultiplexedConnection`（多路复用），本版**不换连接池** ——
   超时 + 熔断下多路复用的边界见配置教程。
 - `RedisLock` 的 `DistributedLock` 路径不在本版范围（用 `LockError`，不共用本套映射）。
