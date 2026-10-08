@@ -1501,7 +1501,7 @@ git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.
 
 判据：`cargo check -p ecat-data-nebulagraph` → `Finished`。
 
-**Step 7（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`nebulagraph`（3 处），kind 不变。
+**Step 7（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`nebulagraph`（⚠️ **先 `grep -c` 数准再改**；ES 实测 **8 处** —— 1 处 `pub fn` 的标签实参 + 2 处 rustdoc + **4 条断言字符串** + 1 处模块注释，只改 3 处会让 metrics 用例红），kind 不变。
 
 **Step 8（8 分钟）`src/tests/resilience.rs`**：逐字抄 Task 1 Step 8，替换：
 
@@ -1647,7 +1647,7 @@ async fn params_not_supported_does_not_touch_the_breaker() {
 
 判据：`cargo check -p ecat-data-elasticsearch` → `Finished`。
 
-**Step 7（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`elasticsearch`（3 处），
+**Step 7（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`elasticsearch`（⚠️ **先 `grep -c` 数准再改**；ES 实测 **8 处** —— 1 处 `pub fn` 的标签实参 + 2 处 rustdoc + **4 条断言字符串** + 1 处模块注释，只改 3 处会让 metrics 用例红），
 `BackendKind::Graph`→`BackendKind::Search`（1 处，在 `register_outbound_metrics` 里）。
 
 **Step 8（10 分钟）`src/tests/resilience.rs`**：逐字抄 Task 1 Step 8 的四个 helper
@@ -1753,7 +1753,7 @@ async fn unsupported_ops_do_not_trip_the_breaker() {
 
 ⚠️ **两条 Task 4 落地时实测出来的更正**（照抄前必读，否则会撞）：
 
-1. **模式 ④ 片段要删掉 `let second =` 绑定**：计划 Task 4 Step 8 写的是 `let second = tokio::time::timeout(…).await.expect(…).expect(…)`，但 `index` 返回 `()` ⇒ `second` 未被使用 ⇒ **clippy `-D warnings` 会红**（`unused_variables`）。Task 4 实测后去掉绑定、只留两条 `.expect(…)`。
+1. **模式 ④ 片段要删掉 `let second =` 绑定**：**Task 1 Step 8 的模板片段（本文件 `:1212`）**写的是 `let second = tokio::time::timeout(…).await.expect(…).expect(…)`，但 `index` 返回 `()` ⇒ `second` 未被使用 ⇒ **clippy `-D warnings` 会红**（`unused_variables`）。Task 4 实测后去掉绑定、只留两条 `.expect(…)`。（⚠️ 归属更正：原写「Task 4 Step 8」，实为 **Task 1 Step 8** —— Task 4 Step 8 从来没有过该绑定；复核者把 7 个历史版本逐一 grep 确认。）
    opensearch 的 `index` 同样返回 `()`，**照做时会撞同一条**。
 2. **`src/lib.rs` 行数余量只剩 52**：Task 4 落完是 **448 行**（= 500 的 90%）。opensearch 基线 336，按同构估计落在 **~437**；**若还需要加用例或注释，先按 T0-H 拆 `src/tests.rs`**（influxdb 那套做法），别让它顶破 500。
 
@@ -1901,7 +1901,7 @@ wc -l src/tests.rs src/lib.rs                 # 两个文件都 < 500
 
 判据：`cargo check -p ecat-data-influxdb` → `Finished`。
 
-**Step 8（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`influxdb`（3 处），
+**Step 8（5 分钟）`src/metrics.rs`**：逐字抄 Task 1 Step 7，标签 `arangodb`→`influxdb`（⚠️ **先 `grep -c` 数准再改**；ES 实测 **8 处** —— 1 处 `pub fn` 的标签实参 + 2 处 rustdoc + **4 条断言字符串** + 1 处模块注释，只改 3 处会让 metrics 用例红），
 `BackendKind::Graph`→`BackendKind::Tsdb`。
 
 **Step 9（10 分钟）`src/tests/resilience.rs`**：逐字抄 Task 1 Step 8 的四个 helper 与 6 条用例，替换：
@@ -2625,7 +2625,7 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> S3
   `ecat_data::StorageClient::put(&c, "bucket", "key", b"data")`。
 - 模式 ④ 也用 `put`（第二次的 `{}` 响应体只看状态码）。
 - 熔断用例调用点用 `put`，`err.reason` 断言 → `"s3"`。
-- 覆盖用例（4 个方法各一次 = 4 次 < 5 条窗口）：
+- 覆盖用例（4 个方法各一次 = 4 次 < 5 条窗口）—— ⚠️ **本 crate 正好用满这个预算：不许把这条用例扩到 5 次以上**。开断阈值实测为 `window.total() >= 5 && failure_ratio >= 0.5`（`ecat-circuit-breaker/src/breaker.rs:196-197`）；加到第 5 次，尾部的 `state()==Closed` 断言就会红，且**失败信息会指向「漏包 guarded」——误导**（实际是窗口被填满）。若将来本 crate 的 I/O 方法超过 4 个，这条用例要拆成两条、或把尾部断言改成「未打开」以外的判据：
 
 ```rust
 /// 四个 I/O 方法各打一次（4 次 < 5 条窗口 ⇒ 熔断不会在途中打开）。

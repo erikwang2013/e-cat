@@ -558,13 +558,17 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Cl
 - **`guarded` 仍只有一份**，不随方法复制；每个 I/O 方法的改写是机械的：**本地构造请求留在壳外**，方法体整体塞进 `self.guarded(async { … }).await` —— 净增只有 2-3 行/方法。
 - **`kind` 仍写死**，不要因为方法多就改成参数：同一 trait 的方法同属一个**家族**维度。ClickHouse 收参数是因为它跨**家族**（`SqlExecutor`→Rdbms 与 `TsdbClient`→Tsdb），本批 10 个 HTTP 后端都不是。
 - **不包的方法不留代码、只留注释**（说明「默认返回不支持 = 调用方用法错，不进熔断窗口」）；**不要**为了「显式」去覆写一份再包 —— 那正是 (c2) 要抓的错。
-- 参考实现：`ecat-data-elasticsearch/src/{lib.rs,metrics.rs,tests/resilience.rs}`。
+- **壳的边界 = 公开方法**：内部**会发 I/O 的 helper 绝不能在外面、也不能再包一层**。ES 恰好是「一方法一次 send」没有内部 helper；而 `ecat-data-tdengine` 的 `exec`（`src/lib.rs:61-76` 就是 POST+解析）、iotdb 的「每点一次 POST」、s3 `list` 的翻页**都长这样**。留在壳外 = 漏包；单独再包一层 = **一次调用 N 个预算**（`whole_call_budget_*` 用例要抓的正是它）。**判据：问「这一步发 HTTP 吗？」—— 发，就在壳内。**
+- **reason 是双轨的**：超时用 `kind.slug()`（家族粒度，如 `"search"`），熔断拒绝用**产品名**（如 `"elasticsearch"`）。两条断言会并存在同一个用例里，别「统一」成一种。
+- 泛型约束 `F: Future<Output = Result<T, Error>> + Send` 且 `T: 'static`：本批 10 个 crate 的返回类型全是 owned ⇒ 不会撞；将来若出现借用返回会**编译期**红（可见，非静默）。
+- 参考实现：`ecat-data-elasticsearch/
 
 **(c0) 探针的作用域要精确到「那一行」**：变异探针（把某行改坏、看测试是否红）**只改被测的那一处**。
 本批实测踩到：Task 3 的探针写「把 `metrics.rs` 里的 `timeout_counter(BackendKind::Graph)` 换成别的槽」，
 而该串在文件里出现 **3 次**（注册行 + 测试自己的 `fetch_add` + rustdoc）—— 全局替换把**写槽**也改了，
 读槽与写槽一起移动 ⇒ **探针静默变绿**，人却以为证过了。**写探针时先 `grep -c` 数一下这个串出现几次**；
 多于一次就把探针措辞写成「只改 `<函数名>` 里的那一行」。
+**替换类操作（改标签、换 kind）同理：先 `grep -c` 数准再改。** Task 5 正文曾写「标签替换 3 处」，ES 实测是 **8 处**（含 4 条断言字符串与 2 处文档）—— 计数本身就会错；**数出来的和文档写的不一致时先停下**，别按文档的数改。
 
 **(c) 证人槽约束 —— 本批踩过两次的必红陷阱**：若你要断言「计数**落到了正确的槽**」
 （例：Tsdb 的超时不得落到别的槽），那个证人槽**必须是本测试二进制内没有任何其它用例
