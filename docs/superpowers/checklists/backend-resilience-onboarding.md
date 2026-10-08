@@ -579,6 +579,9 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Cl
 - **壳的边界 = 公开方法**：内部**会发 I/O 的 helper 绝不能在外面、也不能再包一层**。ES 恰好是「一方法一次 send」没有内部 helper；而 `ecat-data-tdengine` 的 `exec`（`src/lib.rs:61-76` 就是 POST+解析）、iotdb 的「每点一次 POST」、s3 `list` 的翻页**都长这样**。留在壳外 = 漏包；单独再包一层 = **一次调用 N 个预算**（`whole_call_budget_*` 用例要抓的正是它）。**判据：问「这一步发 HTTP 吗？」—— 发，就在壳内。**
 - **reason 是双轨的**：超时用 `kind.slug()`（家族粒度，如 `"search"`），熔断拒绝用**产品名**（如 `"elasticsearch"`）。两条断言会并存在同一个用例里，别「统一」成一种。
 - 泛型约束 `F: Future<Output = Result<T, Error>> + Send` 且 `T: 'static`：本批 10 个 crate 的返回类型全是 owned ⇒ 不会撞；将来若出现借用返回会**编译期**红（可见，非静默）。
+- **配置的 breaker 必须有一条「真的生效」的断言**：`config_wires_…` 里若只断言 `state() == Closed`，那么把 `cfg.breaker` 接成 `BreakerConfig::default()` 也照样绿 —— **缺口**（Task 6 实测）。做法：用一份**非默认**配置（如 `failure_ratio: 1.1`）并断言连续 5 次失败后**仍 `Closed`**；红探针 = 接成默认 ⇒ 必红。
+- **拆 `src/tests.rs` 时**（lib.rs 接近 500 行才需要）：把内联 `#[cfg(test)] mod tests { … }` 的**内层**整块剪切进 `tests.rs`（去掉 wrapper 与收尾 `}`），lib.rs 底部留 `#[cfg(test)] mod tests;`。⚠️ **`mod resilience;` 必须写在 `tests.rs` 的 `//!` 文档注释之后** —— 写成第一行会破坏 inner doc。搬完 `use super::*;` 语义不变（`super` 仍指 crate root）。参考：`ecat-data-influxdb/src/tests.rs`。
+- **壳边界要按「这一步发不发 HTTP」逐个判**（两个反例）：`ecat-data-influxdb` 的 `write` —— 行协议`for p in points` 循环**纯本地**，留在壳外、只有 send 段进壳；而 `ecat-data-iotdb` / `ecat-data-tdengine` 的循环**每次迭代都发 HTTP** ⇒ 必须**整体**进壳（否则一次调用消耗 N 个预算 + N 次熔断记账）。
 - 参考实现：`ecat-data-elasticsearch/
 
 **(c0) 探针的作用域要精确到「那一行」**：变异探针（把某行改坏、看测试是否红）**只改被测的那一处**。

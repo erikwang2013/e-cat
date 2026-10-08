@@ -1260,6 +1260,7 @@ cargo test -p ecat-data-arangodb --features metrics 2>&1 | tail -3
 | `execute` 外的 `self.guarded(async { … }).await`（拆回原体） | `execute_times_out_and_counts_graph_dimension` |
 | `from_config` 里的 `semaphore: …cfg.max_concurrency…` 行（写死 32） | `config_wires_timeout_concurrency_and_breaker` + `concurrency_cap_limits_in_flight_requests` |
 | `from_config` 里的 `breaker: …cfg.breaker…` 行 | `config_wires_timeout_concurrency_and_breaker` |
+  ⚠️ **2026-10-08 实测更正（Task 6 发现）：这条判据不成立** —— 把那行换成 `BreakerConfig::default()` 后用例**照样绿**（它唯一的断言是 `state() == Closed`，默认 breaker 同样满足）。⇒ **「配置里的 breaker 真的生效」当时无任何用例覆盖**。**改为**：在 `config_wires_…` 里用一份**非默认**的 breaker 配置（如 `failure_ratio: 1.1`），并断言连续 5 次失败后**仍是 `Closed`**（默认 0.5 会开断 ⇒ 这条能区分「配置生效」与「用了默认值」）；红探针 = 把 `cfg.breaker` 接成 `BreakerConfig::default()` ⇒ 该断言必红。
 | **只改 `src/metrics.rs` 里注册闭包那一行**（`Box::new(|| timeout_counter(BackendKind::Graph)…)` → `BackendKind::Search`）；⚠️ **不要全局替换**：该串在 `metrics.rs` 出现 ≥3 次（注册行 + 测试自己的 `fetch_add` + rustdoc），全局改会把测试的**写槽**也改掉 ⇒ 读槽与写槽一起移动 ⇒ **探针静默变绿**（Task 3 实测踩到，第一遍就绿了） | `outbound_metrics_appear_with_live_values`（另两份样本仍出现，值差 1000） |
 | `let _permit = self.permit().await;` 改成 `.forget()` | `timed_out_request_returns_its_permit` |
 
