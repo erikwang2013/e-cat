@@ -102,6 +102,12 @@
 - `ecat-data-redis` 仍走 `MultiplexedConnection`（多路复用），本版**不换连接池** ——
   超时 + 熔断下多路复用的边界见配置教程。
 - `RedisLock` 的 `DistributedLock` 路径不在本版范围（用 `LockError`，不共用本套映射）。
+
+- **两个后端仍声明未使用的 `prometheus` 直接依赖**：`ecat-data-sqlx` 与 `ecat-data-mssql` 的
+  `Cargo.toml` 仍有 `prometheus = { version = "0.13", optional = true }`，`metrics` feature 也仍写着
+  `["dep:ecat-metrics", "dep:prometheus"]` —— 但自本版起四个 `ecat_rdbms_*` 家族的 collector 搬到了
+  `ecat-metrics`，这两个 crate 已**零 prometheus 引用**。**本版不删**：feature 列表是对外可见的，
+  删它超出「换注册方式」的范围，留作后续清理。
 - README 的后端能力表未更新（本版只改了版本号）：表里 ClickHouse / QuestDB 两行的
   `✅ 熔断` 仍指「可被 `CircuitBreakerExecutor` 包装」，而 ClickHouse 本版起已是**内置**；
   配置字段表（`ClickhouseConfig` 的 `base_url` 等）也还没列出三个新字段。
