@@ -3602,6 +3602,11 @@ grep -c 'v6\.0\.0' config/databases.example.yaml                          # 记�
   `ecat-data-redis` / `ecat-data-clickhouse`**（后者此前同样只有再导出、无生产调用点）。
   注意：同一配置节在**同一进程内建多个 client** 时，标签只有一份，**最后构造的那个生效**
   —— 这是「标签 = 配置节名」的固有含义，需要区分实例请用不同配置节名。
+  另修：聚合 crate `ecat` 的 `metrics` feature 原先只启用 `dep:ecat-metrics`，**不透传**给
+  数据后端 —— `ecat = { features = ["metrics", "redis"] }` 会拿到 registry 与 `/metrics`
+  端点，但 `ecat-data-redis` 仍以默认特性构建、`from_config` 不注册，一个 `ecat_outbound_*`
+  样本都不出。现用弱依赖语法透传（`ecat-data-redis?/metrics` 等）：只开 `metrics` 不会把
+  后端拖进来，只开后端也不会被强加 `metrics`（四种组合实测，非破坏性变更）。
   （`ecat-data-sqlx` / `ecat-data-mssql` 的 `register_pool_metrics` **仍为显式调用**：
   它的标签语义是**实例名**（`"primary"` / `"replica-1"`，见 `ecat-metrics/src/rdbms.rs:33-35`），
   自动注册会替用户编一个名字、且读写分离下多个池会互相覆盖。）
