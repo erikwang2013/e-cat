@@ -626,7 +626,7 @@ where
 | iotdb | Task 7 | Tsdb | iotdb | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 10 | +10 | **20 / 21** ✅实测 |
 | tdengine | Task 8 | Tsdb | tdengine | `new`/`from_config` | base_url, username, password | 2 | Storage | `delete` 默认 + 整调用预算 | **是** | 11 | +10 | **21 / 22** ✅实测 |
 | questdb | Task 9 | Rdbms | questdb | `new`/`with_auth`/`from_config` | base_url | 2 | Storage | `transaction` 常量错 | 否 | 9 | +9 | 18 / 19 |
-| s3 | Task 10 | Storage | s3 | **只有 `from_config`** | endpoint, region, access_key, secret_key | 4 | **Cache** | 无 | **是** | 17 | +8 | 25 / 26 |
+| s3 | Task 10 | Storage | s3 | **只有 `from_config`** | endpoint, region, access_key, secret_key | 4 | **Cache** | 无 | **是** | 17 | +9 | 26 / 27 |
 | mongodb | Task 11 | Document | mongodb | **只有 `from_config`（async）** | url, database | 4 | Storage | bson 前置转换 | 否 | 8 | +6 | 14 / 15 |
 
 > **本表的「新增」列在 2026-10-08 被整体 +1**：初稿写于 `Some(0)`=不限并发与
@@ -2447,7 +2447,7 @@ async fn transaction_error_does_not_trip_the_breaker() {
 | 要包的方法 | `put` / `get` / `delete` / `list`（**整个翻页循环一个预算**） |
 | **不包** | `object_path` / `signed_request` / `check_status`（纯本地） |
 | **证人槽** | **`Cache`**（本 crate 自己是 `Storage`，不能用它当证人） |
-| 期望测试数 | 17 + 8 = **25**；`--features metrics` → **26** |
+| 期望测试数 | 17 + 9 = **26**；`--features metrics` → **27**（含补的 `list` 整调用预算用例） |
 
 **Step 1（2 分钟）基线**：期望 17 / 419。
 **Step 2（3 分钟）`Cargo.toml`**：本 crate 的 `[dev-dependencies]` 只有
@@ -2716,10 +2716,70 @@ async fn every_io_method_times_out_when_the_backend_stalls() {
 
 （`list` 的响应体是空的 —— 超时先开火，解析根本不会发生，所以不需要合法 XML。）
 
+**⚠️ 补一条计划漏掉的用例（`list` 的整调用预算，2026-10-08 lead 复核时发现无人覆盖）**：
+上面那条覆盖用例对 `list` **只打一次**，单页调用照样超时 ⇒ 「把 `guarded` 包进翻页循环里」
+**不会红**。而 `list` 的语义恰恰是「整段翻页一个预算」（本文档上方「要包的方法」列写的就是这个）。
+补：
+
+```rust
+/// **一次 `list` 只有一个预算**（罩住整段翻页）：mock 每页 600ms、前 2 页各带一个
+/// `NextContinuationToken`（之后不再带，让翻页终止），预算 1 秒 ⇒ 第 2 页（累计 1.2s）
+/// 必须整体超时。把 `guarded` 包进翻页循环里（每页一个预算）时三页各自成功、
+/// `list` 返回 `Ok(..)` ⇒ **本用例红**（`unwrap_err` on `Ok`）。
+///
+/// mock 必须**最终停止发 token** —— 否则「每页一个预算」的坏实现会一直转下去，
+/// 变成挂死而不是红灯（外层 5 秒保险丝只保证它最终 FAILED，但要等 5 秒且掩盖形态）。
+///
+/// 体必须能被 `parse_list_xml` 解析（它只认 `<Key>` 与 `<NextContinuationToken>`，
+/// 见 `ecat-data-s3/src/xml.rs:7-63`）—— 空体在这里不够用，同 T0-F 的警示。
+#[tokio::test]
+async fn whole_call_budget_covers_every_page_in_list() {
+    let url = spawn_paged(2, Duration::from_millis(600)).await;
+    let c = client_at(&url, 1, None);
+    assert_times_out(
+        "list(翻页)",
+        ecat_data::StorageClient::list(&c, "bucket", "p"),
+    )
+    .await;
+}
+
+/// 「每页 `delay` 之后回一页 ListBucketResult」的 mock：**前 `pages_with_token` 页**
+/// 各带一个 token，之后不再带。
+async fn spawn_paged(pages_with_token: usize, delay: Duration) -> String {
+    let seen = Arc::new(AtomicUsize::new(0));
+    let app = axum::Router::new().fallback(move |_req: axum::http::Request<axum::body::Body>| {
+        let seen = Arc::clone(&seen);
+        async move {
+            let i = seen.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(delay).await;
+            let body = if i < pages_with_token {
+                format!(
+                    "<ListBucketResult><Contents><Key>k{i}</Key></Contents>\
+                     <IsTruncated>true</IsTruncated>\
+                     <NextContinuationToken>t{i}</NextContinuationToken></ListBucketResult>"
+                )
+            } else {
+                format!("<ListBucketResult><Contents><Key>k{i}</Key></Contents></ListBucketResult>")
+            };
+            axum::response::Response::new(axum::body::Body::from(body))
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+```
+
+红探针（专属）：把 `guarded` 从 `list` 的方法体挪到翻页循环**内部** ⇒ 只有本用例红
+（`spawn_paged` 第 3 页不带 token，坏实现 3×600ms 后返回 `Ok`）。
+
 `mod resilience;` 加在 `src/tests.rs` 第一行。
 
-**Step 10（3 分钟）跑测试**：期望 **25 passed**；`--features metrics` → **26 passed**
-（`cargo test -p ecat-data-s3 --features metrics`）。**17 → 25 的数字必须精确对上**；
+**Step 10（3 分钟）跑测试**：期望 **26 passed**；`--features metrics` → **27 passed**
+（`cargo test -p ecat-data-s3 --features metrics`）。**17 → 26 的数字必须精确对上**；
 对不上先看 `signing.rs` / `xml.rs` 的 8 条是否还在跑。
 **Step 11（5 分钟）空验收自证**：Task 1 表 + 本 crate 专属：
 (a) 见证槽写错成 `Storage` ⇒ `put_times_out_…` 在**单独跑**时可能仍绿（本 crate 自己会写 Storage），
