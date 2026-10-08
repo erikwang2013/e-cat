@@ -3252,12 +3252,12 @@ mkdir -p docs/superpowers/checklists
 3. `## 3. 加 Breaker 字段` —— 逐实例一个 `Arc<Breaker>`、`state()` 给路由用、`opened_total()` 给指标用、`guarded` 里闭包按需构造 future。
 4. `## 4. 注册指标` —— 三个指标名 + 维度 + 数据源表；**`collector` 在 `ecat-metrics`，本 crate 只写 ~15 行注册**（`[features] metrics = ["dep:ecat-metrics"]`，**不要**再各建 collector —— 会撞 `AlreadyReg`，见「出入 11」）；`backend` 标签值取**产品级名**（`"redis"` / `"clickhouse"`；一个后端有两条 I/O 路径时按路径各出一份，如 `"clickhouse-tsdb"`）。⚠️ **与 spec 的差异要写明**：spec §4 写的是类别名（`rdbms`/`cache`/…），**实际约定是产品名** —— 告警规则**必须按产品名写**（`backend="redis"`），照 spec 写永远匹配不到。另：指标标签是**产品名**、错误里的 `reason` 是**类别** slug（`"cache"`），两者粒度不同是有意的（见 `BackendKind::slug()`）。附一句「为什么不能照抄批次 4 的每 crate 一份」。
 5. `## 5. 加一条超时测试` —— 判据三选一（按后端的可测性）：①有 HTTP 接口 → axum mock + 延迟（ClickHouse 模式）；②有原生连接 → 假 `TcpListener` 装死（mssql 模式）；③内层可替身 → 假 impl + `future::pending()`。**必须是端到端**（打真实方法），不能只测 `run_with_timeout` 本身。⚠️ **若该测试要断言「计数落到了正确的槽」，证人槽必须是本测试二进制内没有任何其它用例会写的槽** —— 否则 libtest 并行调度时别的用例的 `+1` 会插进你的观测窗口，**必现红**（本批在 Redis 与 ClickHouse 各踩一次：ClickHouse 实测 3/3 红、`--test-threads=1` 恒绿）。加用例前先 `grep -rn 'BackendKind::<槽>'` 确认；**不要**用加锁串行化来绕（那只护住当前这几条用例，将来加一条写同一槽的用例 flake 会原样回来，且会被 5b 抄 12 遍）。
-6. `## 6. 加一条熔断测试` —— 连续失败后断言**两件事**：`state() == Open` **且** 下一次调用**不等满超时**就返回（时间断言）。只断言 `is_err()` 是空验收。
+6. `## 6. 加一条熔断测试` —— 连续失败后断言**两件事**：`state() == Open` **且** 下一次调用**不等满超时**就返回（时间断言）。只断言 `is_err()` 是空验收。**判据要选准**（Task 4 复核用 A/B 探针实测）：**严格判据是 `err.code == <熔断拒绝码>`**（如 `Unavailable`）—— 它只能由熔断器在**调内层之前**拒绝产生，crate 内无其它生产者，**严格强于墙钟**；而「不等满超时」的**墙钟断言是冗余佐证**（把它删掉测试仍绿），且是全套里唯一对调度抖动敏感的断言。语义判据必写；墙钟断言可留作直观信号，但别当唯一依据。
 
 **外加两节**：
 
-7. `## 7. 已知陷阱` —— 至少收录：`0` 是禁用不是零超时；默认实现的方法不要包（会把「用法错」记成后端故障）；常量错误返回的方法（如 ClickHouse 的 `transaction()`）不要包；`from_config` 已有的 reqwest 内层超时要写进 rustdoc；`--features metrics` 才能编译到指标代码；新建 `.rs` 必须在父模块加 `mod`。
-8. `## 8. 验收命令` —— 每个 crate 的 `cargo test -p <crate>`、`--features metrics`、`cargo fmt --all -- --check`、`cargo clippy -p <crate> --all-targets --features metrics -- -D warnings`、行数复核 `awk` 一行命令。
+7. `## 7. 已知陷阱` —— 至少收录：`0` 是禁用不是零超时；默认实现的方法不要包（会把「用法错」记成后端故障）；常量错误返回的方法（如 ClickHouse 的 `transaction()`）不要包；`from_config` 已有的 reqwest 内层超时要写进 rustdoc；`--features metrics` 才能编译到指标代码；新建 `.rs` 必须在父模块加 `mod`（**且别把「加了 mod 未建文件」的中间态留到提交那一刻** —— 它会让别人的 `fmt --all` 报 `failed to resolve mod`）；**假服务端/假连接的解析器要写清能力边界**（本批 Redis 的 `drain_commands` 靠扫 buffer 首个 `*` 切命令，**遇到含 `*` 的二进制 bulk value 会错位** —— 当前输入固定故无影响，5b 抄它时须跳过 bulk 内容或在注释里写明限制，别让一个只在特定 payload 下失效的解析器看起来是通用的）。
+8. `## 8. 验收命令` —— 每个 crate 的 `cargo test -p <crate>`、`--features metrics`、`cargo fmt -p <crate> -- --check`（⚠️ **任务级闸门一律用 `-p <crate>`，不要用 `--all`** —— 多 agent 并行时 `--all` 会排版别人正在飞的半成品；只有 Task 8 的**最终**闸门才用 `--all`，且那一刻应确认没有别人在同一工作区）、`cargo clippy -p <crate> --all-targets --features metrics -- -D warnings`、行数复核 `awk` 一行命令。
 
 - [ ] **Step 2: 自检 —— checklist 里的每一节，本批都有对应的落地文件**
 
