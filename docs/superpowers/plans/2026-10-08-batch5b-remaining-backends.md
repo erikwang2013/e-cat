@@ -175,7 +175,7 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 | crate | 例外 |
 |-------|------|
 | `ecat-data-s3` | dev-deps **没有 axum**，且 tokio 是 `["macros", "rt"]` ⇒ 改成 `axum.workspace = true` + `tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }`（S3 走模式 ① 需要 axum；既有的裸 socket 测试**不动**） |
-| `ecat-data-mongodb` | **非 HTTP**：不加 `tokio/sync`（无信号量），要加 `ecat-circuit-breaker.workspace = true` 与 `ecat-metrics` optional；dev tokio 从 `["macros","rt"]` 改成 `["macros","rt","net","time"]` |
+| `ecat-data-mongodb` | **非 HTTP**：不加 `tokio/sync`（无信号量），要加 `ecat-circuit-breaker.workspace = true` 与 `ecat-metrics` optional；dev tokio 从 `["macros","rt"]` 改成 **`["macros","rt","time"]`** —— **不要 `net`**（Task 11 实测：本 crate 走模式 ③ `future::pending()`，**没有 mock 监听器**，`net` 是多余的；本表初稿与 Task 11 Step 2 冲突，以 Step 2 为准）。另加一行注释说明「本 crate 没有 tokio/sync：并发背压交给驱动连接池」，免得下一个人「顺手补齐」 |
 
 自证：`grep -c 'ecat-metrics' ecat-data-<crate>/Cargo.toml` 期望 **4** —— 依赖行 + feature 行
 **之外还有两行注释**也含该串（Task 1 实测：arangodb 4、5a 的 redis / clickhouse 也是 4；
