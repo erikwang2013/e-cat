@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | Optional: URL-embedded authentication (paired with username) |
 | `max_connections` | `u32` | `10` | Maximum number of connections in the pool |
 | `min_connections` | `u32` | `0` | Idle-floor connection count; clamped to ≤ `max_connections` |
-| `acquire_timeout_secs` | `u64` | `30` | Timeout spent waiting for a connection |
+| `acquire_timeout_secs` | `u64` | `30` | Timeout spent waiting for a connection; **`0` = time out immediately** (fails if no connection is free), the opposite of `0` = disabled in `query_timeout_secs` |
 | `idle_timeout_secs` | `u64` | `600` | Reclaim idle connections after this |
 | `max_lifetime_secs` | `u64` | `1800` | Maximum lifetime of a connection |
 | `query_timeout_secs` | `u64` | `30` | Per-query timeout; **0 = disabled** |
@@ -231,12 +231,22 @@ Real `DATE` / `TIMESTAMP` columns in PG / MySQL are likewise presented as RFC333
 redis:
   url: "redis://host:6379"
   # password: "auth_token"  # 可选
+  # query_timeout_secs: 30     # optional: per-command timeout, 0 = disabled
+  # breaker: {}                # optional: breaker config, omitted = conservative defaults (0.5 / 30s / open 10s)
 ```
 
-| Field | Type | Notes |
-|------|------|------|
-| `url` | `String` | Redis connection URL |
-| `password` | `Option<String>` | Optional: Redis AUTH password |
+| Field | Type | Default | Notes |
+|------|------|--------|------|
+| `url` | `String` | — | Redis connection URL |
+| `password` | `Option<String>` | `None` | Optional: Redis AUTH password |
+| `query_timeout_secs` | `Option<u64>` | `30` | Per-command timeout in seconds; **`0` = disabled** |
+| `breaker` | `Option<BreakerConfig>` | conservative defaults | Breaker thresholds and window; fields may be omitted, `breaker: {}` means all defaults |
+
+**Capability boundary**: this client uses a `MultiplexedConnection` (one TCP connection serving all concurrency), **not a connection pool** — better than a pool for cache workloads: fewer connections and fewer round trips. The cost is that **stateful command sequences cannot use it**: `MULTI`/`EXEC` transactions, `WATCH`, `SUBSCRIBE` and blocking commands need an exclusive connection — under multiplexing they would interleave with other commands. When you need one, open a dedicated connection with `redis::Client::get_async_connection()`.
+
+**Timeouts**: `query_timeout_secs: 0` in the config means **disabled** (not "time out after 0 seconds"); the 30-second default applies only when the field is omitted. At the library level, `run_with_timeout(kind, Some(Duration::ZERO), fut)` is the opposite — that **times out immediately** (tokio polls the inner future first, so an already-ready future still succeeds). The two "0"s mean different things; don't copy the config value when calling the library function directly.
+
+**The breaker is on by default** — with conservative thresholds (failure ratio 0.5, window 30 s, half-open probes 3, open 10 s) it opens only under sustained failure. **There is currently no master switch**: `BreakerConfig` has only those four threshold fields and no `enabled`; writing `{"enabled": false}` just yields a deserialization error. To really disable it, push the thresholds beyond reach (e.g. `failure_ratio: 1.1`).
 
 ### Memcached — MemcachedConfig
 
@@ -262,6 +272,9 @@ clickhouse:
   database: "default"
   # username: "default"   # 可选
   # password: "secret"    # 可选
+  # query_timeout_secs: 30  # optional: per-call timeout, 0 = disabled
+  # breaker: {}             # optional: breaker config, omitted = conservative defaults (0.5 / 30s / open 10s)
+  # max_concurrency: 32     # optional: concurrency limit (this crate's semaphore)
 ```
 
 | Field | Type | Default | Notes |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | Database name |
 | `username` | `Option<String>` | `None` | Optional: HTTP Basic Auth username |
 | `password` | `Option<String>` | `None` | Optional: HTTP Basic Auth password |
+| `query_timeout_secs` | `Option<u64>` | `30` | Per-call timeout in seconds; **`0` = disabled** (same as Redis) |
+| `breaker` | `Option<BreakerConfig>` | conservative defaults | Breaker thresholds and window; likewise no `enabled` master switch |
+| `max_concurrency` | `Option<usize>` | `32` | Concurrency limit; **this crate's own semaphore**, not a reqwest knob (reqwest only has `pool_max_idle_per_host` — connections kept idle, not a cap) |
+
+**Two layers of timeout**: the `reqwest::Client` built by `from_config` (`ecat-tls`) carries its own 5 s connect timeout + 30 s total timeout, and `query_timeout_secs` is the **outer** budget — when both are present, **whichever fires first wins**; when the inner one fires, the error is `RdbmsError::Database` and is **not counted** in `ecat_outbound_timeouts_total` (the counter for outer timeouts, `metrics` feature). `new` / `with_auth` use a bare `reqwest::Client::new()` with no inner timeout.
 
 ### QuestDB — QuestdbConfig
 

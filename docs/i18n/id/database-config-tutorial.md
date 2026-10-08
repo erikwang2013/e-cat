@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | Opsional: autentikasi tertanam di URL (berpasangan dengan username) |
 | `max_connections` | `u32` | `10` | Jumlah maksimum koneksi dalam pool |
 | `min_connections` | `u32` | `0` | Jumlah koneksi minimum yang dijaga; dijepit ke ≤ `max_connections` |
-| `acquire_timeout_secs` | `u64` | `30` | Batas waktu menunggu koneksi |
+| `acquire_timeout_secs` | `u64` | `30` | Batas waktu menunggu koneksi; **`0` = timeout seketika** (gagal bila tidak ada koneksi bebas), kebalikan dari `0` = nonaktif di `query_timeout_secs` |
 | `idle_timeout_secs` | `u64` | `600` | Daur ulang koneksi menganggur |
 | `max_lifetime_secs` | `u64` | `1800` | Masa hidup maksimum koneksi |
 | `query_timeout_secs` | `u64` | `30` | Timeout per kueri; **0 = nonaktif** |
@@ -231,12 +231,22 @@ Kolom `DATE` / `TIMESTAMP` asli di PG / MySQL juga disajikan sebagai string RFC3
 redis:
   url: "redis://host:6379"
   # password: "auth_token"  # 可选
+  # query_timeout_secs: 30     # opsional: timeout per perintah, 0 = nonaktif
+  # breaker: {}                # opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
 ```
 
-| Kolom | Tipe | Keterangan |
-|------|------|------|
-| `url` | `String` | URL koneksi Redis |
-| `password` | `Option<String>` | Opsional: kata sandi AUTH Redis |
+| Kolom | Tipe | Nilai default | Keterangan |
+|------|------|--------|------|
+| `url` | `String` | — | URL koneksi Redis |
+| `password` | `Option<String>` | `None` | Opsional: kata sandi AUTH Redis |
+| `query_timeout_secs` | `Option<u64>` | `30` | Timeout per perintah dalam detik; **`0` = nonaktif** |
+| `breaker` | `Option<BreakerConfig>` | default konservatif | Ambang dan jendela breaker; kolom boleh dihilangkan, `breaker: {}` berarti semua default |
+
+**Batas kemampuan**: client ini memakai `MultiplexedConnection` (satu koneksi TCP melayani semua konkurensi), **bukan connection pool** — untuk beban cache ini lebih baik daripada pool: koneksi dan round-trip lebih sedikit. Harganya: **rangkaian perintah stateful tidak bisa memakainya** — transaksi `MULTI`/`EXEC`, `WATCH`, `SUBSCRIBE`, dan perintah blocking butuh koneksi eksklusif; di bawah multiplexing perintah-perintah itu akan berselang-seling dengan perintah lain. Bila perlu, buka koneksi khusus dengan `redis::Client::get_async_connection()`.
+
+**Timeout**: `query_timeout_secs: 0` di konfigurasi berarti **nonaktif** (bukan «timeout setelah 0 detik»); default 30 detik hanya berlaku bila kolom dihilangkan. Di tingkat library, `run_with_timeout(kind, Some(Duration::ZERO), fut)` justru sebaliknya — itu **langsung timeout** (tokio lebih dulu men-poll future dalam, jadi future yang sudah siap tetap berhasil). Kedua «0» itu berbeda arti; jangan meniru nilai konfigurasi saat memanggil fungsi library secara langsung.
+
+**Breaker aktif secara default** — dengan ambang konservatif (rasio gagal 0.5, jendela 30 detik, probe half-open 3, terbuka 10 detik) ia hanya membuka saat gagal terus-menerus. **Saat ini tidak ada sakelar utama**: `BreakerConfig` hanya punya keempat kolom ambang itu, tanpa `enabled`; menulis `{"enabled": false}` hanya menghasilkan galat deserialisasi. Untuk benar-benar menonaktifkannya, jauhkan ambangnya dari jangkauan (mis. `failure_ratio: 1.1`).
 
 ### Memcached — MemcachedConfig
 
@@ -262,6 +272,9 @@ clickhouse:
   database: "default"
   # username: "default"   # 可选
   # password: "secret"    # 可选
+  # query_timeout_secs: 30  # opsional: timeout per panggilan, 0 = nonaktif
+  # breaker: {}             # opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
+  # max_concurrency: 32     # opsional: batas konkurensi (semaphore crate ini)
 ```
 
 | Kolom | Tipe | Nilai default | Keterangan |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | Nama database |
 | `username` | `Option<String>` | `None` | Opsional: nama pengguna HTTP Basic Auth |
 | `password` | `Option<String>` | `None` | Opsional: kata sandi HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | `30` | Timeout per panggilan dalam detik; **`0` = nonaktif** (sama seperti Redis) |
+| `breaker` | `Option<BreakerConfig>` | default konservatif | Ambang dan jendela breaker; juga tanpa sakelar utama `enabled` |
+| `max_concurrency` | `Option<usize>` | `32` | Batas konkurensi; **semaphore milik crate ini sendiri**, bukan tombol reqwest (reqwest hanya punya `pool_max_idle_per_host` — koneksi menganggur yang disimpan, bukan batas atas) |
+
+**Dua lapis timeout**: `reqwest::Client` yang dibuat `from_config` (`ecat-tls`) membawa timeout koneksi 5 detik + total 30 detik sendiri; `query_timeout_secs` adalah anggaran **luar** — bila keduanya aktif, **yang lebih dulu habis menang**; bila lapis dalam yang habis, galatnya `RdbmsError::Database` dan **tidak dihitung** di `ecat_outbound_timeouts_total` (counter untuk timeout luar, feature `metrics`). `new` / `with_auth` memakai `reqwest::Client::new()` telanjang, tanpa timeout dalam.
 
 ### QuestDB — QuestdbConfig
 

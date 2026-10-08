@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | 可选：嵌入 URL 认证（与 username 配合） |
 | `max_connections` | `u32` | `10` | 池内最大连接数 |
 | `min_connections` | `u32` | `0` | 保底连接数；会被夹到 ≤ `max_connections` |
-| `acquire_timeout_secs` | `u64` | `30` | 等连接的超时 |
+| `acquire_timeout_secs` | `u64` | `30` | 等连接的超时；**`0` = 立即超时**（拿不到连接就失败），与 `query_timeout_secs` 的 `0` = 禁用相反 |
 | `idle_timeout_secs` | `u64` | `600` | 空闲连接回收 |
 | `max_lifetime_secs` | `u64` | `1800` | 连接最长存活 |
 | `query_timeout_secs` | `u64` | `30` | 单次查询超时；**0 = 禁用** |
@@ -230,13 +230,23 @@ PG / MySQL 的真实 `DATE` / `TIMESTAMP` 列同样以 RFC3339 UTC 字符串呈�
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"     # 可选
+  # query_timeout_secs: 30     # 可选：单次命令超时，0 = 禁用
+  # breaker: {}                # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `url` | `String` | Redis 连接 URL |
-| `password` | `Option<String>` | 可选：Redis AUTH 密码 |
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `url` | `String` | — | Redis 连接 URL |
+| `password` | `Option<String>` | `None` | 可选：Redis AUTH 密码 |
+| `query_timeout_secs` | `Option<u64>` | `30` | 单次命令超时秒数；**`0` = 禁用** |
+| `breaker` | `Option<BreakerConfig>` | 保守默认 | 熔断阈值与窗口；可省字段，`breaker: {}` 即全默认 |
+
+**能力边界**：本 client 用 `MultiplexedConnection`（一条 TCP 服务所有并发），**不是连接池** —— 缓存负载下这比池更优：连接数与往返都更低。代价是**有状态命令序列不能用它**：`MULTI`/`EXEC` 事务、`WATCH`、`SUBSCRIBE`、阻塞命令需要独占连接，多路复用下会与其它命令交错；需要时用 `redis::Client::get_async_connection()` 另开一条专用连接。
+
+**超时**：配置里的 `query_timeout_secs: 0` 是**禁用**（不是「0 秒超时」），未配置才是默认 30 秒；库层 `run_with_timeout(kind, Some(Duration::ZERO), fut)` 则相反 —— 那是**立即超时**（tokio 先 poll 内层，已就绪的 future 仍会成功）。两个「0」含义不同，直接调库函数时别照配置填。
+
+**熔断默认开启** —— 保守阈值（失败率 0.5、窗口 30 秒、半开探测 3 次、打开 10 秒）下只在持续失败时打开。**当前没有总开关**：`BreakerConfig` 只有这四个阈值字段，没有 `enabled`，写 `{"enabled": false}` 只会得到反序列化错误。真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
 
 ### Memcached — MemcachedConfig
 
@@ -260,8 +270,11 @@ memcached:
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"     # 可选
+  # password: "secret"      # 可选
+  # query_timeout_secs: 30  # 可选：单次调用超时，0 = 禁用
+  # breaker: {}             # 可选：熔断配置，省略 = 保守默认（0.5 / 30s / 打开 10s）
+  # max_concurrency: 32     # 可选：并发上限（本 crate 的信号量）
 ```
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | 数据库名 |
 | `username` | `Option<String>` | `None` | 可选：HTTP Basic Auth 用户名 |
 | `password` | `Option<String>` | `None` | 可选：HTTP Basic Auth 密码 |
+| `query_timeout_secs` | `Option<u64>` | `30` | 单次调用超时秒数；**`0` = 禁用**（同 Redis） |
+| `breaker` | `Option<BreakerConfig>` | 保守默认 | 熔断阈值与窗口；同样没有 `enabled` 总开关 |
+| `max_concurrency` | `Option<usize>` | `32` | 并发上限；**本 crate 自己的信号量**，不是 reqwest 的旋钮（reqwest 只有 `pool_max_idle_per_host` 空闲保留数，没有最大连接数） |
+
+**两层超时**：`from_config` 建的 `reqwest::Client`（`ecat-tls`）自带 5 秒连接超时 + 30 秒总超时，`query_timeout_secs` 是**外层**预算 —— 两层都在时**谁先到谁生效**；内层那次的错误是 `RdbmsError::Database`，**不计入** `ecat_outbound_timeouts_total`（`metrics` feature 的计数器）。`new` / `with_auth` 走裸 `reqwest::Client::new()`，没有内层超时。
 
 ### QuestDB — QuestdbConfig
 

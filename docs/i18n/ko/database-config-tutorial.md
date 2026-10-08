@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | 선택: URL 내장 인증(username과 함께 사용) |
 | `max_connections` | `u32` | `10` | 풀의 최대 연결 수 |
 | `min_connections` | `u32` | `0` | 유지할 최소 연결 수; ≤ `max_connections`로 잘립니다 |
-| `acquire_timeout_secs` | `u64` | `30` | 연결을 기다리는 타임아웃 |
+| `acquire_timeout_secs` | `u64` | `30` | 연결을 기다리는 타임아웃; **`0` = 즉시 타임아웃**(빈 연결이 없으면 실패)으로, `query_timeout_secs`의 `0` = 비활성과 반대입니다 |
 | `idle_timeout_secs` | `u64` | `600` | 유휴 연결 회수 |
 | `max_lifetime_secs` | `u64` | `1800` | 연결의 최대 수명 |
 | `query_timeout_secs` | `u64` | `30` | 쿼리 단위 타임아웃; **0 = 비활성** |
@@ -231,12 +231,22 @@ PG / MySQL의 실제 `DATE` / `TIMESTAMP` 컬럼도 마찬가지로 RFC3339 UTC 
 redis:
   url: "redis://host:6379"
   # password: "auth_token"  # 선택
+  # query_timeout_secs: 30     # 선택: 명령 단위 타임아웃, 0 = 비활성
+  # breaker: {}                # 선택: 서킷 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
 ```
 
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `url` | `String` | Redis 연결 URL |
-| `password` | `Option<String>` | 선택: Redis AUTH 비밀번호 |
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `url` | `String` | — | Redis 연결 URL |
+| `password` | `Option<String>` | `None` | 선택: Redis AUTH 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | `30` | 명령 단위 타임아웃(초); **`0` = 비활성** |
+| `breaker` | `Option<BreakerConfig>` | 보수적 기본값 | 브레이커의 임계값과 윈도우; 필드는 생략 가능, `breaker: {}`는 전부 기본값 |
+
+**능력 경계**: 이 client는 `MultiplexedConnection`(TCP 연결 하나로 모든 동시성을 처리)을 사용하며 **커넥션 풀이 아닙니다** —— 캐시 부하에서는 풀보다 낫습니다: 연결 수와 왕복이 더 적습니다. 대가는 **상태가 있는 명령 시퀀스에 쓸 수 없다**는 점입니다: `MULTI`/`EXEC` 트랜잭션, `WATCH`, `SUBSCRIBE`, 블로킹 명령은 전용 연결이 필요하며, 멀티플렉싱에서는 다른 명령과 뒤섞입니다. 필요하면 `redis::Client::get_async_connection()`으로 별도 연결을 여십시오.
+
+**타임아웃**: 설정의 `query_timeout_secs: 0`은 **비활성**을 뜻합니다(«0초 만에 타임아웃»이 아닙니다). 기본 30초는 필드를 생략했을 때만 적용됩니다. 라이브러리 계층의 `run_with_timeout(kind, Some(Duration::ZERO), fut)`은 반대로 **즉시 타임아웃**입니다(tokio가 먼저 내부 future를 poll하므로 이미 준비된 future는 그대로 성공합니다). 두 «0»은 의미가 다르니, 라이브러리 함수를 직접 호출할 때 설정값을 그대로 따라 하지 마십시오.
+
+**브레이커는 기본적으로 켜져 있습니다** —— 보수적 임계값(실패율 0.5, 윈도우 30초, half-open 프로브 3, 열림 10초)에서는 지속적인 실패일 때만 열립니다. **현재 마스터 스위치는 없습니다**: `BreakerConfig`에는 이 네 가지 임계값 필드만 있고 `enabled`가 없으므로, `{"enabled": false}`를 쓰면 역직렬화 오류만 납니다. 정말 끄려면 임계값을 도달 불가능하게 밀어내야 합니다(예: `failure_ratio: 1.1`).
 
 ### Memcached — MemcachedConfig
 
@@ -262,6 +272,9 @@ clickhouse:
   database: "default"
   # username: "default"   # 선택
   # password: "secret"    # 선택
+  # query_timeout_secs: 30  # 선택: 호출 단위 타임아웃, 0 = 비활성
+  # breaker: {}             # 선택: 서킷 브레이커 설정, 생략 = 보수적 기본값 (0.5 / 30s / 열림 10s)
+  # max_concurrency: 32     # 선택: 동시성 상한 (이 crate의 세마포어)
 ```
 
 | 필드 | 타입 | 기본값 | 설명 |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | 데이터베이스 이름 |
 | `username` | `Option<String>` | `None` | 선택: HTTP Basic Auth 사용자 이름 |
 | `password` | `Option<String>` | `None` | 선택: HTTP Basic Auth 비밀번호 |
+| `query_timeout_secs` | `Option<u64>` | `30` | 호출 단위 타임아웃(초); **`0` = 비활성** (Redis와 동일) |
+| `breaker` | `Option<BreakerConfig>` | 보수적 기본값 | 브레이커의 임계값과 윈도우; 여기에도 `enabled` 마스터 스위치는 없습니다 |
+| `max_concurrency` | `Option<usize>` | `32` | 동시성 상한; **이 crate 자체의 세마포어**이며 reqwest의 손잡이가 아닙니다 (reqwest에는 `pool_max_idle_per_host` — 유휴 연결 유지 수만 있고 상한은 없습니다) |
+
+**두 계층의 타임아웃**: `from_config`가 만드는 `reqwest::Client`(`ecat-tls`)는 자체 5초 연결 + 30초 총 타임아웃을 가지며, `query_timeout_secs`는 **바깥** 예산입니다 —— 둘 다 있으면 **먼저 도달한 쪽이 적용**됩니다. 안쪽이 먼저 끝난 경우의 오류는 `RdbmsError::Database`이고 `ecat_outbound_timeouts_total`(바깥 타임아웃 counter, `metrics` feature)에 **집계되지 않습니다**. `new` / `with_auth`는 순수 `reqwest::Client::new()`를 써서 안쪽 타임아웃이 없습니다.
 
 ### QuestDB — QuestdbConfig
 

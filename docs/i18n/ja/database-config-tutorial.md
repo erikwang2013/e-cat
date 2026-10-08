@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | オプション：URL 埋め込み認証（username と併用） |
 | `max_connections` | `u32` | `10` | プール内の最大接続数 |
 | `min_connections` | `u32` | `0` | 維持する最少接続数；≤ `max_connections` に切り詰められます |
-| `acquire_timeout_secs` | `u64` | `30` | 接続取得の待ち時間 |
+| `acquire_timeout_secs` | `u64` | `30` | 接続取得の待ち時間；**`0` = 即時タイムアウト**（空き接続がなければ失敗）。`query_timeout_secs` の `0` = 無効とは逆です |
 | `idle_timeout_secs` | `u64` | `600` | アイドル接続の回収 |
 | `max_lifetime_secs` | `u64` | `1800` | 接続の最長生存時間 |
 | `query_timeout_secs` | `u64` | `30` | クエリ単位のタイムアウト；**0 = 無効** |
@@ -231,12 +231,22 @@ PG / MySQL の実際の `DATE` / `TIMESTAMP` 列も同様に RFC3339 UTC 文字�
 redis:
   url: "redis://host:6379"
   # password: "auth_token"  # 可选
+  # query_timeout_secs: 30     # オプション：コマンド単位のタイムアウト、0 = 無効
+  # breaker: {}                # オプション：サーキットブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
 ```
 
-| フィールド | 型 | 説明 |
-|------|------|------|
-| `url` | `String` | Redis 接続 URL |
-| `password` | `Option<String>` | オプション：Redis AUTH パスワード |
+| フィールド | 型 | デフォルト値 | 説明 |
+|------|------|--------|------|
+| `url` | `String` | — | Redis 接続 URL |
+| `password` | `Option<String>` | `None` | オプション：Redis AUTH パスワード |
+| `query_timeout_secs` | `Option<u64>` | `30` | コマンド単位のタイムアウト秒数；**`0` = 無効** |
+| `breaker` | `Option<BreakerConfig>` | 保守的デフォルト | ブレーカーの閾値とウィンドウ。フィールドは省略可、`breaker: {}` は全てデフォルト |
+
+**能力の境界**：この client は `MultiplexedConnection`（1 本の TCP 接続ですべての並行処理をまかなう）を使い、**接続プールではありません** —— キャッシュ負荷ではプールより優れています：接続数もラウンドトリップも少なくなります。代償として**状態を持つコマンド列は使えません**：`MULTI`/`EXEC` トランザクション、`WATCH`、`SUBSCRIBE`、ブロッキングコマンドは専有接続が必要で、多重化の下では他のコマンドと交互に混ざってしまいます。必要なときは `redis::Client::get_async_connection()` で専用接続を開いてください。
+
+**タイムアウト**：設定の `query_timeout_secs: 0` は**無効**（「0 秒でタイムアウト」ではありません）で、30 秒のデフォルトが効くのはフィールドを省略したときだけです。ライブラリ層の `run_with_timeout(kind, Some(Duration::ZERO), fut)` は逆で、こちらは**即座にタイムアウト**します（tokio は先に内側の future を poll するため、すでに ready の future はそのまま成功します）。2 つの「0」は意味が異なります。ライブラリ関数を直接呼ぶときに設定値をそのまま真似しないでください。
+
+**ブレーカーはデフォルトで有効**です —— 保守的な閾値（失敗率 0.5、ウィンドウ 30 秒、ハーフオープン試行 3、オープン 10 秒）では、持続的な失敗のときだけ開きます。**現在、全体スイッチはありません**：`BreakerConfig` にはこの 4 つの閾値フィールドしかなく `enabled` は存在しないため、`{"enabled": false}` を書いてもデシリアライズエラーになるだけです。本当に止めたい場合は閾値を到達不可能な値にしてください（例：`failure_ratio: 1.1`）。
 
 ### Memcached — MemcachedConfig
 
@@ -262,6 +272,9 @@ clickhouse:
   database: "default"
   # username: "default"   # 可选
   # password: "secret"    # 可选
+  # query_timeout_secs: 30  # オプション：呼び出し単位のタイムアウト、0 = 無効
+  # breaker: {}             # オプション：サーキットブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
+  # max_concurrency: 32     # オプション：同時実行の上限（この crate のセマフォ）
 ```
 
 | フィールド | 型 | デフォルト値 | 説明 |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | データベース名 |
 | `username` | `Option<String>` | `None` | オプション：HTTP Basic Auth ユーザー名 |
 | `password` | `Option<String>` | `None` | オプション：HTTP Basic Auth パスワード |
+| `query_timeout_secs` | `Option<u64>` | `30` | 呼び出し単位のタイムアウト秒数；**`0` = 無効**（Redis と同じ） |
+| `breaker` | `Option<BreakerConfig>` | 保守的デフォルト | ブレーカーの閾値とウィンドウ。ここにも `enabled` の全体スイッチはありません |
+| `max_concurrency` | `Option<usize>` | `32` | 同時実行の上限；**この crate 自身のセマフォ**であり reqwest のつまみではありません（reqwest にあるのは `pool_max_idle_per_host` —— アイドル接続の保持数で、上限ではありません） |
+
+**2 層のタイムアウト**：`from_config` が作る `reqwest::Client`（`ecat-tls`）は自前の 5 秒接続 + 30 秒総タイムアウトを持ち、`query_timeout_secs` は**外側**の予算です —— 両方あるときは**先に切れた方が有効**。内側が切れた場合のエラーは `RdbmsError::Database` で、`ecat_outbound_timeouts_total`（外側タイムアウトの counter、`metrics` feature）には**計上されません**。`new` / `with_auth` は素の `reqwest::Client::new()` を使い、内側タイムアウトはありません。
 
 ### QuestDB — QuestdbConfig
 

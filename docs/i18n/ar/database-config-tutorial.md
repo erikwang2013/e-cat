@@ -142,7 +142,7 @@ sql:
 | `password` | `Option<String>` | `None` | اختياري: مصادقة مضمّنة في URL (مع username) |
 | `max_connections` | `u32` | `10` | الحد الأقصى لعدد الاتصالات في المجمّع |
 | `min_connections` | `u32` | `0` | الحد الأدنى للاتصالات المحفوظة؛ يُقيَّد إلى ≤ `max_connections` |
-| `acquire_timeout_secs` | `u64` | `30` | مهلة انتظار اتصال |
+| `acquire_timeout_secs` | `u64` | `30` | مهلة انتظار اتصال؛ **`0` = مهلة فورية** (يفشل إن لم يتوفر اتصال حر)، عكس `0` = تعطيل في `query_timeout_secs` |
 | `idle_timeout_secs` | `u64` | `600` | تحرير الاتصالات الخاملة |
 | `max_lifetime_secs` | `u64` | `1800` | أقصى عمر للاتصال |
 | `query_timeout_secs` | `u64` | `30` | مهلة الاستعلام الواحد؛ **0 = تعطيل** |
@@ -231,12 +231,22 @@ let registry = HealthRegistry::new()
 redis:
   url: "redis://host:6379"
   # password: "auth_token"  # اختياري
+  # query_timeout_secs: 30     # اختياري: مهلة لكل أمر، 0 = تعطيل
+  # breaker: {}                # اختياري: إعداد breaker، عند الحذف = الافتراضي المتحفظ (0.5 / 30s / مفتوح 10s)
 ```
 
-| الحقل | النوع | الوصف |
-|------|------|------|
-| `url` | `String` | عنوان اتصال Redis |
-| `password` | `Option<String>` | اختياري: كلمة مرور Redis AUTH |
+| الحقل | النوع | القيمة الافتراضية | الوصف |
+|------|------|--------|------|
+| `url` | `String` | — | عنوان اتصال Redis |
+| `password` | `Option<String>` | `None` | اختياري: كلمة مرور Redis AUTH |
+| `query_timeout_secs` | `Option<u64>` | `30` | مهلة الأمر الواحد بالثواني؛ **`0` = تعطيل** |
+| `breaker` | `Option<BreakerConfig>` | افتراضي متحفظ | عتبات breaker ونافذته؛ يمكن حذف الحقول، `breaker: {}` يعني كل الافتراضيات |
+
+**حدود القدرات**: يستخدم هذا client اتصال `MultiplexedConnection` (اتصال TCP واحد يخدم كل التزامن)، **وليس مجمّع اتصالات** — لحمولة التخزين المؤقت هذا أفضل من المجمّع: اتصالات وذهاب وإياب أقل. الثمن أن **تسلسلات الأوامر ذات الحالة لا يمكن استخدامه لها**: معاملات `MULTI`/`EXEC` و`WATCH` و`SUBSCRIBE` والأوامر الحاجبة تحتاج اتصالًا حصريًا؛ تحت تعدد الإرسال ستتشابك مع أوامر أخرى. عند الحاجة افتح اتصالًا مخصصًا عبر `redis::Client::get_async_connection()`.
+
+**المهلات**: `query_timeout_secs: 0` في الإعداد يعني **تعطيلًا** (وليس «مهلة بعد 0 ثانية»)؛ الافتراضي 30 ثانية يُطبَّق فقط عند حذف الحقل. على مستوى المكتبة، `run_with_timeout(kind, Some(Duration::ZERO), fut)` هو العكس — ذاك **مهلة فورية** (tokio يستطلع الـfuture الداخلي أولًا، لذا الـfuture الجاهز أصلًا ينجح رغم ذلك). الـ«0»ان مختلفان في المعنى؛ لا تنسخ قيمة الإعداد عند استدعاء دالة المكتبة مباشرة.
+
+**الـbreaker مفعّل افتراضيًا** — بعتبات متحفظة (نسبة الفشل 0.5، النافذة 30 ثانية، فحوص half-open 3، مفتوح 10 ثوانٍ) لا يُفتح إلا عند الفشل المستمر. **لا يوجد حاليًا مفتاح رئيسي**: `BreakerConfig` فيه فقط حقول العتبات الأربعة، بلا `enabled`؛ كتابة `{"enabled": false}` لا تعطي إلا خطأ فك تسلسل. لتعطيله فعلًا يجب دفع العتبات إلى ما لا يمكن بلوغه (مثل `failure_ratio: 1.1`).
 
 ### Memcached — MemcachedConfig
 
@@ -262,6 +272,9 @@ clickhouse:
   database: "default"
   # username: "default"   # اختياري
   # password: "secret"    # اختياري
+  # query_timeout_secs: 30  # اختياري: مهلة لكل استدعاء، 0 = تعطيل
+  # breaker: {}             # اختياري: إعداد breaker، عند الحذف = الافتراضي المتحفظ (0.5 / 30s / مفتوح 10s)
+  # max_concurrency: 32     # اختياري: حد التزامن (سيمافور هذا الـcrate)
 ```
 
 | الحقل | النوع | القيمة الافتراضية | الوصف |
@@ -270,6 +283,11 @@ clickhouse:
 | `database` | `String` | `"default"` | اسم قاعدة البيانات |
 | `username` | `Option<String>` | `None` | اختياري: اسم مستخدم HTTP Basic Auth |
 | `password` | `Option<String>` | `None` | اختياري: كلمة مرور HTTP Basic Auth |
+| `query_timeout_secs` | `Option<u64>` | `30` | مهلة الاستدعاء الواحد بالثواني؛ **`0` = تعطيل** (كما في Redis) |
+| `breaker` | `Option<BreakerConfig>` | افتراضي متحفظ | عتبات breaker ونافذته؛ ولا يوجد هنا أيضًا مفتاح رئيسي `enabled` |
+| `max_concurrency` | `Option<usize>` | `32` | حد التزامن؛ **سيمافور هذا الـcrate نفسه**، وليس مقبضًا في reqwest (لدى reqwest فقط `pool_max_idle_per_host` — عدد الاتصالات الخاملة المحفوظة، وليس حدًا أقصى) |
+
+**طبقتان من المهلة**: عميل `reqwest::Client` الذي يبنيه `from_config` (`ecat-tls`) يحمل مهلة اتصال خاصة به 5 ثوانٍ + 30 ثانية إجمالًا؛ و`query_timeout_secs` هو الميزانية **الخارجية** — عند وجود الطبقتين **يفوز من ينتهي أولًا**؛ وإذا انتهت الداخلية فالخطأ `RdbmsError::Database` و**لا يُحتسب** في `ecat_outbound_timeouts_total` (عدّاد المهل الخارجية، ميزة `metrics`). أما `new` / `with_auth` فيستخدمان `reqwest::Client::new()` مجرّدًا بلا مهلة داخلية.
 
 ### QuestDB — QuestdbConfig
 
