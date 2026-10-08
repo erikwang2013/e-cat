@@ -1,6 +1,11 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 // 测试模块：lib.rs 的私有项通过 super::* 引用
 use super::*;
+// `TsdbClient` 的实现搬到了 `src/tsdb.rs`（脱离本模块的 `use super::*`），
+// 这里继续用 `client.write(..)` 这类简写就得自己引。
+use ecat_data::TsdbClient;
+
+mod resilience;
 
 #[test]
 fn client_constructs() {

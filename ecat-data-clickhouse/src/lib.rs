@@ -1,11 +1,39 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! ClickHouse 分析库客户端（`SqlExecutor` / `RdbmsClient` / `TsdbClient`）。
+//!
+//! # 出站韧性
+//!
+//! 两条做 I/O 的路径（`SqlExecutor` 的 `execute` / `query`，`TsdbClient` 的三个方法）
+//! 都经过 `guarded` / `guarded_tsdb`：**许可 → 熔断 → 超时**（顺序理由见批次 5a
+//! 计划的「与 spec 的出入 4」）。两条路径**共用一个** `Breaker` —— 同一个服务器、
+//! 同一个故障域。`transaction()`（常量错误、不含 I/O）与 `_with` 系列（落到 trait
+//! 默认实现）**不包**，见「出入 6/7」。
+//!
+//! # 超时分两层
+//!
+//! 本 client 的 `query_timeout_secs` 是外层预算；[`ecat_tls::build_reqwest_client`]
+//! 建出的连接另外自带 reqwest 的 5 秒连接超时 + 30 秒总超时。`from_config` 走的是
+//! 后者，所以实际预算是**两层取先到者**（`new` / `with_auth` 用裸
+//! `reqwest::Client::new()`，没有内层超时）。
+mod tsdb;
+
 use async_trait::async_trait;
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
 use ecat_data::{
-    DataPoint, Dialect, FieldValue, RdbmsClient, RdbmsError, Row, SqlExecutor, TsdbClient,
+    BackendKind, DataPoint, Dialect, FieldValue, RdbmsClient, RdbmsError, Row, SqlExecutor,
+    breaker_error_to_backend_error, run_with_timeout,
 };
 use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ClickhouseConfig {
@@ -18,6 +46,20 @@ pub struct ClickhouseConfig {
     pub password: Option<String>,
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次调用超时秒数。`0` = 禁用；未配置 = 30 秒。
+    ///
+    /// 这是**外层**预算，与 reqwest 自带的总超时（`from_config` 建的 client 有
+    /// 30 秒、`new` / `with_auth` 没有）取先到者。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+    /// 并发上限。reqwest **只有** `pool_max_idle_per_host`（空闲保留数），
+    /// 没有「最大总连接数」—— 默认无上限意味着并发无背压。
+    /// 未配置 = 32。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 fn default_database() -> String {
@@ -37,6 +79,20 @@ pub struct ClickhouseClient {
     // 记录建表时间，超过 create_ttl 后重新 CREATE（CREATE IF NOT EXISTS 幂等）。
     created: std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
     create_ttl: std::time::Duration,
+    query_timeout: Option<Duration>,
+    /// 两条 I/O 路径（`SqlExecutor` / `TsdbClient`）**共用**一个 ——
+    /// 同一个服务器、同一个故障域，两条路径各判一次会把故障域切错。
+    breaker: Arc<Breaker>,
+    semaphore: Arc<Semaphore>,
+}
+
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
+    }
 }
 
 impl ClickhouseClient {
@@ -49,6 +105,9 @@ impl ClickhouseClient {
             password: None,
             created: std::sync::Mutex::new(std::collections::HashMap::new()),
             create_ttl: CREATE_TTL,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+            semaphore: Arc::new(Semaphore::new(32)),
         }
     }
 
@@ -66,6 +125,9 @@ impl ClickhouseClient {
             password: Some(password.into()),
             created: std::sync::Mutex::new(std::collections::HashMap::new()),
             create_ttl: CREATE_TTL,
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+            semaphore: Arc::new(Semaphore::new(32)),
         }
     }
 
@@ -80,7 +142,56 @@ impl ClickhouseClient {
             password: cfg.password,
             created: std::sync::Mutex::new(std::collections::HashMap::new()),
             create_ttl: CREATE_TTL,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
         })
+    }
+
+    /// 本 client 的熔断器（`metrics` feature 用）。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> SemaphorePermit<'_> {
+        self.semaphore
+            .acquire()
+            .await
+            .expect("semaphore is never closed")
+    }
+
+    /// 一次出站调用的外壳（`RdbmsError` 路径）。
+    ///
+    /// **顺序：许可 → 熔断 → 超时**（理由见批次 5a 计划的「与 spec 的出入 4」）：
+    /// - 许可在最外：还在排队的请求**还没碰后端**，不该计入熔断失败、也不该被超时掐断
+    /// - 熔断在超时外：超时是一次普通的 `Err`，会**如实计入**熔断窗口 ——
+    ///   否则卡死的后端永远打不开熔断器
+    pub(crate) async fn guarded<F, T: 'static>(
+        &self,
+        kind: BackendKind,
+        fut: F,
+    ) -> Result<T, RdbmsError>
+    where
+        F: std::future::Future<Output = Result<T, RdbmsError>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(kind, self.query_timeout, fut))
+            .await
+            .map_err(ecat_data::map_breaker_error)
+    }
+
+    /// 同上的 `ecat_errors::Error` 路径（`TsdbClient`）。
+    pub(crate) async fn guarded_tsdb<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Tsdb, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "clickhouse"))
     }
 
     /// 建表缓存缺失或已过期（需要重新 CREATE）。
@@ -229,60 +340,66 @@ fn build_insert_body(points: &[&DataPoint], tag_keys: &[String], field_keys: &[S
 #[async_trait]
 impl SqlExecutor for ClickhouseClient {
     async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
-        let resp = self
-            .post(sql, &[("send_progress_in_http_headers", "1".to_string())])
-            .send()
-            .await
-            .map_err(|e| RdbmsError::Database(format!("ch: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(RdbmsError::Database(resp.text().await.unwrap_or_default()));
-        }
-        // ClickHouse reports written/result rows in the X-ClickHouse-Summary
-        // response header (enabled via send_progress_in_http_headers=1).
-        // Falls back to 0 when the server does not send the header.
-        let affected = resp
-            .headers()
-            .get("x-clickhouse-summary")
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-            .and_then(|v| {
-                v.get("written_rows")
-                    .and_then(|n| n.as_str())
-                    .map(String::from)
-            })
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0);
-        Ok(affected)
+        self.guarded(BackendKind::Rdbms, async {
+            let resp = self
+                .post(sql, &[("send_progress_in_http_headers", "1".to_string())])
+                .send()
+                .await
+                .map_err(|e| RdbmsError::Database(format!("ch: {e}")))?;
+            if !resp.status().is_success() {
+                return Err(RdbmsError::Database(resp.text().await.unwrap_or_default()));
+            }
+            // ClickHouse reports written/result rows in the X-ClickHouse-Summary
+            // response header (enabled via send_progress_in_http_headers=1).
+            // Falls back to 0 when the server does not send the header.
+            let affected = resp
+                .headers()
+                .get("x-clickhouse-summary")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                .and_then(|v| {
+                    v.get("written_rows")
+                        .and_then(|n| n.as_str())
+                        .map(String::from)
+                })
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            Ok(affected)
+        })
+        .await
     }
 
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        let resp = self
-            .post(sql, &[("default_format", "JSONEachRow".to_string())])
-            .send()
-            .await
-            .map_err(|e| RdbmsError::Database(format!("ch query: {e}")))?;
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| RdbmsError::Database(format!("ch read: {e}")))?;
-        let mut rows = Vec::new();
-        for line in text.lines() {
-            if line.trim().is_empty() {
-                continue;
+        self.guarded(BackendKind::Rdbms, async {
+            let resp = self
+                .post(sql, &[("default_format", "JSONEachRow".to_string())])
+                .send()
+                .await
+                .map_err(|e| RdbmsError::Database(format!("ch query: {e}")))?;
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| RdbmsError::Database(format!("ch read: {e}")))?;
+            let mut rows = Vec::new();
+            for line in text.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let v = serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
+                    RdbmsError::Database(format!(
+                        "ch query: unparseable row (first 200 bytes shown): {e}: {}",
+                        line.chars().take(200).collect::<String>()
+                    ))
+                })?;
+                if let Some(obj) = v.as_object() {
+                    let cols: Vec<String> = obj.keys().cloned().collect();
+                    let vals: Vec<serde_json::Value> = obj.values().cloned().collect();
+                    rows.push(Row::new(cols, vals));
+                }
             }
-            let v = serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
-                RdbmsError::Database(format!(
-                    "ch query: unparseable row (first 200 bytes shown): {e}: {}",
-                    line.chars().take(200).collect::<String>()
-                ))
-            })?;
-            if let Some(obj) = v.as_object() {
-                let cols: Vec<String> = obj.keys().cloned().collect();
-                let vals: Vec<serde_json::Value> = obj.values().cloned().collect();
-                rows.push(Row::new(cols, vals));
-            }
-        }
-        Ok(rows)
+            Ok(rows)
+        })
+        .await
     }
 
     /// ClickHouse SQL 无 `Dialect` 对应变体，按文档契约回退到 [`Dialect::Standard`]。
@@ -297,152 +414,6 @@ impl RdbmsClient for ClickhouseClient {
         Err(RdbmsError::Database(
             "ClickHouse does not support transactions".into(),
         ))
-    }
-}
-
-#[async_trait]
-impl TsdbClient for ClickhouseClient {
-    async fn write(&self, points: &[DataPoint]) -> Result<(), Error> {
-        // 按 measurement 分组，保持首见顺序；分组只存引用，避免克隆整点
-        let mut order: Vec<&str> = Vec::new();
-        let mut groups: std::collections::HashMap<&str, Vec<&DataPoint>> =
-            std::collections::HashMap::new();
-        for p in points {
-            if !groups.contains_key(p.measurement.as_str()) {
-                order.push(&p.measurement);
-            }
-            groups.entry(&p.measurement).or_default().push(p);
-        }
-
-        for measurement in order {
-            let pts = &groups[&measurement];
-            // 列集合取本批全部点；同名 field 类型不一致时先见者胜（文档注明）
-            let tag_keys: Vec<String> = pts
-                .iter()
-                .flat_map(|p| p.tags.keys().cloned())
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect();
-            let field_cols: Vec<(String, &'static str)> = {
-                let mut m: std::collections::BTreeMap<String, &'static str> =
-                    std::collections::BTreeMap::new();
-                for p in pts {
-                    for (k, v) in &p.fields {
-                        m.entry(k.clone()).or_insert_with(|| field_type(v));
-                    }
-                }
-                m.into_iter().collect()
-            };
-            let field_keys: Vec<String> = field_cols.iter().map(|(k, _)| k.clone()).collect();
-
-            // 建表（按 client 缓存 + TTL；CREATE IF NOT EXISTS 幂等）。
-            // 列类型由首批点的字段类型决定并固定；后续批次若出现同名不同型的字段，
-            // ClickHouse 不会自动 ALTER 列，写入会以服务端错误失败（调用方需保证类型一致）。
-            if self.table_needs_create(measurement) {
-                self.create_table(measurement, &tag_keys, &field_cols)
-                    .await?;
-            }
-
-            let body = build_insert_body(pts, &tag_keys, &field_keys);
-            let cols: Vec<String> = tag_keys
-                .iter()
-                .chain(field_keys.iter())
-                .chain(std::iter::once(&"timestamp".to_string()))
-                .map(|c| quote_ident(c))
-                .collect();
-            // JSONEachRow 数据随请求体放在语句之后（ClickHouse HTTP 接口标准用法）
-            let insert = format!(
-                "INSERT INTO {} ({}) FORMAT JSONEachRow\n{}",
-                quote_ident(measurement),
-                cols.join(", "),
-                body
-            );
-            let resp = self.post(&insert, &[]).send().await.map_err(|e| {
-                Error::new(ErrorCode::Internal, "clickhouse", format!("ch write: {e}"))
-            })?;
-            if !resp.status().is_success() {
-                let text = resp.text().await.unwrap_or_default();
-                // 表被外部 drop/改表：清缓存重新建表后重试一次
-                if text.contains("doesn't exist") || text.contains("Unknown table") {
-                    self.created
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(measurement);
-                    self.create_table(measurement, &tag_keys, &field_cols)
-                        .await?;
-                    let resp = self.post(&insert, &[]).send().await.map_err(|e| {
-                        Error::new(ErrorCode::Internal, "clickhouse", format!("ch write: {e}"))
-                    })?;
-                    if !resp.status().is_success() {
-                        return Err(Error::new(
-                            ErrorCode::Internal,
-                            "clickhouse",
-                            format!("ch write failed: {}", resp.text().await.unwrap_or_default()),
-                        ));
-                    }
-                } else {
-                    return Err(Error::new(
-                        ErrorCode::Internal,
-                        "clickhouse",
-                        format!("ch write failed: {text}"),
-                    ));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn query(&self, query: &str) -> Result<serde_json::Value, Error> {
-        let resp = self
-            .post(query, &[("default_format", "JSONEachRow".to_string())])
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "clickhouse", format!("ch query: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(Error::new(
-                ErrorCode::Internal,
-                "clickhouse",
-                format!("ch query failed: {}", resp.text().await.unwrap_or_default()),
-            ));
-        }
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "clickhouse", format!("ch read: {e}")))?;
-        let mut rows = Vec::new();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let v: serde_json::Value = serde_json::from_str(line).map_err(|e| {
-                Error::new(
-                    ErrorCode::Internal,
-                    "clickhouse",
-                    format!("ch query parse: {e}"),
-                )
-            })?;
-            rows.push(v);
-        }
-        Ok(serde_json::json!(rows))
-    }
-
-    async fn delete(&self, query: &str) -> Result<(), Error> {
-        // ClickHouse 轻量删除语法：ALTER TABLE <t> DELETE WHERE ...
-        let resp = self.post(query, &[]).send().await.map_err(|e| {
-            Error::new(ErrorCode::Internal, "clickhouse", format!("ch delete: {e}"))
-        })?;
-        if !resp.status().is_success() {
-            return Err(Error::new(
-                ErrorCode::Internal,
-                "clickhouse",
-                format!(
-                    "ch delete failed: {}",
-                    resp.text().await.unwrap_or_default()
-                ),
-            ));
-        }
-        Ok(())
     }
 }
 
