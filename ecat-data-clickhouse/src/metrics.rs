@@ -52,30 +52,39 @@ mod tests {
     /// 断言严格 `== +1`（否则这里的 +1 会落进它的观测窗口，把误路由掩护成绿）。
     /// 现读（live-read）只需在一条路径上验证：两份样本走同一个 collector、
     /// 同一段注册代码，与路径数无关。
+    ///
+    /// 另一件由本用例抓的事：`register_one("clickhouse-tsdb", …)` 的 kind 误接
+    /// （写成 `Rdbms`）—— 误接时两份样本同源、值相等，`tsdb < clickhouse` 红。
+    /// 这条轴 `guarded_tsdb` 的严格断言够不到（那是另一行代码）。
     #[tokio::test]
     async fn both_paths_publish_their_own_timeout_sample() {
         let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
         register_outbound_metrics(Arc::clone(&breaker));
 
-        // 推进一格（通过 ecat-data 的静态量，绕开真实网络）；tsdb 那份只查「样本存在」。
-        TIMEOUTS[BackendKind::Rdbms as usize].fetch_add(1, Ordering::Relaxed);
+        // 推进**一大格**（不是一格）：1000 与「Tsdb 槽单写者（≤1）」拉开距离，
+        // 于是「两份样本同源」可直接用 `tsdb < clickhouse` 抓 —— 不依赖写者次数。
+        TIMEOUTS[BackendKind::Rdbms as usize].fetch_add(1000, Ordering::Relaxed);
 
         let text = ecat_metrics::metrics_text();
-        assert!(
-            sample(
-                &text,
-                r#"ecat_outbound_timeouts_total{backend="clickhouse"}"#
-            )
-            .is_some_and(|v| v >= 1.0),
-            "clickhouse 的样本应现读静态量（先 +1 再抓取），实际输出:\n{text}"
+        let clickhouse = sample(
+            &text,
+            r#"ecat_outbound_timeouts_total{backend="clickhouse"}"#,
+        );
+        let tsdb = sample(
+            &text,
+            r#"ecat_outbound_timeouts_total{backend="clickhouse-tsdb"}"#,
         );
         assert!(
-            sample(
-                &text,
-                r#"ecat_outbound_timeouts_total{backend="clickhouse-tsdb"}"#
-            )
-            .is_some(),
+            clickhouse.is_some_and(|v| v >= 1000.0),
+            "clickhouse 的样本应现读静态量（先 +1000 再抓取），实际输出:\n{text}"
+        );
+        assert!(
+            tsdb.is_some(),
             "缺 clickhouse-tsdb 的超时样本（只注册一个标签的实现在这里红），实际输出:\n{text}"
+        );
+        assert!(
+            tsdb < clickhouse,
+            "两份样本同源（tsdb 标签读了 Rdbms 槽？）—— 实际输出:\n{text}"
         );
         for backend in ["clickhouse", "clickhouse-tsdb"] {
             assert_eq!(
