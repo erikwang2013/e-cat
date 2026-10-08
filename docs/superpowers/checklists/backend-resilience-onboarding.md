@@ -510,9 +510,15 @@ pub fn register_outbound_metrics(breaker: Arc<Breaker>) {
 
 /// **只给测试用**：断言「自己那台熔断器」的用例必须走**私有标签** ——
 /// 公共标签会被同二进制里任何一次 `from_config` 改写（覆盖语义）。
-#[cfg(test)]
 fn register_as(backend: &'static str, breaker: Arc<Breaker>) { /* 原闭包装配 */ }
 ```
+
+⚠️ **`register_as` 是「裸 `fn`」（crate 私有），不是 `#[cfg(test)] fn`** —— 本节的初稿
+写成了后者，**那是错的**：`pub fn register_outbound_metrics` 在**所有**构建里都调它
+（`from_config` 的自动注册走的就是这条），加 `#[cfg(test)]` 在非测试构建下会找不到符号、
+**编译不过**。挡住外部用户的不是 cfg，而是**没有 `pub`**（crate 私有可见性）。
+13 个 crate 实测**没有一个**带该属性（`grep -rn -B1 'fn register_as' ecat-data-*/src/metrics.rs
+| grep -c 'cfg(test)'` = **0**）。
 
 - **断言自身熔断器数值**的用例（`outbound_metrics_appear_with_live_values` 一类）：
   用 `register_as("<crate>-live-test", …)`，断言里的 `backend="…"` 同步改。
