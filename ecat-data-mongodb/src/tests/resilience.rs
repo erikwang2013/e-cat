@@ -3,7 +3,9 @@
 //!
 //! **没有模式 ①/④**：MongoDB 的线协议没有进程内 mock，真实方法打不到「慢后端」。
 //! 所以这里用模式 ③（`std::future::pending()`）直接盯 `guarded` 外壳；
-//! 「四个方法是否都包了」由 `grep -c 'self.guarded(' == 4` 守着。
+//! 「四个方法是否都包了」由 `all_four_methods_go_through_the_shell` 行为判据守着
+//! （`grep -c 'self.guarded(' == 4` 只是补充：Task 11 探针 (h) 摘掉 `delete` 的壳，
+//! 14 条全绿、只有 grep 从 4 变 3 —— 纯文本判据不够）。
 use super::*;
 use ecat_circuit_breaker::BreakerState;
 use ecat_data::{BackendKind, timeout_counter};
@@ -128,6 +130,40 @@ async fn repeated_timeouts_open_the_breaker_and_fail_fast() {
         start.elapsed() < Duration::from_millis(500),
         "熔断拒绝必须立即返回"
     );
+}
+
+/// **四个方法真的都走外壳**（行为判据，补 `grep -c 'self.guarded(' == 4` 的不足）。
+///
+/// 先把熔断器推到 `Open`（5 次本地驱动的失败），再调四个**真实**方法：
+/// 走外壳的话 `breaker.call` 在**不碰网络**的前提下立刻拒绝 ⇒ `Unavailable` +
+/// `"circuit breaker is open"`；某个方法漏包时它会直接落到驱动上，对着一个空地址
+/// （实测 27017 无监听）报**别的**错（选主失败 30 秒后 `Internal: mongodb delete: …`），
+/// 错误码与 message 都对不上 ⇒ 红。
+///
+/// 反向探针：把任一方法的 `guarded` 摘掉 ⇒ 本用例必红（Task 11 的探针 (h) 当时
+/// 14 条全绿，就是缺这条）。**故意不给本用例单配短选主超时**：正常路径不碰网络
+/// （< 1 秒），拉长只发生在「已经坏了」的探针跑里，不值得多一条 client 构造路径。
+#[tokio::test]
+async fn all_four_methods_go_through_the_shell() {
+    fn refused(label: &str, r: Result<(), Error>) {
+        let e = r.expect_err(&format!("熔断已打开，{label} 却成功了 —— 它漏包 guarded？"));
+        assert_eq!(e.code, ErrorCode::Unavailable, "{label}: {e}");
+        assert_eq!(e.message, "circuit breaker is open", "{label}: {e}");
+    }
+
+    let c = client_at(1, None).await;
+    for _ in 0..5 {
+        let _ = c.guarded(std::future::pending::<Result<(), Error>>()).await;
+    }
+    assert_eq!(c.breaker().state(), BreakerState::Open);
+
+    let doc = serde_json::json!({"a": 1});
+    let empty = serde_json::json!({});
+    let set = serde_json::json!({"$set": {"a": 2}});
+    refused("insert", c.insert("col", &doc).await.map(|_| ()));
+    refused("find", c.find("col", &empty).await.map(|_| ()));
+    refused("update", c.update("col", &empty, &set).await.map(|_| ()));
+    refused("delete", c.delete("col", &empty).await.map(|_| ()));
 }
 
 /// bson 转换失败**不是后端故障**，不得计入熔断窗口
