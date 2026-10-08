@@ -3443,13 +3443,20 @@ s3:
 for f in docs/database-config-tutorial.md docs/i18n/*/database-config-tutorial.md; do
   printf '%s %s %s %s\n' "$(grep -c 'query_timeout_secs' "$f")" "$(grep -c 'max_concurrency' "$f")" "$(grep -c 'max_pool_size' "$f")" "$f"
 done
-# 期望：13 行的前三个数字**全等**，且**绝对值** = 31 / 22 / 2
-#   query_timeout_secs 31 = 5a 已有 9 + 8 个既有节 ×2（yaml 注释行 + 表格行）+ 3 个新节 ×2
-#   max_concurrency    22 = 5a 已有 2 + 8 个既有节 ×2 + TDengine/S3 各 2（MongoDB 无此字段）
-#   max_pool_size       2 = MongoDB 的 yaml 注释行 + 表格行，各 1
+# 期望：13 行的前三个数字**全等**，且**绝对值** = 32 / 23 / 3
+#   query_timeout_secs 32 = 5a 已有 9 + 8 个既有节 ×2（yaml 注释行 + 表格行）+ 3 个新节 ×2
+#                            + 1（TDengine 节「整次调用一个预算」**散文段**里的 `query_timeout_secs`）
+#   max_concurrency    23 = 5a 已有 2 + 8 个既有节 ×2 + TDengine/S3 各 2
+#                            + 1（MongoDB 节「并发背压走驱动连接池」**散文段**里提到本 crate 没有它）
+#   max_pool_size       3 = MongoDB 的 yaml 注释行 + 表格行 + 1（同一散文段里说要显式配它）
 # **为什么用绝对值**：13 份互相比只能证明「镜像彼此一致」，证明不了「改对了」——
-# 一起漏改或一起改错都全等。绝对值是按本计划的片段推算的；**落码后若实测不符，
-# 先把差异归因到具体是哪一节/哪一行，再改这份期望**（别默默改数字凑答案）。
+# 一起漏改或一起改错都全等。
+# **本表初稿写 31 / 22 / 2，实测 32 / 23 / 3**（B 组落码后逐行归因）：差值全部来自
+# Step 3(b) **自己要求写的三段散文**（它们出现在反引号里，所以也计入这三串）。**不是漏改
+# 也不是多改** —— 归因到具体行号再改期望值，是本条要求的做法，B 组照做了。
+# 配套的**更强判据**（B 组实测采用，建议以后沿用）：以**手改的根文件为基准**，
+# 逐份比对「逐行形状签名」（684 行全等）与「反引号标识符序列」（根 360 个 span），
+# 而不是 13 份互比 —— 前者才抓得住「全体一起错」。
 for f in docs/database-config-tutorial.md docs/i18n/*/database-config-tutorial.md; do
   for h in TdengineConfig MongoConfig S3Config; do grep -q "$h" "$f" || echo "MISS $h in $f"; done
 done; echo DONE
