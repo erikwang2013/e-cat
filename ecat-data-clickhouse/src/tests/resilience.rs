@@ -63,6 +63,36 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Cl
     ClickhouseClient::from_config(cfg).unwrap()
 }
 
+/// `from_config` 把 `cfg.breaker` 真的接上了（checklist §1 验收②）。
+///
+/// 本 crate 没有 `config_wires_timeout_concurrency_and_breaker` 那条总用例（超时与
+/// 并发由本文件其它用例经 `client_at` 覆盖），故只对 breaker 补这条最小版。
+///
+/// 用一份**非默认**的 breaker 配置：`failure_ratio: 1.1` 永不触发。连续 5 次失败后
+/// 必须**仍是 Closed**。失败用本地 `call` 直接驱动 —— 熔断器对 `f` 的 `Err` 记为
+/// 失败，与真实出站失败同一条记账路径
+/// （`ecat-circuit-breaker/src/breaker.rs:182-190`），不依赖 mock 也不走网络。
+/// 若 `from_config` 漏接 `cfg.breaker`（默认 0.5 会在第 5 次失败后开断）⇒ 必红。
+#[tokio::test]
+async fn config_wires_breaker() {
+    let cfg: ClickhouseConfig = serde_json::from_str(
+        r#"{"base_url":"http://127.0.0.1:1","breaker":{"failure_ratio":1.1}}"#,
+    )
+    .unwrap();
+    let c = ClickhouseClient::from_config(cfg).unwrap();
+    for _ in 0..5 {
+        let _ = c
+            .breaker()
+            .call(|| async { Err::<(), std::io::Error>(std::io::Error::other("boom")) })
+            .await;
+    }
+    assert_eq!(
+        c.breaker().state(),
+        BreakerState::Closed,
+        "配置里的 failure_ratio 1.1 没生效 —— from_config 是否漏接了 cfg.breaker？"
+    );
+}
+
 /// 超时真的开火（spec §8 判据 2）。
 ///
 /// **必须用 1 秒超时 + 5 秒 mock**：`from_config` 建的 client 自带 reqwest 的
