@@ -177,7 +177,9 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 | `ecat-data-s3` | dev-deps **没有 axum**，且 tokio 是 `["macros", "rt"]` ⇒ 改成 `axum.workspace = true` + `tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }`（S3 走模式 ① 需要 axum；既有的裸 socket 测试**不动**） |
 | `ecat-data-mongodb` | **非 HTTP**：不加 `tokio/sync`（无信号量），要加 `ecat-circuit-breaker.workspace = true` 与 `ecat-metrics` optional；dev tokio 从 `["macros","rt"]` 改成 `["macros","rt","net","time"]` |
 
-自证：`grep -c 'ecat-metrics' ecat-data-<crate>/Cargo.toml` 期望 2（依赖行 + feature 行）。
+自证：`grep -c 'ecat-metrics' ecat-data-<crate>/Cargo.toml` 期望 **4** —— 依赖行 + feature 行
+**之外还有两行注释**也含该串（Task 1 实测：arangodb 4、5a 的 redis / clickhouse 也是 4；
+原写「期望 2」只数了非注释两行）。
 
 ### T0-B 配置字段（逐字；两版 rustdoc，按有没有内层超时选）
 
@@ -542,9 +544,17 @@ async fn spawn_slow_once(delay: Duration) -> String {
 ///
 /// 外层 5 秒是**把挂死变成红灯**：漏包 `guarded` 的后果不是报错而是永远不返回，
 /// 没有这层的话整个测试二进制会卡住而不是 FAILED（`ecat-data-redis/src/tests.rs:345-364`）。
-async fn assert_times_out<F>(label: &str, fut: F) -> Error
+///
+/// **泛型 `T`（2026-10-08 lead 裁决 B，Task 1 实测）**：被测方法的返回值各异
+/// （图三兄弟的 `execute` 是 `Value`、S3 的 `get` 是 `Vec<u8>`……），调用点直接
+/// 透传即可；`T = ()` 的老调用照样编译。这是 redis 先例（`assert_times_out("set",
+/// … .map(|_| ())`，`ecat-data-redis/src/tests.rs:381`）的**推广**而非推翻。
+/// 原片段写死 `Output = Result<(), Error>` 与 arangodb 的 `execute`（`Value`）
+/// 冲突，Task 1 实测 E0271（三处）；`T: Debug` 是 `unwrap_err()` 的需要。
+async fn assert_times_out<T, F>(label: &str, fut: F) -> Error
 where
-    F: std::future::Future<Output = Result<(), Error>>,
+    T: std::fmt::Debug,
+    F: std::future::Future<Output = Result<T, Error>>,
 {
     let before = timeout_counter(BackendKind::<KIND>).load(Ordering::SeqCst);
     let err = tokio::time::timeout(Duration::from_secs(5), fut)
@@ -673,7 +683,7 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 
 ```bash
 export CARGO_TARGET_DIR=/var/tmp/ecat-target
-grep -c 'ecat-metrics' ecat-data-arangodb/Cargo.toml   # 期望 2
+grep -c 'ecat-metrics' ecat-data-arangodb/Cargo.toml   # 期望 4（含两行注释）
 cargo metadata --format-version=1 --offline >/dev/null && echo METADATA_OK
 ```
 
@@ -1017,9 +1027,17 @@ async fn spawn_slow_once(delay: Duration) -> String {
 ///
 /// 外层 5 秒是**把挂死变成红灯**：漏包 `guarded` 的后果不是报错而是永远不返回，
 /// 没有这层的话整个测试二进制会卡住而不是 FAILED（`ecat-data-redis/src/tests.rs:345-364`）。
-async fn assert_times_out<F>(label: &str, fut: F) -> Error
+///
+/// **泛型 `T`（2026-10-08 lead 裁决 B，Task 1 实测）**：被测方法的返回值各异
+/// （图三兄弟的 `execute` 是 `Value`、S3 的 `get` 是 `Vec<u8>`……），调用点直接
+/// 透传即可；`T = ()` 的老调用照样编译。这是 redis 先例（`assert_times_out("set",
+/// … .map(|_| ())`，`ecat-data-redis/src/tests.rs:381`）的**推广**而非推翻。
+/// 原片段写死 `Output = Result<(), Error>` 与 arangodb 的 `execute`（`Value`）
+/// 冲突，Task 1 实测 E0271（三处）；`T: Debug` 是 `unwrap_err()` 的需要。
+async fn assert_times_out<T, F>(label: &str, fut: F) -> Error
 where
-    F: std::future::Future<Output = Result<(), Error>>,
+    T: std::fmt::Debug,
+    F: std::future::Future<Output = Result<T, Error>>,
 {
     let before = timeout_counter(BackendKind::Graph).load(Ordering::SeqCst);
     let err = tokio::time::timeout(Duration::from_secs(5), fut)
@@ -1270,7 +1288,12 @@ cargo clippy -p ecat-data-arangodb --all-targets -- -D warnings 2>&1 | tail -5
 
 ```bash
 cd /home/wwwroot/e-cat
-git commit --only ecat-data-arangodb/Cargo.toml ecat-data-arangodb/src/lib.rs \
+# 两个新建文件必须先 add 且**只 add 这两份**：`commit --only` 只接受 git 已知路径，
+# 未跟踪的新文件会报「路径规格 … 未匹配任何 git 已知文件」（Task 1 实测）。
+git add ecat-data-arangodb/src/metrics.rs ecat-data-arangodb/src/tests/resilience.rs
+# Cargo.lock 要进清单：新增依赖会改它，不提交则 `cargo build --locked` 与工作区不一致
+# （5a 先例 dee56c6 包含 Cargo.lock；Task 1 实测 `cargo metadata --locked` 通过）。
+git commit --only Cargo.lock ecat-data-arangodb/Cargo.toml ecat-data-arangodb/src/lib.rs \
   ecat-data-arangodb/src/metrics.rs ecat-data-arangodb/src/tests/resilience.rs \
   -m "feat(ecat-data-arangodb): 出站韧性 —— 超时/熔断/并发上限 + metrics
 
@@ -1280,6 +1303,9 @@ git commit --only ecat-data-arangodb/Cargo.toml ecat-data-arangodb/src/lib.rs \
 - 基线 7 条 + 新增 6 条（默认）/ 7 条（--features metrics），实测见下
 - 红探针：拆掉 guarded 后 execute_times_out… 报 ____（贴输出）"
 ```
+
+> **其余任务的路径清单同理**：新建文件先 `git add`（只 add 本任务的新文件）；
+> 清单里带上 `Cargo.lock`。
 
 ---
 
@@ -1300,7 +1326,7 @@ git commit --only ecat-data-arangodb/Cargo.toml ecat-data-arangodb/src/lib.rs \
 
 **Step 1（2 分钟）基线**：同 Task 1 Step 1，crate 名换成 `ecat-data-neo4j`，期望 4 / 214。
 
-**Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2（三处），判据 `grep -c 'ecat-metrics' ecat-data-neo4j/Cargo.toml` 期望 `2`。
+**Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2（三处），判据 `grep -c 'ecat-metrics' ecat-data-neo4j/Cargo.toml` 期望 `4`（含两行注释，见 T0-A 自证）。
 
 **Step 3（3 分钟）配置字段 + `query_timeout`**：逐字抄 Task 1 Step 3（`Neo4jConfig` 的 `tls` 字段之后插入同一块）。
 
@@ -2275,9 +2301,14 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 
 ```rust
 /// 一次调用必须在**外层 5 秒内**返回 `RdbmsError::Timeout`，且推进 Rdbms 维度。
-async fn assert_times_out<F>(label: &str, fut: F) -> RdbmsError
+///
+/// **泛型 `T`（2026-10-08 lead 裁决 B，Task 1 实测）**：`execute` 返回 `u64`、
+/// `query` 返回 `Vec<Row>`，都不是 `()` —— 写死 `Output = Result<(), RdbmsError>`
+/// 会让两个调用点 E0271。`T: Debug` 是 `unwrap_err()` 的需要。
+async fn assert_times_out<T, F>(label: &str, fut: F) -> RdbmsError
 where
-    F: std::future::Future<Output = Result<(), RdbmsError>>,
+    T: std::fmt::Debug,
+    F: std::future::Future<Output = Result<T, RdbmsError>>,
 {
     let before = timeout_counter(BackendKind::Rdbms).load(Ordering::SeqCst);
     let err = tokio::time::timeout(Duration::from_secs(5), fut)
@@ -2364,7 +2395,9 @@ axum.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 ```
 
-判据：`grep -c 'ecat-metrics' ecat-data-s3/Cargo.toml` 期望 `2`；`grep -c 'axum' ecat-data-s3/Cargo.toml` 期望 `1`。
+判据：`grep -c 'ecat-metrics' ecat-data-s3/Cargo.toml` 期望 `4`（含两行注释，见 T0-A 自证）；
+`grep -c 'axum' ecat-data-s3/Cargo.toml` 期望 `1`（只算 dev-deps 那一行 —— 别给这行加含
+"axum" 的注释，否则该数会随注释漂移）。
 
 **Step 3（8 分钟）拆测试文件**：测试块从 `src/lib.rs:228` 到文件末尾 `:419`
 （块内 `use std::io::{Read, Write};` 要跟着搬）。判据：仍是 **17 passed**。
@@ -2655,7 +2688,7 @@ metrics = ["dep:ecat-metrics"]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 ```
 
-判据：`grep -c 'ecat-metrics' ecat-data-mongodb/Cargo.toml` 期望 `2`。
+判据：`grep -c 'ecat-metrics' ecat-data-mongodb/Cargo.toml` 期望 `4`（含两行注释，见 T0-A 自证）。
 
 **Step 3（3 分钟）配置字段**：`MongoConfig` 的 `tls` 之后插入（Redis 版 rustdoc + 池字段，逐字）：
 

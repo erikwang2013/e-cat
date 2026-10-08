@@ -575,9 +575,18 @@ grep -rn 'TIMEOUTS\[' <crate>/src          # 直接按下标写的也要数上
 /// 外层 5 秒是**把挂死变成红灯**：漏包 `guarded` 的后果不是报错而是永远不返回
 /// （假服务端对数据命令装死，配置的超时是唯一能结束它的东西），
 /// 没有这层的话整个测试二进制会卡住而不是 FAILED。
-async fn assert_times_out<F>(label: &str, fut: F)
+///
+/// **泛型 `T`（5b Task 1 起；与计划 T0-F 口径一致）**：5b 各后端被测方法的返回值
+/// 多元（`Value` / `Vec<u8>` / `Vec<Row>` / `u64` / `()`），调用点直接透传；
+/// `T = ()` 的老调用照样编译 —— 这是 redis 先例（调用点写 `.map(|_| ())`，
+/// `ecat-data-redis/src/tests.rs:381`）的推广。写死 `Output = Result<(), Error>`
+/// 与 arangodb 的 `execute`（`Value`）冲突，Task 1 实测 E0271。
+/// `T: Debug` 是 `unwrap_err()` 的需要。（redis 现役代码是 `T = ()` 的形态，
+/// 仍然兼容；它的 `.map(|_| ())` 调用点不必改。）
+async fn assert_times_out<T, F>(label: &str, fut: F) -> Error
 where
-    F: std::future::Future<Output = Result<(), Error>>,
+    T: std::fmt::Debug,
+    F: std::future::Future<Output = Result<T, Error>>,
 {
     let before = timeout_counter(BackendKind::Cache).load(Ordering::SeqCst);
     let err = tokio::time::timeout(Duration::from_secs(5), fut)
@@ -589,6 +598,7 @@ where
         timeout_counter(BackendKind::Cache).load(Ordering::SeqCst) > before,
         "{label}: 超时必须计入 Cache 维度"
     );
+    err
 }
 ```
 
