@@ -755,6 +755,7 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
             semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
+// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
 ```
 
 顶部 `use`（`src/lib.rs:2-6`）整体替换为：
@@ -1451,6 +1452,7 @@ git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
             semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
+// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
 ```
 
 `use` 同 Task 1 Step 4。
@@ -2421,6 +2423,7 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
             semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
+// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
 ```
 
 - `use`（`src/lib.rs:17-25`）追加四行：
