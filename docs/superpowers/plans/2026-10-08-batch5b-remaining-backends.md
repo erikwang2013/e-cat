@@ -3700,15 +3700,16 @@ git commit --only CHANGELOG.md Cargo.lock config/databases.example.yaml README.m
 
 | # | 判据 | 命令 | 期望 |
 |---|------|------|------|
-| 1 | 11 个 crate 主测试全绿 | 逐个 `cargo test -p ecat-data-<c>` | arangodb 13 / neo4j 10 / nebulagraph 14 / elasticsearch 19 / opensearch 18 / influxdb 18 / iotdb 19 / tdengine 20 / questdb 17 / s3 24 / mongodb 13 |
-| 2 | 11 个 crate 的 metrics 变体全绿 | 逐个 `--features metrics` | 各自再 +1（14/11/15/20/19/19/20/21/18/25/14） |
+| 1 | 11 个 crate 主测试全绿 | 逐个 `cargo test -p ecat-data-<c>` | **实测**：arangodb 14 / neo4j 11 / nebulagraph 15 / elasticsearch 20 / opensearch 19 / influxdb 19 / iotdb 20 / tdengine 21 / questdb 18 / s3 26 / mongodb 15 |
+| 2 | 11 个 crate 的 metrics 变体全绿 | 逐个 `--features metrics` | **实测**：各为默认 **+2**（16/13/17/22/21/21/22/23/20/28/17） |
 | 3 | 无 crate 漏包 I/O 方法 | `for c in arangodb neo4j nebulagraph elasticsearch opensearch influxdb iotdb tdengine questdb s3 mongodb; do echo "$c $(grep -c 'self\.guarded(' ecat-data-$c/src/lib.rs)"; done` | 与 T0-D 的方法数逐 crate 相等：arangodb 1 / neo4j 1 / nebulagraph 1 / elasticsearch 3 / opensearch 3 / influxdb 2 / iotdb 2 / tdengine 2 / questdb 2 / s3 4 / mongodb 4（`guarded` 的定义行是 `async fn guarded<…>`，不含 `self.` 前缀，数不到；4 个拆了测试的 crate 其 lib.rs 里没有测试调用点，不会虚高） |
 | 4 | 见证槽无写者冲突 | `grep -rn "TIMEOUTS\[" ecat-data-{11 个}/src/` | 只有 `witness_*_slot_is_untouched_here` 里的**读**，没有任何测试写非本 crate 维度 |
 | 5 | 文件行数 | `wc -l ecat-data-*/src/*.rs ecat-data-*/src/tests/*.rs` | 全部 < 500 |
-| 6 | 文档同步 | Task 12 的验收 | README 14 份均 18；教程 13 份含三节且计数全等；example.yaml `query_timeout_secs` = 14 |
+| 6 | 文档同步 | Task 12 的验收 | README 14 份均 18（尾列 ✅）；教程 13 份含三节、结构 29:7、三个计数全等且 = **32 / 23 / 3**；example.yaml `query_timeout_secs` = 14、新节 = 3 |
 | 7 | 版本与 lock 一致 | Task 13 Step 3/4 的不变式 | 见上 |
-| 8 | 全量闸门 | `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace` | 全绿、零 warning |
-| 9 | 空验收自证 | 每个 Task 的「空验收自证」步 | 逐条**实测复现**（删掉新增物 → 指定用例变红），失败即该任务的判据不成立 |
+| 8 | **`from_config` 构造即注册真的生效** | 逐 crate 注释掉 `from_config` 里那两行，**不带测试名过滤**跑 `--features metrics` | `from_config_registers_outbound_metrics` 必红（13 个 crate；私有标签化之后这条在过滤与全量两种跑法下都红） |
+| 9 | 全量闸门 | `cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets`、`cargo test --workspace` | 全绿、零 warning |
+| 10 | 空验收自证 | 每个 Task 的「空验收自证」步 | 逐条**实测复现**（删掉新增物 → 指定用例变红），失败即该任务的判据不成立 |
 
 ## 落码期片段纠偏条款（本计划**必然**有片段与实测不一致）
 
