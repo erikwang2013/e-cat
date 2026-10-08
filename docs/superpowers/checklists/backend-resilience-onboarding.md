@@ -446,6 +446,25 @@ cargo test -p <crate> --features metrics      # 你的 metrics 用例
 cargo test -p <crate> 2>&1 | grep -c 'outbound_metrics'   # 期望 0：指标代码在 feature 之外
 ```
 
+⚠️ **第二条量的是 `cargo test` 的*输出文本*（默认构建下不该出现名为 `outbound_metrics`
+的用例），不是二进制。** 别顺手改成 `strings target/debug/lib<crate>.rlib | grep -c`——
+**默认构建的 lib rlib 上是 `1` 不是 `0`**：那是编译器 name table 里一处裸标识符
+`register_outbound_metrics` 的残留（相邻的 `metrics` / `tests` 同样被 cfg 掉），
+它证明不了任何事，只会让人报一个假红。
+
+要用**二进制**证明「真没编进去」时，判别器与产物都不同（Task 9 实测 `ecat-data-questdb`）：
+
+| 产物 | `outbound_metrics` | `ecat_metrics8outbound` | `"questdb"` 标签字面量 |
+|---|---|---|---|
+| 默认 lib rlib | **1** | 0 | 0 |
+| 默认 **test binary** | 0 | 0 | 0 |
+| metrics test binary | 193 | 270 | 1 |
+
+⇒ 二进制判据用 `ecat_metrics8outbound` **符号数**或**标签字面量**，且要在 **test binary**
+上量（`cargo test -p <crate> --no-run` 后 `strings` 它的可执行文件），不是 rlib。
+（uplifted 的 `target/debug/lib<crate>.rlib` 只是最后一次构建的硬链接，切 feature 后它
+到底是哪个单元的产物要先确认：`ls target/debug/deps/lib<crate>-*.rlib` 逐个量。）
+
 用例模板：`ecat-data-redis/src/metrics.rs:47-82`（三个样本都在 + 熔断器推到 `Open` 后
 是**抓取时现读**的：注册时快照的实现只会给出 0）。本 crate 内的测试只能证明「自己挂上了」；
 「多个后端共存」的真验收在 `ecat-metrics/src/outbound.rs:292-305`
@@ -831,6 +850,8 @@ find <crate>/src -name '*.rs' -exec awk 'END{if(NR>500) print FILENAME": "NR}' {
 
 # 6) feature 门控自证：默认构建里出现指标测试名 ⇒ 写漏了 #[cfg(feature = "metrics")]
 cargo test -p <crate> 2>&1 | grep -c 'outbound_metrics'     # 期望 0
+#    ⚠️ 量的是 cargo 的输出文本，**不是二进制**：默认 lib rlib 上这是 1（name table 残留）。
+#    要二进制证据请用 §4 验收里那张表的判别器（ecat_metrics8outbound / 标签字面量 / test binary）。
 ```
 
 **期望输出**：

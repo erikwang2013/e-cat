@@ -3182,7 +3182,7 @@ async fn bson_conversion_error_does_not_trip_the_breaker() {
 (b) 把 `insert` 的 bson 转换挪进 `guarded` ⇒ `bson_conversion_error_does_not_trip_the_breaker` 红；
 (c) 删 `guarded` 里的 `run_with_timeout` ⇒ `guarded_times_out_…` 红。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：`cargo fmt -p ecat-data-mongodb`、
-`cargo clippy -p ecat-data-mongodb --all-targets -- -D warnings`、`git commit --only` 五个文件（含 **`Cargo.lock`**）。
+`cargo clippy -p ecat-data-mongodb --all-targets --features metrics -- -D warnings`（**两个 feature 配置各跑一遍**，默认特性也别落下，见 checklist §6 第 4 项）、`git commit --only` 五个文件（含 **`Cargo.lock`**）。
 
 ---
 
