@@ -56,6 +56,24 @@ HTTP 后端**再加**第三个（`ecat-data-clickhouse/src/lib.rs:58-62`）；�
     pub max_concurrency: Option<usize>,
 ```
 
+⚠️ **`max_concurrency: Some(0)` 必须是「不限并发」，不能落成 `Semaphore::new(0)`**：
+`guarded` 的第一句是 `let _permit = self.permit().await;`，而**超时层在许可里层** —— 0 个许可 ⇒
+这句永不返回 ⇒ **静默无限挂起，连超时都不触发**（比本批要防的超时缺口更糟）。
+与 `query_timeout_secs: 0` = 禁用同构：用户读配置文档的预期就是「0 = 不限」。
+
+```rust
+    // from_config 里：Some(0) = 不限并发 ⇒ 根本不建信号量。
+    let semaphore = match cfg.max_concurrency {
+        Some(0) => None,                                  // 不限
+        Some(n) => Some(Arc::new(Semaphore::new(n))),
+        None => Some(Arc::new(Semaphore::new(32))),       // 默认 32
+    };
+```
+
+配套：`permit()` 返回 `Option<SemaphorePermit<'_>>`（不限并发时返回 `None`）——
+调用点 `let _permit = self.permit().await;` **不用改**。
+验收：一条「`Some(0)` 下 N+1 个并发**全部放行、不排队**」的用例（对 mock 起 N+1 个并发，断言都返回而非挂起）。
+
 `query_timeout_secs` 的 rustdoc 若你的后端跑在 `ecat_tls` 建的 reqwest client 上，要**多写两句**
 （理由在「§7 陷阱 5」；`ecat-data-clickhouse/src/lib.rs:49-54` 逐字，含字段本体）：
 

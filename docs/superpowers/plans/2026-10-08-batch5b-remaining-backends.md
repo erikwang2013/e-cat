@@ -247,6 +247,8 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
             semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
+// ⚠️ `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
+// 落成 `Semaphore::new(0)` 会让每次调用**永久排队**且**超时永不触发**（超时在许可里层）。见 checklist §1。
 ```
 
 （MongoDB 没有第三行；`max_pool_size` / `min_pool_size` 按 T0-C2 装配。）
