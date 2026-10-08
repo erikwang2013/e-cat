@@ -30,7 +30,11 @@ ecat-metrics = { workspace = true, optional = true }
 metrics = ["dep:ecat-metrics"]
 
 [dev-dependencies]
-# net 给假 RESP 服务端的 TcpListener；io-util 给它读写 socket 的
-# AsyncReadExt/AsyncWriteExt（计划片段漏了这个 feature，实测编译失败：E0599）；
-# time 给超时测试的 sleep。
+# 显式声明测试真正用到的 API：net 给假 RESP 服务端的 TcpListener，io-util 给读写
+# socket 的 AsyncReadExt/AsyncWriteExt，time 给超时测试的 sleep。
+#
+# 如实说明：这几个 feature **当前不写也能编过** —— 依赖图里别的 crate 会把它们打开
+# （io-util 实测由 h2 ← hyper ← reqwest/tonic 启用，net/time 同理由连接栈一侧带入）。
+# 但那是特性统一的巧合，不是本 crate 的保证：上游换掉连接栈，这里就会在一次不相关的
+# 升级里报 E0599。显式声明让测试的依赖可见、可预期，不去赌这个巧合。
 tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

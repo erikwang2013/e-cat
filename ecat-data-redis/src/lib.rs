@@ -9,8 +9,9 @@
 //! 多路复用下会与其它命令交错。需要时用 `redis::Client::get_async_connection()`
 //! 另开一条专用连接。
 //!
-//! `Cache` 的六个方法都经过 `guarded`（熔断在外、超时在内，见批次 5a「出入 4」）；
-//! [`RedisLock`] 不在出站韧性范围内。
+//! `Cache` 六个方法的**出站调用**都经过 `guarded`（熔断在外、超时在内，见批次 5a「出入 4」）；
+//! 纯本地分支不走外壳 —— `multi_get` 空 keys 的提前返回就是如此，理由见
+//! `RedisCache::guarded` 的注释。[`RedisLock`] 不在出站韧性范围内。
 use async_trait::async_trait;
 use ecat_circuit_breaker::{Breaker, BreakerConfig};
 use ecat_data::Cache;
@@ -148,6 +149,12 @@ impl RedisCache {
     /// 超时若在外层，`tokio::time::timeout` 会把熔断器的 future 直接 drop 掉，
     /// 于是每次「后端没在预算内作答」都**什么都不记** —— 卡死的后端永远打不开熔断器，
     /// 而卡死正是本设计要防的头号场景。熔断在外时超时是一次普通的 `Err`，如实计入失败。
+    ///
+    /// **只包真正发 I/O 的路径。** 纯本地分支（如 `multi_get` 的空 keys 提前返回）
+    /// 必须留在外面：半开态下每次 `call` 都要借走一个探测名额，而「没发请求就返回」
+    /// 会以 `Ok` 记账 —— 探测名额被白白消耗、熔断器还可能被**误关回 `Closed`**，
+    /// 于是新窗口的流量全部冲向一个根本没被碰过的后端。记账口径是「后端的表现」，
+    /// 不是「函数的返回值」。
     async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
     where
         F: std::future::Future<Output = Result<T, Error>> + Send,
@@ -227,7 +234,9 @@ impl Cache for RedisCache {
     }
 
     async fn multi_get(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>, Error> {
-        // 纯本地判断：没发 I/O，就不该经过外壳（否则一次空调用会被记进熔断窗口）。
+        // 没发 I/O，就不经过外壳。半开态下走 `guarded` 会借一个探测名额、再以 `Ok`
+        // 记一笔 —— 熔断器可能据此关回 `Closed`，而这次「成功」根本没碰过后端。
+        // 详见 `guarded` 的注释。
         if keys.is_empty() {
             return Ok(Vec::new());
         }
