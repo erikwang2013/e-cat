@@ -645,6 +645,23 @@ where
 }
 ```
 
+**（d-补）保险丝也要盖住 `concurrency_cap_limits_in_flight_requests`。** 那条用例里
+`h.await` 是**裸等**：许可在超时层外面，许可一旦泄漏，第 3 个 task 永远排在 `acquire()` 上，
+**没有任何预算能结束它 ⇒ 整个测试二进制挂死**（Task 7 实测：`mem::forget(permit)` 探针后
+9 分钟未返回，人工 kill）。给它单独套一层（10 秒远大于 3×50ms 的正常耗时）：
+
+```rust
+    for (i, h) in handles.into_iter().enumerate() {
+        tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap_or_else(|_| panic!("第 {i} 个并发任务挂死（许可泄漏？）"))
+            .unwrap();
+    }
+```
+
+判据：探针「把 `let _permit` 换成 `std::mem::forget(permit)`」时该用例是 **FAILED**，
+不是悬挂。**Task 1–7 的 7 个 crate 是裸等形态，已列入追补清单。**
+
 **(e) 每个出站方法都要覆盖**：只测一个方法的话，谁漏包另一个（比如 `set` 直接直连），
 现有测试不会红。模板：`ecat-data-redis/src/tests.rs:366-398`
 （`every_cache_method_times_out_when_the_backend_stalls`，五个方法逐条打）。

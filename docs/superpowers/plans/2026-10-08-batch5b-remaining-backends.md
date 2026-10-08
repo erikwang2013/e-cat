@@ -320,12 +320,13 @@ pub struct <XxxClient> {
 #### C4 许可（HTTP 九连抄，`ecat-data-clickhouse/src/lib.rs:156-162` 逐字）
 
 ```rust
-    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
-    async fn permit(&self) -> SemaphorePermit<'_> {
-        self.semaphore
-            .acquire()
-            .await
-            .expect("semaphore is never closed")
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
     }
 ```
 
@@ -783,12 +784,13 @@ use tokio::sync::{Semaphore, SemaphorePermit};
         Arc::clone(&self.breaker)
     }
 
-    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
-    async fn permit(&self) -> SemaphorePermit<'_> {
-        self.semaphore
-            .acquire()
-            .await
-            .expect("semaphore is never closed")
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
     }
 
     /// 一次出站调用的公共外壳：**许可 → 熔断 → 超时**。
@@ -1189,8 +1191,15 @@ async fn concurrency_cap_limits_in_flight_requests() {
             peak.fetch_max(seen, Ordering::SeqCst);
         }));
     }
-    for h in handles {
-        h.await.unwrap();
+    // **外层保险丝（Task 7 实测后补）**：许可泄漏时第 3 个 task 永远排在
+    // `acquire()` 上 —— 许可在超时层**外面**，没有任何预算能结束它。
+    // 裸 `h.await` 会让**整个测试二进制挂死**：Task 7 注入 `mem::forget(permit)`
+    // 探针后 9 分钟未返回，人工 kill 才脱身。有这层时同一探针变成一条 FAILED。
+    for (i, h) in handles.into_iter().enumerate() {
+        tokio::time::timeout(Duration::from_secs(10), h)
+            .await
+            .unwrap_or_else(|_| panic!("第 {i} 个并发任务挂死（许可泄漏？）"))
+            .unwrap();
     }
     assert!(
         peak.load(Ordering::SeqCst) <= 2,
@@ -2168,7 +2177,7 @@ async fn whole_call_budget_covers_every_batch_in_write() {
 | 配置必填字段 | `base_url` |
 | 要包的方法 | `execute` / `query` |
 | **不包** | `transaction`（常量错误）、`dialect`（纯本地）、`apply_auth`（构造请求头） |
-| 期望测试数 | 9 + 8 = **17**；`--features metrics` → **18** |
+| 期望测试数 | 9 + 9 = **18**；`--features metrics` → **19**（`Some(0)` 裁决 +1，已实测同形先例） |
 
 **Step 1（2 分钟）基线**：期望 9 / 270。
 **Step 2（3 分钟）`Cargo.toml`**：逐字抄 Task 1 Step 2（本 crate 一样要加 `ecat-circuit-breaker` /
@@ -2200,12 +2209,13 @@ use tokio::sync::{Semaphore, SemaphorePermit};
         Arc::clone(&self.breaker)
     }
 
-    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
-    async fn permit(&self) -> SemaphorePermit<'_> {
-        self.semaphore
-            .acquire()
-            .await
-            .expect("semaphore is never closed")
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
     }
 
     /// 一次出站调用的外壳：**许可 → 熔断 → 超时**（理由见 T0 模板）。
@@ -2349,7 +2359,10 @@ fn client_at(url: &str, timeout_secs: u64, max_concurrency: Option<usize>) -> Qu
 }
 ```
 
-用例（**8 条**）：`config_wires_timeout_concurrency_and_breaker` / `zero_timeout_means_disabled` /
+用例（**9 条**，`Some(0)` 裁决晚于本段：多出 `zero_max_concurrency_means_unlimited`，
+含 `assert!(c.semaphore.is_none())` 结构断言 + 5 并发 Barrier 行为段）：
+`config_wires_timeout_concurrency_and_breaker` / `zero_timeout_means_disabled` /
+`zero_max_concurrency_means_unlimited` /
 `execute_times_out_and_counts_rdbms_dimension`（主超时；断言 `RdbmsError::Timeout`，**没有 reason 断言**）/
 `every_io_method_times_out_when_the_backend_stalls`（`execute` + `query` 各一次）/
 `repeated_timeouts_open_the_breaker_and_fail_fast`（断言 `matches!(err, RdbmsError::Connection(_))` 且
@@ -2373,7 +2386,7 @@ async fn transaction_error_does_not_trip_the_breaker() {
 见证槽仍 `Storage`（`use ecat_data::{BackendKind, timeout_counter};` 照抄）。
 `mod resilience;` 加在 `src/lib.rs:161` 的 `mod tests` 第一行。
 
-**Step 9（3 分钟）跑测试**：期望 **17 passed**；`--features metrics` → **18 passed**。
+**Step 9（3 分钟）跑测试**：期望 **18 passed**；`--features metrics` → **19 passed**（以实测为准，计划此处曾少算 `Some(0)` 那条）。
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 本 crate 专属：
 删掉 `query` 的 `guarded` ⇒ `every_io_method_…` 红；把 `transaction` 包进 `guarded` ⇒
 `transaction_error_does_not_trip_the_breaker` 红。
@@ -2457,12 +2470,13 @@ use tokio::sync::{Semaphore, SemaphorePermit};
         Arc::clone(&self.breaker)
     }
 
-    /// 取一个并发许可。信号量从不 `close()`，`AcquireError` 不可达。
-    async fn permit(&self) -> SemaphorePermit<'_> {
-        self.semaphore
-            .acquire()
-            .await
-            .expect("semaphore is never closed")
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
     }
 
     /// 一次出站调用的外壳：**许可 → 熔断 → 超时**（理由见 T0 模板）。
