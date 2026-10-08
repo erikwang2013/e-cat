@@ -59,16 +59,16 @@ struct AppConfig {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 加载 YAML 配置
+    // Charger la configuration YAML
     let yaml = std::fs::read_to_string("databases.yaml")?;
     let cfg: AppConfig = serde_yaml::from_str(&yaml)?;
 
-    // 创建数据库客户端 — 无硬编码连接信息
+    // Créer les clients de base de données — aucune information de connexion codée en dur
     let db = SqlxClient::from_config(cfg.sql).await?;
     let cache = RedisCache::from_config(cfg.redis).await?;
     let ch = ClickhouseClient::from_config(cfg.clickhouse);
 
-    // 使用
+    // Utilisation
     let rows = db.query("SELECT id, name FROM users LIMIT 10").await?;
     cache.set("health", b"ok", std::time::Duration::from_secs(30)).await?;
 
@@ -131,8 +131,8 @@ Le pilote natif est choisi automatiquement selon le schéma de l'URL, sans confi
 ```yaml
 sql:
   url: "postgres://host:5432/dbname"
-  # username: "app_user"    # 可选
-  # password: "secret"      # 可选
+  # username: "app_user"    # facultatif
+  # password: "secret"      # facultatif
 ```
 
 | Champ | Type | Valeur par défaut | Description |
@@ -252,8 +252,8 @@ redis:
 
 ```yaml
 memcached:
-  # username: "memcache"    # 可选: 保留字段（当前为内存实现）
-  # password: "secret"      # 可选: 保留字段
+  # username: "memcache"    # facultatif : champ réservé (actuellement une implémentation en mémoire)
+  # password: "secret"      # facultatif : champ réservé
   {}
 ```
 
@@ -294,8 +294,8 @@ clickhouse:
 ```yaml
 questdb:
   base_url: "http://host:9000"
-  # username: "admin"     # 可选
-  # password: "quest"     # 可选
+  # username: "admin"     # facultatif
+  # password: "quest"     # facultatif
 ```
 
 | Champ | Type | Description |
@@ -309,8 +309,8 @@ questdb:
 ```yaml
 elasticsearch:
   base_url: "http://host:9200"
-  # username: "elastic"   # 可选
-  # password: "secret"    # 可选
+  # username: "elastic"   # facultatif
+  # password: "secret"    # facultatif
 ```
 
 | Champ | Type | Description |
@@ -324,8 +324,8 @@ elasticsearch:
 ```yaml
 opensearch:
   base_url: "http://host:9200"
-  # username: "admin"     # 可选
-  # password: "secret"    # 可选
+  # username: "admin"     # facultatif
+  # password: "secret"    # facultatif
 ```
 
 | Champ | Type | Description |
@@ -372,8 +372,8 @@ neo4j:
 nebulagraph:
   base_url: "http://host:19669"
   space: "my_space"
-  # username: "root"      # 可选
-  # password: "nebula"    # 可选
+  # username: "root"      # facultatif
+  # password: "nebula"    # facultatif
 ```
 
 | Champ | Type | Description |
@@ -452,7 +452,7 @@ clickhouse:
     ca_cert: "/etc/ecat/ca.pem"
     client_cert: "/etc/ecat/client.pem"
     client_key: "/etc/ecat/client-key.pem"
-    # skip_verify: true  # 仅测试环境
+    # skip_verify: true  # environnement de test uniquement
 ```
 
 ### Génération automatique des certificats (ecat-tls)
@@ -460,17 +460,17 @@ clickhouse:
 ```rust
 use ecat_tls::{generate_ca, generate_server_cert, generate_client_cert};
 
-// 1. 生成 CA
+// 1. Générer la CA
 let ca = generate_ca("MyOrg")?;
 std::fs::write("ca.pem", &ca.cert_pem)?;
 std::fs::write("ca-key.pem", &ca.key_pem)?;
 
-// 2. 生成服务端证书
+// 2. Générer le certificat serveur
 let srv = generate_server_cert("db.example.com")?;
 std::fs::write("server.pem", &srv.cert_pem)?;
 std::fs::write("server-key.pem", &srv.key_pem)?;
 
-// 3. 生成客户端证书（mTLS）
+// 3. Générer le certificat client (mTLS)
 let client = generate_client_cert("myapp")?;
 std::fs::write("client.pem", &client.cert_pem)?;
 std::fs::write("client-key.pem", &client.key_pem)?;
@@ -482,11 +482,11 @@ std::fs::write("client-key.pem", &client.key_pem)?;
 # CA
 openssl req -x509 -newkey rsa:4096 -keyout ca-key.pem -out ca.pem -days 3650 -nodes
 
-# 服务端证书
+# Certificat serveur
 openssl req -new -newkey rsa:4096 -keyout server-key.pem -out server.csr -nodes -subj "/CN=db.example.com"
 openssl x509 -req -in server.csr -CA ca.pem -CAkey ca-key.pem -out server.pem -days 365
 
-# 客户端证书 (mTLS)
+# Certificat client (mTLS)
 openssl req -new -newkey rsa:4096 -keyout client-key.pem -out client.csr -nodes -subj "/CN=myapp"
 openssl x509 -req -in client.csr -CA ca.pem -CAkey ca-key.pem -out client.pem -days 365
 ```
