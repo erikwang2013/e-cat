@@ -230,7 +230,7 @@ Real `DATE` / `TIMESTAMP` columns in PG / MySQL are likewise presented as RFC333
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # optional
   # query_timeout_secs: 30     # optional: per-command timeout, 0 = disabled
   # breaker: {}                # optional: breaker config, omitted = conservative defaults (0.5 / 30s / open 10s)
 ```
@@ -270,8 +270,8 @@ Currently an in-memory implementation; the authentication fields are reserved.
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # optional
+  # password: "secret"    # optional
   # query_timeout_secs: 30  # optional: per-call timeout, 0 = disabled
   # breaker: {}             # optional: breaker config, omitted = conservative defaults (0.5 / 30s / open 10s)
   # max_concurrency: 32     # optional: concurrency limit (this crate's semaphore)

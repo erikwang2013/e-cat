@@ -230,7 +230,7 @@ Colunas reais `DATE` / `TIMESTAMP` no PG / MySQL também são apresentadas como 
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # opcional
   # query_timeout_secs: 30     # opcional: timeout por comando, 0 = desativado
   # breaker: {}                # opcional: config do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
 ```
@@ -270,8 +270,8 @@ Atualmente é uma implementação em memória; os campos de autenticação ficam
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # opcional
+  # password: "secret"    # opcional
   # query_timeout_secs: 30  # opcional: timeout por chamada, 0 = desativado
   # breaker: {}             # opcional: config do breaker, omitido = padrões conservadores (0.5 / 30s / aberto 10s)
   # max_concurrency: 32     # opcional: limite de concorrência (semáforo deste crate)

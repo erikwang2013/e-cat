@@ -230,7 +230,7 @@ Feature `tracing` пишет warn, когда запрос превышает `s
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # опционально
   # query_timeout_secs: 30     # опционально: таймаут одной команды, 0 = отключено
   # breaker: {}                # опционально: конфигурация breaker, пропущено = консервативные значения по умолчанию (0.5 / 30s / открыт 10s)
 ```
@@ -270,8 +270,8 @@ memcached:
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # опционально
+  # password: "secret"    # опционально
   # query_timeout_secs: 30  # опционально: таймаут одного вызова, 0 = отключено
   # breaker: {}             # опционально: конфигурация breaker, пропущено = консервативные значения по умолчанию (0.5 / 30s / открыт 10s)
   # max_concurrency: 32     # опционально: предел конкурентности (семафор этого crate)

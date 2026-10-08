@@ -230,7 +230,7 @@ Kolom `DATE` / `TIMESTAMP` asli di PG / MySQL juga disajikan sebagai string RFC3
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # opsional
   # query_timeout_secs: 30     # opsional: timeout per perintah, 0 = nonaktif
   # breaker: {}                # opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
 ```
@@ -270,8 +270,8 @@ Saat ini merupakan implementasi memori, kolom autentikasi dicadangkan.
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # opsional
+  # password: "secret"    # opsional
   # query_timeout_secs: 30  # opsional: timeout per panggilan, 0 = nonaktif
   # breaker: {}             # opsional: konfigurasi breaker, dihilangkan = default konservatif (0.5 / 30s / terbuka 10s)
   # max_concurrency: 32     # opsional: batas konkurensi (semaphore crate ini)

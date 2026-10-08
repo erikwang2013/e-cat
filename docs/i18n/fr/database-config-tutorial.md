@@ -230,7 +230,7 @@ Les vraies colonnes `DATE` / `TIMESTAMP` de PG / MySQL sont elles aussi présent
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # facultatif
   # query_timeout_secs: 30     # facultatif : timeout par commande, 0 = désactivé
   # breaker: {}                # facultatif : config du breaker, omis = valeurs par défaut prudentes (0,5 / 30 s / ouvert 10 s)
 ```
@@ -270,8 +270,8 @@ Il s'agit actuellement d'une implémentation en mémoire ; les champs d'authenti
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # facultatif
+  # password: "secret"    # facultatif
   # query_timeout_secs: 30  # facultatif : timeout par appel, 0 = désactivé
   # breaker: {}             # facultatif : config du breaker, omis = valeurs par défaut prudentes (0,5 / 30 s / ouvert 10 s)
   # max_concurrency: 32     # facultatif : limite de concurrence (sémaphore de ce crate)

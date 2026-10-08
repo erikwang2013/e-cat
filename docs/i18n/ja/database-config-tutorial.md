@@ -230,7 +230,7 @@ PG / MySQL の実際の `DATE` / `TIMESTAMP` 列も同様に RFC3339 UTC 文字�
 ```yaml
 redis:
   url: "redis://host:6379"
-  # password: "auth_token"  # 可选
+  # password: "auth_token"  # オプション
   # query_timeout_secs: 30     # オプション：コマンド単位のタイムアウト、0 = 無効
   # breaker: {}                # オプション：サーキットブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
 ```
@@ -270,8 +270,8 @@ memcached:
 clickhouse:
   base_url: "http://host:8123"
   database: "default"
-  # username: "default"   # 可选
-  # password: "secret"    # 可选
+  # username: "default"   # オプション
+  # password: "secret"    # オプション
   # query_timeout_secs: 30  # オプション：呼び出し単位のタイムアウト、0 = 無効
   # breaker: {}             # オプション：サーキットブレーカー設定、省略 = 保守的デフォルト（0.5 / 30s / オープン 10s）
   # max_concurrency: 32     # オプション：同時実行の上限（この crate のセマフォ）
