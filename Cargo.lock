@@ -1474,8 +1474,10 @@ version = "6.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "ecat-circuit-breaker",
  "ecat-data",
  "ecat-errors",
+ "ecat-metrics",
  "ecat-tls",
  "reqwest",
  "serde",

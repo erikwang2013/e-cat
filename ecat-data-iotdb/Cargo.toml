@@ -17,7 +17,18 @@ serde.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 ecat-tls = { version = "6.0.0", path = "../ecat-tls" }
+# 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
+ecat-circuit-breaker.workspace = true
+# 并发上限用 Semaphore。tokio 现在只在 dev-dependencies 里，必须提到这里。
+tokio = { workspace = true, features = ["sync"] }
+# 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+
+[features]
+# 只有 ecat-metrics：三个出站指标家族的唯一 collector 在那边（批次 5a「出入 11」），
+# 本 crate 不需要直接依赖 prometheus。
+metrics = ["dep:ecat-metrics"]
 
 [dev-dependencies]
 axum.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "net"] }
+tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }

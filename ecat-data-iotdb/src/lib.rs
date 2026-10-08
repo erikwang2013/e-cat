@@ -1,9 +1,21 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
-use ecat_data::{DataPoint, FieldValue, TsdbClient};
+use ecat_circuit_breaker::{Breaker, BreakerConfig};
+use ecat_data::{
+    BackendKind, DataPoint, FieldValue, TsdbClient, breaker_error_to_backend_error,
+    run_with_timeout,
+};
 use ecat_errors::{Error, ErrorCode};
 use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Semaphore, SemaphorePermit};
+
+#[cfg(feature = "metrics")]
+mod metrics;
+#[cfg(feature = "metrics")]
+pub use metrics::register_outbound_metrics;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct IotdbConfig {
@@ -12,6 +24,27 @@ pub struct IotdbConfig {
     pub password: String,
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
+    /// 单次调用超时秒数。`0` = 禁用；未配置 = 30 秒。
+    ///
+    /// 这是**外层**预算，与 reqwest 自带的总超时（`from_config` 建的 client 有
+    /// 30 秒、`new` 没有）取先到者。
+    #[serde(default)]
+    pub query_timeout_secs: Option<u64>,
+    /// 熔断配置；省略则用保守默认（失败率 0.5、窗口 30 秒、打开 10 秒）。
+    ///
+    /// 熔断**默认开启** —— 保守阈值下只在持续失败时打开。**当前没有总开关**：
+    /// `BreakerConfig` 只有阈值字段，没有 `enabled`（不许写 `{"enabled": false}`：
+    /// 那是反序列化错误，或被 `#[serde(default)]` 静默吞掉后以为关掉了）。
+    /// 真要停用，只能把阈值调到不可能触发（如 `failure_ratio: 1.1`）。
+    #[serde(default)]
+    pub breaker: Option<BreakerConfig>,
+    /// 并发上限。`0` = **不限并发**（与 `query_timeout_secs: 0` = 禁用同构）；
+    /// 未配置 = 32。
+    ///
+    /// reqwest **只有** `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」
+    /// —— 默认无上限意味着并发无背压。上限由本 crate 的信号量实现，不是 reqwest 的旋钮。
+    #[serde(default)]
+    pub max_concurrency: Option<usize>,
 }
 
 pub struct IotdbClient {
@@ -19,6 +52,11 @@ pub struct IotdbClient {
     base_url: String,
     username: String,
     password: String,
+    query_timeout: Option<Duration>,
+    /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
+    breaker: Arc<Breaker>,
+    /// `None` = 不限并发（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 
 impl IotdbClient {
@@ -32,6 +70,9 @@ impl IotdbClient {
             base_url: base_url.into(),
             username: username.into(),
             password: password.into(),
+            query_timeout: query_timeout(None),
+            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
         }
     }
 
@@ -43,55 +84,164 @@ impl IotdbClient {
             base_url: cfg.base_url,
             username: cfg.username,
             password: cfg.password,
+            query_timeout: query_timeout(cfg.query_timeout_secs),
+            breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
+            semaphore: match cfg.max_concurrency {
+                // `0` = 不限并发（与 `query_timeout_secs: 0` = 禁用同构）：
+                // 不建信号量。建 `Semaphore::new(0)` 会让每次调用静默无限挂起
+                // —— `guarded` 的第一句就是 `permit().await`，超时层在它里面。
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
         })
+    }
+
+    /// 本 client 的熔断器。`metrics` feature 注册指标时要读它的状态与打开次数。
+    pub fn breaker(&self) -> Arc<Breaker> {
+        Arc::clone(&self.breaker)
+    }
+
+    /// 取一个并发许可；不限并发（`max_concurrency: 0`）时返回 `None`。
+    /// 信号量从不 `close()`，`AcquireError` 不可达。
+    async fn permit(&self) -> Option<SemaphorePermit<'_>> {
+        match &self.semaphore {
+            Some(sem) => Some(sem.acquire().await.expect("semaphore is never closed")),
+            None => None,
+        }
+    }
+
+    /// 一次出站调用的公共外壳：**许可 → 熔断 → 超时**。
+    ///
+    /// 这个顺序不能改：**超时若在外层，熔断器会对卡死的后端永久失明** ——
+    /// 超时触发时 `tokio::time::timeout` 会 drop 内层 future，而熔断器记失败的那句
+    /// 在 `f().await` **之后**，于是每次都只留下一次 drop、窗口里什么都不记，
+    /// 熔断器永远不打开（这正是本设计要防的头号场景）。详见批次 5a 计划的「出入 4」。
+    ///
+    /// 许可在最外：还在排队的请求**还没碰后端**，不该计入熔断失败、也不该被超时掐断。
+    ///
+    /// `kind` **写死**不收参数：本 crate 的两个 I/O 方法同属 `TsdbClient` 一个家族
+    /// （ClickHouse 收参数是因为它有 `SqlExecutor` / `TsdbClient` 两条**不同家族**的路径
+    /// 共用外壳）。多一个永不变化的入参就多一个填错的机会，
+    /// 而填错只是静默少数（`ecat-data/src/timeout.rs:15-35`），没有编译期保护。
+    ///
+    /// **壳的边界 = 公开方法**：本 crate 的 `write` **循环里每次迭代都发 HTTP**，
+    /// 所以整个循环在这一个壳内 —— 谁把这段挪到循环里面（每个点一个预算），
+    /// `whole_call_budget_covers_every_request_in_write` 会红。判据：问「这一步发 HTTP 吗？」
+    async fn guarded<F, T: 'static>(&self, fut: F) -> Result<T, Error>
+    where
+        F: std::future::Future<Output = Result<T, Error>> + Send,
+    {
+        let _permit = self.permit().await;
+        self.breaker
+            .call(|| run_with_timeout(BackendKind::Tsdb, self.query_timeout, fut))
+            .await
+            .map_err(|e| breaker_error_to_backend_error(e, "iotdb"))
+    }
+}
+
+/// `0` 表示显式禁用超时；未配置时为 30 秒。
+fn query_timeout(secs: Option<u64>) -> Option<Duration> {
+    match secs {
+        None => Some(Duration::from_secs(30)),
+        Some(0) => None,
+        Some(s) => Some(Duration::from_secs(s)),
     }
 }
 
 #[async_trait]
 impl TsdbClient for IotdbClient {
     async fn write(&self, points: &[DataPoint]) -> Result<(), Error> {
-        for p in points {
-            // Apache IoTDB REST v2 insertTablet body:
-            // {"device": "...", "is_aligned": false, "timestamps": [...],
-            //  "measurements": [...], "data_types": [...], "values": [[...]]}
-            // `device` = measurement; tags are not representable in this API.
-            let mut measurements = Vec::with_capacity(p.fields.len());
-            let mut data_types = Vec::with_capacity(p.fields.len());
-            let mut values: Vec<serde_json::Value> = Vec::with_capacity(p.fields.len());
-            for (k, v) in &p.fields {
-                measurements.push(k.clone());
-                let (dt, val) = match v {
-                    FieldValue::Float(f) => (
-                        "DOUBLE",
-                        serde_json::Value::Number(
-                            serde_json::Number::from_f64(*f).unwrap_or(0.into()),
+        // 整个循环**一个预算**：本方法每个点发一次 POST（`rest/v2/insertTablet`），
+        // 预算必须罩住整次调用 —— 包在循环里面就会变成「每个点一个预算」，
+        // 一次 write 的墙钟上限随点数线性放大，熔断窗口也被拆成 N 份记账
+        // （测试 whole_call_budget_covers_every_request_in_write 盯着这条）。
+        self.guarded(async {
+            for p in points {
+                // Apache IoTDB REST v2 insertTablet body:
+                // {"device": "...", "is_aligned": false, "timestamps": [...],
+                //  "measurements": [...], "data_types": [...], "values": [[...]]}
+                // `device` = measurement; tags are not representable in this API.
+                let mut measurements = Vec::with_capacity(p.fields.len());
+                let mut data_types = Vec::with_capacity(p.fields.len());
+                let mut values: Vec<serde_json::Value> = Vec::with_capacity(p.fields.len());
+                for (k, v) in &p.fields {
+                    measurements.push(k.clone());
+                    let (dt, val) = match v {
+                        FieldValue::Float(f) => (
+                            "DOUBLE",
+                            serde_json::Value::Number(
+                                serde_json::Number::from_f64(*f).unwrap_or(0.into()),
+                            ),
                         ),
-                    ),
-                    FieldValue::Int(i) => ("INT64", serde_json::Value::Number((*i).into())),
-                    FieldValue::String(s) => ("TEXT", serde_json::Value::String(s.clone())),
-                    FieldValue::Bool(b) => ("BOOLEAN", serde_json::Value::Bool(*b)),
-                };
-                data_types.push(dt);
-                values.push(val);
+                        FieldValue::Int(i) => ("INT64", serde_json::Value::Number((*i).into())),
+                        FieldValue::String(s) => ("TEXT", serde_json::Value::String(s.clone())),
+                        FieldValue::Bool(b) => ("BOOLEAN", serde_json::Value::Bool(*b)),
+                    };
+                    data_types.push(dt);
+                    values.push(val);
+                }
+                let body = serde_json::json!({
+                    "device": p.measurement,
+                    "is_aligned": false,
+                    "timestamps": [p.timestamp.unwrap_or(0)],
+                    "measurements": measurements,
+                    "data_types": data_types,
+                    "values": [values],
+                });
+                let resp = self
+                    .client
+                    .post(format!("{}/rest/v2/insertTablet", self.base_url))
+                    .basic_auth(&self.username, Some(&self.password))
+                    .header("Content-Type", "application/json")
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        Error::new(ErrorCode::Internal, "iotdb", format!("iotdb write: {e}"))
+                    })?;
+                if !resp.status().is_success() {
+                    return Err(Error::new(
+                        ErrorCode::Internal,
+                        "iotdb",
+                        resp.text().await.unwrap_or_default(),
+                    ));
+                }
+                // IoTDB REST v2 may return HTTP 200 with a body `code` != 200 on
+                // some failures; surface those too.
+                if let Ok(v) = resp.json::<serde_json::Value>().await
+                    && let Some(code) = v.get("code").and_then(|c| c.as_i64())
+                    && code != 200
+                {
+                    return Err(Error::new(
+                        ErrorCode::Internal,
+                        "iotdb",
+                        format!(
+                            "iotdb write failed: code {code}: {}",
+                            v.get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("no message")
+                        ),
+                    ));
+                }
             }
-            let body = serde_json::json!({
-                "device": p.measurement,
-                "is_aligned": false,
-                "timestamps": [p.timestamp.unwrap_or(0)],
-                "measurements": measurements,
-                "data_types": data_types,
-                "values": [values],
-            });
+            Ok(())
+        })
+        .await
+    }
+
+    async fn query(&self, sql: &str) -> Result<serde_json::Value, Error> {
+        self.guarded(async {
             let resp = self
                 .client
-                .post(format!("{}/rest/v2/insertTablet", self.base_url))
+                .post(format!("{}/rest/v2/query", self.base_url))
                 .basic_auth(&self.username, Some(&self.password))
-                .header("Content-Type", "application/json")
-                .json(&body)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(sql.to_string())
                 .send()
                 .await
                 .map_err(|e| {
-                    Error::new(ErrorCode::Internal, "iotdb", format!("iotdb write: {e}"))
+                    Error::new(ErrorCode::Internal, "iotdb", format!("iotdb query: {e}"))
                 })?;
             if !resp.status().is_success() {
                 return Err(Error::new(
@@ -100,328 +250,18 @@ impl TsdbClient for IotdbClient {
                     resp.text().await.unwrap_or_default(),
                 ));
             }
-            // IoTDB REST v2 may return HTTP 200 with a body `code` != 200 on
-            // some failures; surface those too.
-            if let Ok(v) = resp.json::<serde_json::Value>().await
-                && let Some(code) = v.get("code").and_then(|c| c.as_i64())
-                && code != 200
-            {
-                return Err(Error::new(
-                    ErrorCode::Internal,
-                    "iotdb",
-                    format!(
-                        "iotdb write failed: code {code}: {}",
-                        v.get("message")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("no message")
-                    ),
-                ));
-            }
-        }
-        Ok(())
+            resp.json()
+                .await
+                .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("iotdb parse: {e}")))
+        })
+        .await
     }
 
-    async fn query(&self, sql: &str) -> Result<serde_json::Value, Error> {
-        let resp = self
-            .client
-            .post(format!("{}/rest/v2/query", self.base_url))
-            .basic_auth(&self.username, Some(&self.password))
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .body(sql.to_string())
-            .send()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("iotdb query: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(Error::new(
-                ErrorCode::Internal,
-                "iotdb",
-                resp.text().await.unwrap_or_default(),
-            ));
-        }
-        resp.json()
-            .await
-            .map_err(|e| Error::new(ErrorCode::Internal, "iotdb", format!("iotdb parse: {e}")))
-    }
+    // `delete` 走 `TsdbClient` 的 trait 默认实现（`ecat-data/src/tsdb.rs:55`），
+    // **不包 `guarded`**：默认实现的「不支持」是**调用方的用法错**，不是后端故障。
+    // 包了之后 8 次「不支持」就会打开熔断器，之后**正常写入/查询全被拒绝**。守测试见
+    // `tests/resilience.rs::delete_default_does_not_trip_the_breaker`。
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::extract::{Request, State};
-    use axum::response::{IntoResponse, Response};
-    use std::sync::{Arc, Mutex};
-
-    #[test]
-    fn client_constructs() {
-        let _client = IotdbClient::new("http://localhost:18080", "root", "root");
-    }
-
-    #[derive(Debug)]
-    struct CapturedRequest {
-        path: String,
-        headers: Vec<(String, String)>,
-        body: Vec<u8>,
-    }
-
-    impl CapturedRequest {
-        fn header(&self, name: &str) -> Option<&str> {
-            self.headers
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(name))
-                .map(|(_, v)| v.as_str())
-        }
-    }
-
-    /// mock IoTDB /rest/v2/insertTablet 端点：捕获请求路径/头/体，按给定
-    /// 状态码与响应体应答，返回 mock 的 base_url。
-    async fn spawn_mock_insert(
-        captured: Arc<Mutex<Vec<CapturedRequest>>>,
-        status: u16,
-        body: &'static str,
-    ) -> String {
-        let config = Arc::new(MockConfig {
-            captured,
-            status,
-            body,
-        });
-        let app = axum::Router::new()
-            .route("/rest/v2/insertTablet", axum::routing::post(handle_insert))
-            .with_state(config);
-
-        async fn handle_insert(State(config): State<Arc<MockConfig>>, req: Request) -> Response {
-            let path = req.uri().path().to_string();
-            let (parts, req_body) = req.into_parts();
-            let headers = parts
-                .headers
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.as_str().to_string(),
-                        v.to_str().unwrap_or_default().to_string(),
-                    )
-                })
-                .collect();
-            let req_body = axum::body::to_bytes(req_body, usize::MAX)
-                .await
-                .unwrap_or_default();
-            config
-                .captured
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push(CapturedRequest {
-                    path,
-                    headers,
-                    body: req_body.to_vec(),
-                });
-            if config.body.is_empty() {
-                axum::Json(serde_json::json!({"code": 200})).into_response()
-            } else {
-                (
-                    axum::http::StatusCode::from_u16(config.status).unwrap(),
-                    axum::response::Response::new(axum::body::Body::from(config.body)),
-                )
-                    .into_response()
-            }
-        }
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}")
-    }
-
-    struct MockConfig {
-        captured: Arc<Mutex<Vec<CapturedRequest>>>,
-        status: u16,
-        body: &'static str,
-    }
-
-    /// 按 measurement 索引对齐断言 fields 构造的三元组
-    /// （measurements/data_types/values[0] 来自同一循环，顺序一致但
-    /// HashMap 迭代顺序不定，故按名称索引断言）。
-    fn assert_field(
-        body: &serde_json::Value,
-        field: &str,
-        expected_type: &str,
-        expected_value: serde_json::Value,
-    ) {
-        let measurements = body["measurements"].as_array().unwrap();
-        let idx = measurements
-            .iter()
-            .position(|m| m.as_str() == Some(field))
-            .unwrap_or_else(|| panic!("field {field} missing from {measurements:?}"));
-        assert_eq!(
-            body["data_types"][idx].as_str(),
-            Some(expected_type),
-            "type for {field}"
-        );
-        assert_eq!(body["values"][0][idx], expected_value, "value for {field}");
-    }
-
-    #[tokio::test]
-    async fn insert_tablet_sends_full_protocol_body() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock_insert(captured.clone(), 200, "").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-
-        let point = DataPoint::new("cpu")
-            .with_field("usage", FieldValue::Float(0.85))
-            .with_field("count", FieldValue::Int(3))
-            .with_field("active", FieldValue::Bool(true))
-            .with_field("name", FieldValue::String("web".into()))
-            .with_timestamp(1_700_000_000_000);
-        client.write(&[point]).await.unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 1);
-        assert_eq!(reqs[0].path, "/rest/v2/insertTablet");
-        assert_eq!(reqs[0].header("content-type"), Some("application/json"));
-        // reqwest basic_auth("root", "root") → base64("root:root")
-        assert_eq!(reqs[0].header("authorization"), Some("Basic cm9vdDpyb290"));
-
-        let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
-        assert_eq!(body["device"], "cpu");
-        assert_eq!(body["is_aligned"], false);
-        assert_eq!(
-            body["timestamps"],
-            serde_json::json!([1_700_000_000_000_i64])
-        );
-        // values 为 [时间戳] × [字段] 的二维数组，单点单时间戳
-        assert_eq!(body["values"].as_array().unwrap().len(), 1);
-        // 字段类型编码与取值逐一对齐（HashMap 顺序不定，按名断言）
-        assert_field(&body, "usage", "DOUBLE", serde_json::json!(0.85));
-        assert_field(&body, "count", "INT64", serde_json::json!(3));
-        assert_field(&body, "active", "BOOLEAN", serde_json::json!(true));
-        assert_field(&body, "name", "TEXT", serde_json::json!("web"));
-    }
-
-    #[tokio::test]
-    async fn insert_tablet_defaults_timestamp_to_zero() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock_insert(captured.clone(), 200, "").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-
-        client
-            .write(&[DataPoint::new("mem").with_field("used", FieldValue::Int(7))])
-            .await
-            .unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
-        assert_eq!(body["timestamps"], serde_json::json!([0]));
-    }
-
-    #[tokio::test]
-    async fn insert_tablet_sends_one_request_per_point() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock_insert(captured.clone(), 200, "").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-
-        let p1 = DataPoint::new("cpu").with_field("usage", FieldValue::Float(0.5));
-        let p2 = DataPoint::new("mem").with_field("used", FieldValue::Int(1));
-        client.write(&[p1, p2]).await.unwrap();
-
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        assert_eq!(reqs.len(), 2, "每点独立一次 insertTablet 请求");
-        let devices: Vec<String> = reqs
-            .iter()
-            .map(|r| {
-                let body: serde_json::Value = serde_json::from_slice(&r.body).unwrap();
-                body["device"].as_str().unwrap().to_string()
-            })
-            .collect();
-        assert!(devices.iter().any(|d| d == "cpu"));
-        assert!(devices.iter().any(|d| d == "mem"));
-    }
-
-    #[tokio::test]
-    async fn write_returns_err_on_http_error() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock_insert(captured.clone(), 500, "boom").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        let err = client
-            .write(&[DataPoint::new("cpu").with_field("x", FieldValue::Int(1))])
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("boom"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn write_returns_err_on_2xx_with_failure_code() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        // IoTDB REST v2 部分失败返回 HTTP 200 + body code != 200
-        let base_url = spawn_mock_insert(
-            captured.clone(),
-            200,
-            r#"{"code":501,"message":"table not exists"}"#,
-        )
-        .await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        let err = client
-            .write(&[DataPoint::new("cpu").with_field("x", FieldValue::Int(1))])
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("table not exists"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn write_converts_non_finite_float_to_zero() {
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_mock_insert(captured.clone(), 200, "").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        client
-            .write(&[DataPoint::new("cpu").with_field("x", FieldValue::Float(f64::NAN))])
-            .await
-            .unwrap();
-        let reqs = captured.lock().unwrap_or_else(|e| e.into_inner());
-        let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
-        assert_field(&body, "x", "DOUBLE", serde_json::json!(0));
-    }
-
-    /// mock IoTDB /rest/v2/query 端点：按给定状态码与响应体应答。
-    async fn spawn_mock_query(status: u16, body: &'static str) -> String {
-        let app = axum::Router::new().route(
-            "/rest/v2/query",
-            axum::routing::post(move || async move {
-                (
-                    axum::http::StatusCode::from_u16(status).unwrap(),
-                    axum::response::Response::new(axum::body::Body::from(body)),
-                )
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        format!("http://{addr}")
-    }
-
-    #[tokio::test]
-    async fn query_parses_successful_json_response() {
-        let body = r#"{"code":200,"expression":[{"alias":"x"}],"timestamp":[],"values":[]}"#;
-        let base_url = spawn_mock_query(200, body).await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        let v = client.query("select x from root.s").await.unwrap();
-        assert_eq!(v["code"], 200);
-        assert_eq!(v["expression"][0]["alias"], "x");
-    }
-
-    #[tokio::test]
-    async fn query_returns_err_on_http_error() {
-        let base_url = spawn_mock_query(500, "query failed").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        let err = client.query("select 1").await.unwrap_err();
-        assert!(err.to_string().contains("query failed"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn query_non_json_body_returns_parse_error() {
-        let base_url = spawn_mock_query(200, "not json").await;
-        let client = IotdbClient::new(base_url, "root", "root");
-        let err = client.query("select 1").await.unwrap_err();
-        assert!(err.to_string().contains("iotdb parse"), "got: {err}");
-    }
-}
+mod tests;
