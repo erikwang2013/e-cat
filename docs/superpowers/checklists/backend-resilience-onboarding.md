@@ -113,8 +113,10 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
   `Option<u64>` 的 `None` 不能区分「没配」与「禁用」。
 - `from_config` 里装配：`query_timeout: query_timeout(cfg.query_timeout_secs)`、
   `breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default()))`、
-  `semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32)))`
-  （`ecat-data-clickhouse/src/lib.rs:145-147`；Redis 的对应三行在 `ecat-data-redis/src/lib.rs:126-130`，没有 semaphore）。
+  `semaphore: match cfg.max_concurrency { Some(0) => None, Some(n) => Some(Arc::new(Semaphore::new(n))), None => Some(Arc::new(Semaphore::new(32))) }`
+  （`ecat-data-clickhouse/src/lib.rs` 的 `from_config`；Redis 的对应三行在 `ecat-data-redis/src/lib.rs:126-130`，没有 semaphore）。
+  ⚠️ **别直写 `unwrap_or(32)`** —— 那让 `Some(0)` 落成 `Semaphore::new(0)`：`permit().await`
+  永久挂起，而超时在许可**里层**、救不了。
 
 **验收**（`ecat-data-redis/src/tests.rs:334-343` 的 `zero_timeout_means_disabled` 是模板）：
 

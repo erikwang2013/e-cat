@@ -246,9 +246,14 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
 ```rust
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
-            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
-// ⚠️ `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
-// 落成 `Semaphore::new(0)` 会让每次调用**永久排队**且**超时永不触发**（超时在许可里层）。见 checklist §1。
+            // `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
+            // 直写 `unwrap_or(32)` 会让 `Some(0)` 落成 `Semaphore::new(0)`：每次调用**永久排队**
+            // 且**超时永不触发**（超时在许可里层）。见 checklist §1。
+            semaphore: match cfg.max_concurrency {
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
 ```
 
 （MongoDB 没有第三行；`max_pool_size` / `min_pool_size` 按 T0-C2 装配。）
@@ -263,7 +268,8 @@ pub struct <XxxClient> {
     query_timeout: Option<Duration>,
     /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
     breaker: Arc<Breaker>,
-    semaphore: Arc<Semaphore>,
+    /// `None` = **不限并发**（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 }
 ```
 
@@ -274,7 +280,7 @@ pub struct <XxxClient> {
 ```rust
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-            semaphore: Arc::new(Semaphore::new(32)),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
 ```
 
 （S3 只有 `from_config`，跳过本条的裸构造器部分。）
@@ -739,7 +745,8 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
     query_timeout: Option<Duration>,
     /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
     breaker: Arc<Breaker>,
-    semaphore: Arc<Semaphore>,
+    /// `None` = **不限并发**（`max_concurrency: 0`）。
+    semaphore: Option<Arc<Semaphore>>,
 ```
 
 `new`（`src/lib.rs:27-40`）的 `Self { ... }` 里 `password: password.into(),` 之后追加：
@@ -747,7 +754,7 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
 ```rust
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-            semaphore: Arc::new(Semaphore::new(32)),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
 ```
 
 `from_config`（`src/lib.rs:42-52`）的 `Ok(Self { ... })` 里 `password: cfg.password,` 之后追加：
@@ -755,8 +762,14 @@ fn query_timeout(secs: Option<u64>) -> Option<Duration> {
 ```rust
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
-            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
-// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
+            // `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
+            // 直写 `unwrap_or(32)` 会让 `Some(0)` 落成 `Semaphore::new(0)`：每次调用**永久排队**
+            // 且**超时永不触发**（超时在许可里层）。见 checklist §1。
+            semaphore: match cfg.max_concurrency {
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
 ```
 
 顶部 `use`（`src/lib.rs:2-6`）整体替换为：
@@ -1453,7 +1466,7 @@ git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.
 ```rust
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-            semaphore: Arc::new(Semaphore::new(32)),
+            semaphore: Some(Arc::new(Semaphore::new(32))),
 ```
 
 `from_config`（`:54-64`）装配走配置：
@@ -1461,8 +1474,14 @@ git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.
 ```rust
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
-            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
-// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
+            // `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
+            // 直写 `unwrap_or(32)` 会让 `Some(0)` 落成 `Semaphore::new(0)`：每次调用**永久排队**
+            // 且**超时永不触发**（超时在许可里层）。见 checklist §1。
+            semaphore: match cfg.max_concurrency {
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
 ```
 
 `use` 同 Task 1 Step 4。
@@ -2436,8 +2455,14 @@ tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
 ```rust
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker: Arc::new(Breaker::new(cfg.breaker.unwrap_or_default())),
-            semaphore: Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(32))),
-// ⚠️ `Some(0)` = **不限并发**（不建信号量），别落成 `Semaphore::new(0)` —— 会永久排队且超时不触发。见 checklist §1。
+            // `Some(0)` = **不限并发**（不建信号量）—— 与 `query_timeout_secs: 0` = 禁用同构。
+            // 直写 `unwrap_or(32)` 会让 `Some(0)` 落成 `Semaphore::new(0)`：每次调用**永久排队**
+            // 且**超时永不触发**（超时在许可里层）。见 checklist §1。
+            semaphore: match cfg.max_concurrency {
+                Some(0) => None,
+                Some(n) => Some(Arc::new(Semaphore::new(n))),
+                None => Some(Arc::new(Semaphore::new(32))),
+            },
 ```
 
 - `use`（`src/lib.rs:17-25`）追加四行：
