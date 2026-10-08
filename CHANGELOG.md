@@ -1,5 +1,60 @@
 # Changelog
 
+## [7.0.0] — 2026-10-08
+
+### ⚠️ 破坏性变更
+
+- **11 个后端 Config 新增公开字段**：`ArangoConfig` / `Neo4jConfig` / `NebulaGraphConfig` /
+  `ElasticsearchConfig` / `OpenSearchConfig` / `InfluxConfig` / `IotdbConfig` /
+  `TdengineConfig` / `QuestdbConfig` / `S3Config` 新增 `query_timeout_secs` / `breaker` /
+  `max_concurrency`；`MongoConfig` 新增 `query_timeout_secs` / `breaker` / `max_pool_size` /
+  `min_pool_size`。这些结构体既没有 `Default` 也没有 `#[non_exhaustive]`，用**结构体字面量**
+  构造的用户代码需要补字段（E0063）；走 serde 配置的写法不受影响（新字段全部带
+  `#[serde(default)]`，省略即默认）。判定与 6.0.0 对 `RedisConfig` / `ClickhouseConfig`
+  的同一处改动一致 —— 同一个改动，同一套标准。
+
+### Added — 出站韧性覆盖全部数据后端（批次 5b）
+
+- 11 个后端接入统一出站外壳 **许可 → 熔断 → 超时**（`ecat_data::run_with_timeout` +
+  `ecat_circuit_breaker::Breaker`）：`ecat-data-arangodb` / `neo4j` / `nebulagraph` /
+  `elasticsearch` / `opensearch` / `influxdb` / `iotdb` / `tdengine` / `questdb` / `s3` /
+  `mongodb`。`transaction()` / `dialect()` / `object_path()` 等**不含 I/O 或纯本地**的
+  路径不包 —— 它们失败不是后端故障，包装会把本地错误算进熔断窗口。
+- 各 `XxxConfig` 新增可选字段 `query_timeout_secs`（省略 = 30 秒，**`0` = 禁用**）与
+  `breaker`；HTTP 后端另有 `max_concurrency`（默认 32）—— reqwest 只有
+  `pool_max_idle_per_host`，**没有**最大总连接数旋钮，并发上限由各 crate 自己的
+  `tokio::sync::Semaphore` 实现，许可取在**最外层**（排队中的请求还没碰后端，不该计入失败）。
+- `MongoConfig` 新增 `max_pool_size` / `min_pool_size`：并发背压交给**驱动连接池**
+  （`mongodb` 3.8.0 默认上限 **10**，不是 100），本 crate **没有**信号量层。
+- 13 个 crate 各新增 `metrics` feature：把 `ecat_outbound_timeouts_total` /
+  `ecat_outbound_breaker_opened_total` / `ecat_outbound_breaker_state` 挂进
+  `ecat-metrics` 的共用 collector，标签 = **配置节名**（`"arangodb"` / `"mongodb"` / …）。
+  **`from_config` 构造即注册**（本批统一裁决）：`--features metrics` 下用户代码零变化，
+  不再需要手动调 `register_outbound_metrics`。覆盖 5b 的 11 个后端**加上 5a 的
+  `ecat-data-redis` / `ecat-data-clickhouse`**（后者此前同样只有再导出、无生产调用点）。
+  注意：同一配置节在**同一进程内建多个 client** 时，标签只有一份，**最后构造的那个生效**
+  —— 这是「标签 = 配置节名」的固有含义，需要区分实例请用不同配置节名。
+  另修：聚合 crate `ecat` 的 `metrics` feature 原先只启用 `dep:ecat-metrics`，**不透传**给
+  数据后端 —— `ecat = { features = ["metrics", "redis"] }` 会拿到 registry 与 `/metrics`
+  端点，但 `ecat-data-redis` 仍以默认特性构建、`from_config` 不注册，一个 `ecat_outbound_*`
+  样本都不出。现用弱依赖语法透传（`ecat-data-redis?/metrics` 等）：只开 `metrics` 不会把
+  后端拖进来，只开后端也不会被强加 `metrics`（四种组合实测，非破坏性变更）。
+  （`ecat-data-sqlx` / `ecat-data-mssql` 的 `register_pool_metrics` **仍为显式调用**：
+  它的标签语义是**实例名**（`"primary"` / `"replica-1"`，见 `ecat-metrics/src/rdbms.rs:33-35`），
+  自动注册会替用户编一个名字、且读写分离下多个池会互相覆盖。）
+- QuestDB 的 `query_timeout_secs` / `breaker` 走 `RdbmsError` 路径（`RdbmsError::Timeout` /
+  `RdbmsError::Connection("circuit breaker is open")`），与其余 10 个的
+  `ecat_errors::Error`（`DeadlineExceeded` / `Unavailable`）不同 —— 它实现的是 `SqlExecutor`。
+- 文档：README「支持的数据库」表超时/熔断列 7 → **18**（19 行中除 memcached 外全部）；
+  教程补齐 TDengine / MongoDB / S3 三节与其余 8 节的字段速查（13 份镜像）；
+  `config/databases.example.yaml` 同步（并补上 5a 遗留的 Redis / ClickHouse 字段）。
+
+### 说明
+
+- 5a 遗留的「`ecat-data-sqlx` / `ecat-data-mssql` 声明未使用的 prometheus 依赖」本批**未处理**
+  （与出站韧性无关，混进来会把版本号变更的 diff 搅浑）。
+- `MongoConfig.tls` 仍是**未接线**字段（驱动 3.x 的 TLS 走 URI 选项），本批只加 `TODO` 注释留痕。
+
 ## [6.0.0] — 2026-10-08
 
 ### ⚠️ 破坏性变更
