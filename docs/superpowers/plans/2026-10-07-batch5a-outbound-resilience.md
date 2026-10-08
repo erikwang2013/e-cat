@@ -3201,7 +3201,7 @@ mod tests {
 }
 ```
 
-（`ecat_metrics::register_outbound_metrics` 的第三个参数是 `Box<dyn Fn() -> u64 + Send + Sync>`，`move` 走的是 `Arc<Breaker>` 的所有权，所以 `register_one` 里两次 `Arc::clone` 是必要的。）
+（`ecat_metrics::register_outbound_metrics` 的签名是 `(backend: &'static str, timeouts: OutboundCounterFn, breaker_opened: OutboundCounterFn, breaker_state: OutboundStateFn)` —— ⚠️ **前两个 counter 是 `Fn() -> u64`，最后一个是 `Fn() -> u8`**（`breaker.state().code()` 返回 u8，别放进 u64 的位置；这条括注原先只说了第三个参数，2026-10-08 由 Task 6 的 checklist 作者发现并补全）。`move` 走的是 `Arc<Breaker>` 的所有权，所以 `register_one` 里两次 `Arc::clone` 是必要的。）
 
 - [ ] **Step 15: 带 feature 跑**
 
