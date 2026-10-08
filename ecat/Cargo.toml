@@ -44,7 +44,7 @@ ecat-config-remote = { workspace = true, optional = true }
 ecat-data-redis = { workspace = true, optional = true }
 ecat-orm = { workspace = true, optional = true }
 # ecat-data-mssql 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-data-mssql = { version = "5.0.0", path = "../ecat-data-mssql", optional = true }
+ecat-data-mssql = { version = "6.0.0", path = "../ecat-data-mssql", optional = true }
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true
 async-trait.workspace = true

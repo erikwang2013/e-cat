@@ -10,13 +10,13 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-data = { version = "5.0.0", path = "../ecat-data" }
+ecat-data = { version = "6.0.0", path = "../ecat-data" }
 ecat-errors.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-ecat-tls = { version = "5.0.0", path = "../ecat-tls" }
+ecat-tls = { version = "6.0.0", path = "../ecat-tls" }
 # 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
 ecat-circuit-breaker.workspace = true
 # 并发上限用 Semaphore。tokio 现在只在 dev-dependencies 里，必须提到这里。

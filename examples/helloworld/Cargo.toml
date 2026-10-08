@@ -7,11 +7,11 @@ description = "Hello World example for the e-cat framework"
 publish = false
 
 [dependencies]
-ecat = { version = "5.0.0", path = "../../ecat" }
-ecat-transport-http = { version = "5.0.0", path = "../../ecat-transport-http" }
-ecat-transport-grpc = { version = "5.0.0", path = "../../ecat-transport-grpc" }
-ecat-logging = { version = "5.0.0", path = "../../ecat-logging" }
-ecat-middleware = { version = "5.0.0", path = "../../ecat-middleware" }
+ecat = { version = "6.0.0", path = "../../ecat" }
+ecat-transport-http = { version = "6.0.0", path = "../../ecat-transport-http" }
+ecat-transport-grpc = { version = "6.0.0", path = "../../ecat-transport-grpc" }
+ecat-logging = { version = "6.0.0", path = "../../ecat-logging" }
+ecat-middleware = { version = "6.0.0", path = "../../ecat-middleware" }
 serde.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tower.workspace = true

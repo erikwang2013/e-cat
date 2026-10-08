@@ -5,7 +5,7 @@
 
 Le nom chinois d'Ecat : une chatte (一只猫)
 
-**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v5.0.0 · 56 crates).
+**Une chatte** est un framework de microservices Rust inspiré de [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v6.0.0 · 56 crates).
 
 Il offre une expérience de développement API-first, une architecture de composants enfichables, une abstraction unifiée des middleware HTTP/gRPC, ainsi qu'une chaîne d'outils CLI complète. Les développeurs familiers avec Kratos peuvent démarrer sans difficulté, tout en tirant pleinement parti de la sécurité de typage, des abstractions à coût zéro et des performances extrêmes de Rust.
 
@@ -552,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Pourquoi un Cargo Workspace
 
-Conforme à la conception modulaire de Kratos. Tous les crates `ecat-*` sont publiés en version synchronisée avec le workspace (actuellement 5.0.0), chacun compilé indépendamment, l'utilisateur les importe au besoin. Les crates centraux gardent un minimum de dépendances, les crates contrib fournissent des intégrations optionnelles.
+Conforme à la conception modulaire de Kratos. Tous les crates `ecat-*` sont publiés en version synchronisée avec le workspace (actuellement 6.0.0), chacun compilé indépendamment, l'utilisateur les importe au besoin. Les crates centraux gardent un minimum de dépendances, les crates contrib fournissent des intégrations optionnelles.
 
 ### Pourquoi prost (plutôt que protobuf-rs)
 

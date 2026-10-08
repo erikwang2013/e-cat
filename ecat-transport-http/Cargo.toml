@@ -10,8 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-transport = { version = "5.0.0", path = "../ecat-transport" }
-ecat-metrics = { version = "5.0.0", path = "../ecat-metrics" }
+ecat-transport = { version = "6.0.0", path = "../ecat-transport" }
+ecat-metrics = { version = "6.0.0", path = "../ecat-metrics" }
 axum.workspace = true
 tokio = { workspace = true, features = ["net", "sync", "macros", "rt"] }
 tower.workspace = true

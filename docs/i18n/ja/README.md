@@ -5,7 +5,7 @@
 
 Ecat の日本語名: 一匹の猫
 
-**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v5.0.0 · 56 crates）。
+**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v6.0.0 · 56 crates）。
 
 API-first の開発体験、プラグイン可能なコンポーネントアーキテクチャ、統一された HTTP/gRPC ミドルウェア抽象、そして充実した CLI ツールチェーンを提供します。Kratos に慣れた開発者がシームレスに使い始められる一方、Rust の型安全性、ゼロコスト抽象、極限のパフォーマンスを最大限に活用できます。
 
@@ -551,7 +551,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### なぜ Cargo Workspace か
 
-Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 5.0.0）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
+Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 6.0.0）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
 
 ### なぜ prost（protobuf-rs ではなく）か
 

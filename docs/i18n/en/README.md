@@ -5,7 +5,7 @@
 
 Ecat's Chinese name: 一只猫 (literally "a cat")
 
-**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v5.0.0 · 56 crates).
+**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v6.0.0 · 56 crates).
 
 It offers an API-first development experience, a pluggable component architecture, a unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started seamlessly, while fully leveraging Rust's type safety, zero-cost abstractions, and extreme performance.
 
@@ -552,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 5.0.0), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
+Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 6.0.0), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
 
 ### Why prost (instead of protobuf-rs)
 

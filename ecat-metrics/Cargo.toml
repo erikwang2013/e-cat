@@ -22,4 +22,4 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 ecat-data-sqlx = { workspace = true, features = ["metrics"] }
 # ecat-data-mssql 不在 workspace.dependencies 表里，直写 path + version
 # （与 ecat/Cargo.toml:22 同款）。
-ecat-data-mssql = { version = "5.0.0", path = "../ecat-data-mssql", features = ["metrics"] }
+ecat-data-mssql = { version = "6.0.0", path = "../ecat-data-mssql", features = ["metrics"] }

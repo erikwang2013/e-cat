@@ -5,7 +5,7 @@
 
 Nama Tionghoa Ecat: 一只猫 (seekor kucing)
 
-**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v5.0.0 · 56 crates).
+**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v6.0.0 · 56 crates).
 
 Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dipasang, abstraksi middleware HTTP/gRPC terpadu, serta rantai alat CLI yang lengkap. Pengembang yang akrab dengan Kratos dapat langsung menggunakannya, sekaligus memanfaatkan sepenuhnya type-safety Rust, abstraksi biaya nol, dan performa ekstrem.
 
@@ -552,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Mengapa Cargo Workspace
 
-Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 5.0.0), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
+Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 6.0.0), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
 
 ### Mengapa prost (bukan protobuf-rs)
 
