@@ -527,6 +527,24 @@ fn register_as(backend: &'static str, breaker: Arc<Breaker>) { /* 原闭包装�
 它能消掉 flaky，但把测试脚手架放进了**会被逐字抄的生产函数**，而且上面那条「全量跑也红」
 的验收性质会丢掉。2026-10-08 曾有两套写法并存，已统一到私有标签。
 
+**唯一的签名例外：双路径 crate（`ecat-data-clickhouse`）**。它有两条 I/O 路径共用一个
+`Breaker`，所以 `register_as` 收**两个**标签，并委托给一个单标签的 `register_one`
+（`ecat-data-clickhouse/src/metrics.rs:26-38`）：
+
+```rust
+fn register_as(rdbms_backend: &'static str, tsdb_backend: &'static str, breaker: Arc<Breaker>) {
+    register_one(rdbms_backend, BackendKind::Rdbms, Arc::clone(&breaker));
+    register_one(tsdb_backend, BackendKind::Tsdb, breaker);
+}
+fn register_one(backend: &'static str, kind: BackendKind, breaker: Arc<Breaker>) { /* 单标签版 */ }
+```
+
+判据与 `kind` 是否做成参数**同源**：`register_as` 只在你的 crate **有多条 I/O 路径**时
+才收多个标签；单路径 crate 一律单标签。**13 个公共标签实测互不重复**
+（`clickhouse` 与 `clickhouse-tsdb` 是同一 crate 的两个，不算撞车）—— 这条静态检查值得
+跑一次：**每个 crate 的用例只断言「自己的」标签存在**，所以两个 crate 撞用同一个标签时
+**两边的用例都会绿**，没有别的判据能发现。
+
 ---
 
 ## 5. 加一条超时测试
