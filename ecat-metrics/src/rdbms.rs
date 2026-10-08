@@ -33,6 +33,10 @@ pub type RdbmsCounterFn = Box<dyn Fn() -> u64 + Send + Sync>;
 ///
 /// `backend` 是标签值（`"primary"` / `"replica-1"` 之类）。同一个 `backend` 重复
 /// 注册**替换**（不叠加）：同一标签出现两份样本会被抓取端判为重复。
+///
+/// ⚠️ **取数闭包内不要调本函数**：[`Collector::collect`] 是**持 `entries` 锁**
+/// 调用闭包的，而 `std::sync::Mutex` 不可重入 —— 闭包内再注册会在同一把锁上
+/// 自锁，抓取线程永久挂住，`/metrics` 从此不再响应。
 pub fn register_rdbms_metrics(
     backend: &'static str,
     connections: RdbmsConnectionsFn,
