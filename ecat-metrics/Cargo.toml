@@ -19,7 +19,11 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 # 跨 crate 回归：两个后端必须在**同一个测试二进制**里才有意义
 # （见 tests/rdbms_shared_families.rs 的模块文档）。dev-dependencies 不参与
 # 正常构建图，所以这个环是合法的；但本仓库没有先例 —— 先验证一次。
-ecat-data-sqlx = { workspace = true, features = ["metrics"] }
+# 纯 path（不带 version）：带 version 的 dev-dep 不被剥离，会让 `cargo publish`
+# 要求 ecat-data-sqlx 6.0.0 先上 crates.io —— 而 ecat-data-sqlx 又依赖
+# ecat-metrics ⇒ 发布顺序成环（实测 `failed to select a version for the
+# requirement ecat-metrics = "^6.0.0"`）。path-only 的 dev-dep 打包时被剥离。
+ecat-data-sqlx = { path = "../ecat-data-sqlx", features = ["metrics"] }
 # ecat-data-mssql 不在 workspace.dependencies 表里，直写 path + version
 # （与 ecat/Cargo.toml:22 同款）。
-ecat-data-mssql = { version = "6.0.0", path = "../ecat-data-mssql", features = ["metrics"] }
+ecat-data-mssql = { path = "../ecat-data-mssql", features = ["metrics"] }
