@@ -687,7 +687,7 @@ grep -c 'ecat-metrics' ecat-data-arangodb/Cargo.toml   # 期望 4（含两行注
 cargo metadata --format-version=1 --offline >/dev/null && echo METADATA_OK
 ```
 
-期望 `2` 与 `METADATA_OK`。
+期望 `4` 与 `METADATA_OK`。
 
 ### Step 3（3 分钟）配置字段
 
@@ -1401,7 +1401,7 @@ git commit --only Cargo.lock ecat-data-arangodb/Cargo.toml ecat-data-arangodb/sr
 然后：
 
 ```bash
-git commit --only ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.rs \
+git commit --only Cargo.lock ecat-data-neo4j/Cargo.toml ecat-data-neo4j/src/lib.rs \
   ecat-data-neo4j/src/metrics.rs ecat-data-neo4j/src/tests/resilience.rs \
   -m "feat(ecat-data-neo4j): 出站韧性 —— 超时/熔断/并发上限 + metrics
 
@@ -1538,7 +1538,7 @@ async fn params_not_supported_does_not_touch_the_breaker() {
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 一条本 crate 专属：
 **把 `if !params.is_null()` 那三行挪进 `guarded` 里面** ⇒ `params_not_supported_does_not_touch_the_breaker` 必红（8 次失败 > 5 次阈值）。
 
-**Step 11（5 分钟）红探针 + 闸门 + 提交**（`git commit --only` 同样的四个路径，消息同构）。
+**Step 11（5 分钟）红探针 + 闸门 + 提交**（`git commit --only` 同样的路径 + **`Cargo.lock`**，消息同构）。
 
 ---
 
@@ -1732,7 +1732,7 @@ async fn unsupported_ops_do_not_trip_the_breaker() {
 **Step 9（3 分钟）跑测试**：期望 **19 passed**；`--features metrics` → **20 passed**。
 **Step 10（5 分钟）空验收自证**：Task 1 Step 10 的表 + 本 crate 专属两条：
 删掉 `delete` 的 `guarded` ⇒ `every_io_method_times_out…` 红；把 `bulk_index` 默认实现覆写进 `guarded` ⇒ `unsupported_ops_do_not_trip_the_breaker` 红。
-**Step 11（5 分钟）红探针 + 闸门 + 提交**（`cargo fmt -p ecat-data-elasticsearch`、clippy、`git commit --only` 四个路径）。
+**Step 11（5 分钟）红探针 + 闸门 + 提交**（`cargo fmt -p ecat-data-elasticsearch`、clippy、`git commit --only` 路径 + **`Cargo.lock`**）。
 
 ---
 
@@ -1953,7 +1953,7 @@ async fn delete_default_does_not_trip_the_breaker() {
 export CARGO_TARGET_DIR=/var/tmp/ecat-target
 cargo fmt -p ecat-data-influxdb
 cargo clippy -p ecat-data-influxdb --all-targets -- -D warnings 2>&1 | tail -5
-git commit --only ecat-data-influxdb/Cargo.toml ecat-data-influxdb/src/lib.rs \
+git commit --only Cargo.lock ecat-data-influxdb/Cargo.toml ecat-data-influxdb/src/lib.rs \
   ecat-data-influxdb/src/tests.rs ecat-data-influxdb/src/tests/resilience.rs \
   ecat-data-influxdb/src/metrics.rs -m "feat(ecat-data-influxdb): 出站韧性 + metrics
 
@@ -2653,7 +2653,7 @@ async fn every_io_method_times_out_when_the_backend_stalls() {
 这条只能靠 `grep -rn 'BackendKind::Cache' ecat-data-s3/src/` 只命中 witness 行来保证；
 (b) `put` 的 `guarded` 删掉 ⇒ `put_times_out_…` 与 `every_io_method_…` 红。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：`cargo fmt -p ecat-data-s3`、clippy（`--all-targets`）、
-`git commit --only` 五个文件。
+`git commit --only` 六个文件（含 **`Cargo.lock`**）。
 
 ---
 
@@ -3030,7 +3030,7 @@ async fn bson_conversion_error_does_not_trip_the_breaker() {
 (b) 把 `insert` 的 bson 转换挪进 `guarded` ⇒ `bson_conversion_error_does_not_trip_the_breaker` 红；
 (c) 删 `guarded` 里的 `run_with_timeout` ⇒ `guarded_times_out_…` 红。
 **Step 12（5 分钟）红探针 + 闸门 + 提交**：`cargo fmt -p ecat-data-mongodb`、
-`cargo clippy -p ecat-data-mongodb --all-targets -- -D warnings`、`git commit --only` 四个文件。
+`cargo clippy -p ecat-data-mongodb --all-targets -- -D warnings`、`git commit --only` 五个文件（含 **`Cargo.lock`**）。
 
 ---
 
