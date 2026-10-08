@@ -1,5 +1,112 @@
 # Changelog
 
+## [6.0.0] — 2026-10-08
+
+### ⚠️ 破坏性变更
+
+- **`ecat-data`：`run_with_timeout` 签名变更** —— `(Option<Duration>, F)` →
+  `(BackendKind, Option<Duration>, F)`，返回的错误类型由写死的 `RdbmsError` 改为泛型
+  `E: TimeoutError`。全仓 13 个既有调用点已迁移。
+- **`ecat-data`：删除公开静态量 `QUERY_TIMEOUTS`** —— 由 `TIMEOUTS`（按 `BackendKind`
+  分 7 维）+ `timeout_counter(kind)` 取代。它只覆盖 RDBMS，且在新维度下不再被递增 ——
+  留着就是一颗哑弹：仍是公开 API，读它的人永远拿到冻结值。
+- （次要）`RedisConfig` / `ClickhouseConfig` 新增公开字段。两个结构体都没有 `Default`
+  也没有 `#[non_exhaustive]`，用**结构体字面量**构造的用户代码需要补字段；走 serde 配置的
+  写法不受影响（新字段全部带 `#[serde(default)]`，省略即默认）。
+
+### Added
+
+- **`ecat-data`：泛型超时助手**（原 `run_with_timeout` 只服务 RDBMS 一条路径）：
+  - `BackendKind` —— 7 个后端**类别**（`Rdbms` / `Cache` / `Search` / `Graph` /
+    `Document` / `Storage` / `Tsdb`），判别值即 `TIMEOUTS` 下标，**顺序不可改**；
+    `BackendKind::slug()` 给出 `Error::reason` 用的短标识。
+    维度跟 **trait 家族**走而不是产品品类：ClickHouse 同时实现 `SqlExecutor` 与
+    `TsdbClient`，按「调用点包着哪个 trait」分。
+  - `TimeoutError` trait + 两个实现：`RdbmsError`（→ `RdbmsError::Timeout`）与
+    `ecat_errors::Error`（→ `ErrorCode::DeadlineExceeded`，`reason` 填组件标识）——
+    六个非 RDBMS trait 共用后者，不需要六套。
+  - `TIMEOUTS: [AtomicU64; 7]` + `timeout_counter(kind)`。取槽走无 `_` 分支的 `match`：
+    将来加第 8 个维度时**编译失败**，而不是运行期数错槽。
+  - 泛型 `run_with_timeout(kind, timeout, fut)`：`None` = 禁用超时；
+    `Some(Duration::ZERO)` = 立刻超时（**不是**禁用，别照抄本仓别处「`0` = 禁用」的惯例）。
+- `ecat-data`：`map_breaker_error` / `breaker_error_to_backend_error` 由 `pub(crate)`
+  改为公开 —— 熔断器错误的映射只有一套，Redis / ClickHouse 的包装层与 `RdbmsRouting`
+  复用同一套（两个错误类型都是外部类型，写不出统一的 `From`，故各一个函数）。
+- `ecat-circuit-breaker`：
+  - `Breaker::opened_total()` —— `Closed → Open` 的累计次数（半开探测失败重新打开也计入），
+    供 `ecat_outbound_breaker_open_total`。用 `state()` 轮询猜测「开了几次」是错的
+    （轮询间隔决定准确性，两次探测之间开又关抓不到）。
+  - `BreakerState::code()` —— 指标数值编码 `0` = closed / `1` = open / `2` = half-open。
+    放在枚举定义处而非指标侧，编码器与枚举才不会各改各的。
+  - `BreakerConfig` 可反序列化：各字段 `#[serde(default)]`，配置文件里 `breaker: {}`
+    与 `breaker: {"failure_ratio": 0.5}` 都能解析。
+- `ecat-metrics`：三个出站指标的**全进程唯一** collector ——
+  `register_outbound_metrics(backend, timeouts, breaker_opened, breaker_state)`。
+  `ecat_outbound_timeouts_total` / `ecat_outbound_breaker_open_total` /
+  `ecat_outbound_breaker_state`，维度 `backend`。幂等：同一个 `backend` 重复注册**覆盖**
+  （避免同一标签出现两份样本被抓取端判为重复）。collector 必须在 `ecat-metrics` 只建一份 ——
+  `registry()` 是全进程一个，每 crate 各建一份会在 `Registry` 里撞名（见 Fixed 第二条）。
+- `ecat-metrics`：四个 `ecat_rdbms_*` 家族的唯一 collector ——
+  `register_rdbms_metrics(backend, connections, pool_timeouts, query_timeouts,
+  transactions_leaked)`；`ecat-data-sqlx` / `ecat-data-mssql` 的 `register_pool_metrics`
+  改为往里挂数据源（**签名未变**）。
+- **`ecat-data-redis`：`Cache` 路径内置超时 + 熔断**（用户代码零改动）：
+  - `RedisConfig` 新增 `query_timeout_secs`（`0` = 禁用；未配置 = 30 秒）与 `breaker`
+    （省略即保守默认：失败率 0.5 / 窗口 30 秒 / 打开 10 秒）。
+  - `RedisCache::breaker()` 暴露熔断器句柄；超时计数按 `BackendKind::Cache` 维度。
+  - opt-in feature `metrics`：`register_outbound_metrics(Arc<Breaker>)`，标签 `backend="redis"`。
+- **`ecat-data-clickhouse`：`SqlExecutor` 与 `TsdbClient` 两条路径内置超时 + 熔断 + 并发上限**：
+  - `ClickhouseConfig` 新增 `query_timeout_secs` / `breaker` / `max_concurrency`
+    （未配置 = 32）。并发上限由本 crate 的信号量实现 —— reqwest 只有
+    `pool_max_idle_per_host`（空闲保留数），没有「最大总连接数」，默认无背压。
+  - 两条路径**共用一个** `Breaker`（同一个服务器、同一个故障域）；超时维度分别按
+    `Rdbms` 与 `Tsdb` 计。
+  - `TsdbClient` 实现搬到 `src/tsdb.rs`；`_with` 方法保持**不进熔断器**（见 Fixed 第三条）。
+  - opt-in feature `metrics`：标签 `backend="clickhouse"` / `backend="clickhouse-tsdb"`。
+- `docs/superpowers/checklists/backend-resilience-onboarding.md` —— 5b 逐 crate 照做的
+  出站韧性接入 checklist（8 节）。
+- `docs/database-config-tutorial.md` ×13 补 Redis / ClickHouse 的超时与熔断字段，
+  并写明 Redis 多路复用的能力边界。
+
+### Fixed
+
+- **`ecat-circuit-breaker`：半开探测名额泄漏（5.0.0 已发布缺陷）。**
+  `Breaker::call` 在半开分支于 `f().await` **之前**借出探测名额，而名额的归还只在
+  await **之后**的记录逻辑里。于是 future 被**外部取消**（`tokio::select!`、调用方自己的
+  超时层、请求处理被 drop）时名额有借无还 —— `half_open_probes`（默认 3）次之后
+  `half_open_count >= half_open_probes` 恒成立，**每次调用立即返回 `ProbesExhausted`，
+  状态永久停在 `HalfOpen`**，只能靠重启进程恢复。
+  修法：探测名额改为 RAII 的 `ProbePermit`，`Drop` 时归还；探测已记入窗口则 `disarm`
+  不再归还。归还用 `saturating_sub` 是承重的（探测 A 挂起 → 探测 B 失败重开 → 冷却期
+  `Open → HalfOpen` 清零计数 → A 这时被取消，减在 0 上是可达的）。
+- **`ecat-data-sqlx` / `ecat-data-mssql`：四个 `ecat_rdbms_*` 同名家族互相顶掉
+  （5.0.0 已发布缺陷）。** 两个 crate 的 `register_pool_metrics` 各建一份同名 collector，
+  而 `ecat-metrics` 的 `registry()` 是**全进程一个**：`prometheus::Registry` 按名字去重，
+  后注册者整份被 `AlreadyReg` 吞掉 ⇒ **它的四个指标一条样本都不输出**，无报错、无日志，
+  且单 crate 测试全绿（看不到另一个 crate 的注册）。
+  修法：collector 唯一化到 `ecat-metrics::register_rdbms_metrics`，两个后端只挂数据源。
+  指标名、HELP 文本与标签语义**一字未改**；新增跨 crate 回归测试
+  （`ecat-metrics/tests/rdbms_shared_families.rs`，两个后端同进程时两族样本都在）。
+- `ecat-data-clickhouse`：`transaction()`（硬编码「ClickHouse 不支持事务」）与 `_with`
+  方法（落到 `SqlExecutor` 的 trait 默认实现）**不进熔断器** —— 两者都不含任何 I/O，
+  包进去只会让「本就不支持的调用」被记成后端失败。加了两条把守测试防回归。
+
+### Known limitations
+
+- **熔断没有总开关**：`BreakerConfig` 只有阈值字段，没有 `enabled`。要停用只能把阈值
+  调到不可能触发（如 `failure_ratio: 1.1`）。配置教程已写明，别写 `{"enabled": false}`
+  （那是反序列化错误）。
+- `ecat-data-redis` / `ecat-data-clickhouse` 的 `metrics` feature 里 `dep:prometheus`
+  在本版后成为**未使用的直接依赖**（collector 已搬去 `ecat-metrics`）。本版不删：
+  feature 列表是对外可见的，删它超出「换注册方式」的范围，留作独立清理。
+- `ecat-data-redis` 仍走 `MultiplexedConnection`（多路复用），本版**不换连接池** ——
+  超时 + 熔断下多路复用的边界见配置教程。
+- `RedisLock` 的 `DistributedLock` 路径不在本版范围（用 `LockError`，不共用本套映射）。
+- README 的后端能力表未更新（本版只改了版本号）：表里 ClickHouse / QuestDB 两行的
+  `✅ 熔断` 仍指「可被 `CircuitBreakerExecutor` 包装」，而 ClickHouse 本版起已是**内置**；
+  配置字段表（`ClickhouseConfig` 的 `base_url` 等）也还没列出三个新字段。
+  整体留给下一批与其余 10 个后端一并同步 —— 14 份手写镜像同步一次就够，不做两遍。
+
 ## [5.0.0] — 2026-10-07
 
 ### ⚠️ 破坏性变更
