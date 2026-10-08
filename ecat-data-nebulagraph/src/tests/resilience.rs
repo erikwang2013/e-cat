@@ -48,6 +48,27 @@ async fn spawn_slow_once(delay: Duration) -> String {
     format!("http://{addr}")
 }
 
+/// 「N 个请求必须**同时**到齐才放行」的 mock：`n` 个 handler 都卡在
+/// `Barrier::wait()`，到齐后一起放行、回 `{}`（各后端都能解析的合法响应体）。
+/// 任何并发上限 < n（含旧语义的 `Semaphore::new(0)`）都凑不齐 n 个在飞的请求，
+/// 调用会卡到外层保险丝 —— 由保险丝变成 FAILED，不会卡住整个测试二进制。
+async fn spawn_barrier(n: usize) -> String {
+    let barrier = Arc::new(tokio::sync::Barrier::new(n));
+    let app = axum::Router::new().fallback(move |_req: axum::http::Request<axum::body::Body>| {
+        let barrier = Arc::clone(&barrier);
+        async move {
+            barrier.wait().await;
+            axum::response::Response::new(axum::body::Body::from("{}"))
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
 /// 一次调用必须在**外层 5 秒内**返回 `DeadlineExceeded`，且推进本维度。
 ///
 /// 外层 5 秒是**把挂死变成红灯**：漏包 `guarded` 的后果不是报错而是永远不返回，
@@ -108,7 +129,11 @@ async fn config_wires_timeout_concurrency_and_breaker() {
     .unwrap();
     let c = NebulaGraphClient::from_config(cfg).unwrap();
     assert_eq!(c.query_timeout, Some(Duration::from_secs(1)));
-    assert_eq!(c.semaphore.available_permits(), 3);
+    assert_eq!(
+        c.semaphore.as_ref().unwrap().available_permits(),
+        3,
+        "显式给非 0 的值必须真的建出对应许可数的信号量"
+    );
     assert_eq!(c.breaker().state(), BreakerState::Closed);
 }
 
@@ -225,6 +250,33 @@ async fn concurrency_cap_limits_in_flight_requests() {
         "并发上限是 2，实测峰值 {}",
         peak.load(Ordering::SeqCst)
     );
+}
+
+/// `max_concurrency: 0` = **不限并发**（不是 0 个许可）：5 个调用必须同时在飞、
+/// 全部成功返回。旧语义（`Some(0) => Semaphore::new(0)`）在这里挂死 ——
+/// 2 秒外层保险丝把它变成一条 FAILED；`Some(1)` / `Some(2)` 这类排队实现在
+/// `Barrier` 上凑不齐 5 个、同样红。
+#[tokio::test]
+async fn zero_max_concurrency_means_unlimited() {
+    let url = spawn_barrier(5).await;
+    let c = Arc::new(client_at(&url, 30, Some(0)));
+
+    let mut handles = Vec::new();
+    for _ in 0..5 {
+        let c = Arc::clone(&c);
+        handles.push(tokio::spawn(async move {
+            ecat_data::GraphClient::execute(c.as_ref(), "SHOW SPACES", &serde_json::Value::Null)
+                .await
+        }));
+    }
+    for h in handles {
+        let out = tokio::time::timeout(Duration::from_secs(2), h)
+            .await
+            .expect("5 个调用没能同时在飞（挂死或排队）—— `max_concurrency: 0` 应表示不限并发")
+            .unwrap()
+            .expect("mock 回 `{}`，应解析成功");
+        assert!(out.is_object(), "got: {out}");
+    }
 }
 
 /// **超时的那次调用必须归还许可**（checklist §5 模式 ④，并发受限的后端必做）。
