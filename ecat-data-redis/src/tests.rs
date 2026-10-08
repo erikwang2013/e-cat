@@ -341,3 +341,58 @@ async fn zero_timeout_means_disabled() {
     let cache = RedisCache::from_config(cfg).await.unwrap();
     assert_eq!(cache.query_timeout, None);
 }
+
+/// 一次调用必须在**外层 5 秒内**返回 `DeadlineExceeded`，且推进 Cache 槽。
+///
+/// 外层 5 秒是**把挂死变成红灯**：漏包 `guarded` 的后果不是报错而是永远不返回
+/// （假服务端对数据命令装死，配置的超时是唯一能结束它的东西），
+/// 没有这层的话整个测试二进制会卡住而不是 FAILED。
+async fn assert_times_out<F>(label: &str, fut: F)
+where
+    F: std::future::Future<Output = Result<(), Error>>,
+{
+    let before = timeout_counter(BackendKind::Cache).load(Ordering::SeqCst);
+    let err = tokio::time::timeout(Duration::from_secs(5), fut)
+        .await
+        .unwrap_or_else(|_| panic!("{label}: 内层超时没开火（漏包 guarded？）"))
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::DeadlineExceeded, "{label}: {err}");
+    assert!(
+        timeout_counter(BackendKind::Cache).load(Ordering::SeqCst) > before,
+        "{label}: 超时必须计入 Cache 维度"
+    );
+}
+
+/// 其余五个方法的 `guarded` 包装也要有端到端覆盖 —— 只测 `get` 的话，
+/// 谁漏包一个（比如 `set` 直接直连），现有测试不会红。
+/// 假服务端对数据命令一律装死，所以五个方法各自都必须等到自己的超时。
+///
+/// Cache 槽的断言取**方向**（`> before`）而非 `+1`：`TIMEOUTS` 是进程级静态量，
+/// 别的用例在并发推进同一槽（同 `get_times_out_with_deadline_exceeded`）。
+///
+/// 五条调用正好打满熔断窗口的下限（5 条失败 ⇒ 第 5 条之后才 Open），
+/// 所以五条都还能落到后端、都拿到 `DeadlineExceeded`；再多一条就会是 `Unavailable`。
+#[tokio::test]
+async fn every_cache_method_times_out_when_the_backend_stalls() {
+    let url = spawn_silent_redis().await;
+    let mut cache = RedisCache::connect(&url).await.unwrap();
+    cache.query_timeout = Some(Duration::from_millis(20));
+
+    assert_times_out("set", async {
+        cache
+            .set("k", b"v", Duration::from_secs(60))
+            .await
+            .map(|_| ())
+    })
+    .await;
+    assert_times_out("delete", async { cache.delete("k").await }).await;
+    assert_times_out("increment", async {
+        cache.increment("k", 1).await.map(|_| ())
+    })
+    .await;
+    assert_times_out("ttl", async { cache.ttl("k").await.map(|_| ()) }).await;
+    assert_times_out("multi_get", async {
+        cache.multi_get(&["k1", "k2"]).await.map(|_| ())
+    })
+    .await;
+}
