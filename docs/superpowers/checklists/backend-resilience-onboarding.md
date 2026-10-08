@@ -332,6 +332,15 @@ md5sum ecat-data-arangodb/src/lib.rs                  # 期望：冻结值（本
 第 4 行是阴性对照：没有它，「能匹配真红」也可能是匹配得太宽。**并且要留一份老判据在同一
 份真红文件上的输出**（本例老判据仍输出 `INVALID_LOCK`）—— 那是「bug 真实存在」的证据，
 比事后描述硬。
+**判据要写明作用域**（同日第三个「作用域」教训）：残留清扫这类判据必须限定在**目标
+crate** 里，别写成「全仓 grep 必须为空」。实测：`#[cfg(all(test,` 在**全仓**有 2 处命中
+—— `ecat-data-mssql/src/tracing.rs:74` 与 `ecat-data-sqlx/src/tracing.rs:74`，都是
+`#[cfg(all(test, feature = "tracing"))] mod tests`，**模块级、与 metrics/from_config 无关**、
+也不在本批的 crate 里。7 个目标 crate 内是 0 处 ⇒ 判据在正确作用域下成立。
+**按全仓写的 CI 会红灯，届时那是判据写宽了，不是回归。**
+（同族：`cargo tree` 正查视图看不见弱依赖转发、`sed` 锚点不转义、libtest 打印带模块前缀 ——
+一天之内「判据的作用域/形状与实际不符」栽了四次。）
+
 **共享一份判据实现**（探针与自测调同一个 `classify.sh`），别让两份拷贝各自漂移；
 判据明细要用 `$CV_VERDICT` 这类**直接取值**，写成 `$(classify_file …)` 会落进子 shell、
 变量全丢，报告印出「失败用例名=无」这种空话。
