@@ -628,6 +628,8 @@ Apache-2.0
 </table>
 
 > 12 种彩色动态形态：笑 / 欢乐 / 哭 / 沮丧 / 惊恐 / 愤怒 / 撒娇 / 卖萌 / 讨好 / 敲打 / 捂脸 / 吐舌头。每个 SVG 自带表情、情绪特效与整体动效，并遵循 `prefers-reduced-motion`。
+
+在代码中使用：`ecat pet list` 查看全部形态，`ecat pet show smile` 输出 SVG，`ecat pet export ./pet` 导出全部文件。
 <!-- pet-expressions:end -->
 
 <!-- assets-license:start -->

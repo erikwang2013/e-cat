@@ -35,6 +35,27 @@ pub(crate) enum Commands {
     },
     /// Update all ecat-* workspace dependencies
     Upgrade,
+    /// Browse the project pet's expression forms
+    Pet {
+        #[command(subcommand)]
+        action: PetAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PetAction {
+    /// List all pet forms and their shortcodes
+    List,
+    /// Print one form's SVG to stdout
+    Show {
+        /// Slug, shortcode, Chinese name, or English name
+        form: String,
+    },
+    /// Write all forms to a directory
+    Export {
+        /// Destination directory
+        dir: String,
+    },
 }
 
 #[derive(Subcommand)]

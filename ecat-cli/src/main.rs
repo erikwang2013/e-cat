@@ -3,6 +3,7 @@ use clap::Parser;
 use std::process::{self, Command};
 
 mod cli;
+mod pet;
 mod project;
 mod proto;
 mod upgrade;
@@ -31,6 +32,12 @@ fn main() {
         }
         Commands::Build { release } => build(release),
         Commands::Upgrade => upgrade::upgrade_packages(),
+        Commands::Pet { action } => {
+            if let Err(e) = pet::run(action) {
+                eprintln!("ecat pet: {e}");
+                process::exit(1);
+            }
+        }
     }
 }
 
