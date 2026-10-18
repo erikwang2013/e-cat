@@ -172,7 +172,7 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
 fi
 
 mapfile -t files <<< "$changed"
-git add -- "${files[@]}"
+# 不先 git add：--only 直接提交这些路径的工作树内容，少一次 index.lock 竞争。
 git commit --only -m "chore(release): $base → $new_ver" \
   -m "Lockstep version sync: $cargo_refs Cargo.toml refs, $readme_refs README refs, $config_refs config ref; Cargo.lock refreshed." \
   -- "${files[@]}"
