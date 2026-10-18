@@ -5,7 +5,7 @@
 双语排版不会出现字形不匹配。
 """
 import subprocess
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 W, H = 1280, 640
 BG = (249, 246, 241)
@@ -15,7 +15,7 @@ ZH = (122, 110, 102)        # 中文行
 EN = (148, 144, 139)        # 英文行（更弱的灰）
 BADGE_BG = (240, 232, 224)
 BADGE_BD = (226, 214, 202)
-CIRCLE_BG = (250, 250, 250)   # 与猫图自身底色一致 ⇒ 方边不可见
+CIRCLE_BG = (250, 250, 250)   # 圆形底板；SVG 的透明区透出此色
 CIRCLE_BD = (232, 222, 210)
 
 FONT_BOLD = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"
@@ -50,12 +50,13 @@ cat = Image.open("/tmp/cat.png").convert("RGBA")
 
 CX, CY, R = 250, 300, 172
 d.ellipse([CX - R, CY - R, CX + R, CY + R], fill=CIRCLE_BG, outline=CIRCLE_BD, width=3)
-# 把猫缩到圆内并居中贴上去（保留透明通道）
-# 缩到略大于圆（让猫填满圆窗、边缘不外露），再用**圆形蒙版**裁掉方角
+# 把猫缩到圆内并居中贴上去。
+# 圆形蒙版必须再乘上 SVG 自带的 alpha，否则透明区会被 paste 当成黑色。
 scale = (2 * R * 1.06) / max(cat.size)
 cat_s = cat.resize((int(cat.width * scale), int(cat.height * scale)), Image.LANCZOS)
 mask = Image.new("L", cat_s.size, 0)
 ImageDraw.Draw(mask).ellipse([0, 0, cat_s.width - 1, cat_s.height - 1], fill=255)
+mask = ImageChops.multiply(mask, cat_s.getchannel("A"))
 im.paste(cat_s, (CX - cat_s.width // 2, CY - cat_s.height // 2), mask)
 
 # ── 右侧：文字 ───────────────────────────────────────────────────────
