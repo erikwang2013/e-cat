@@ -1,5 +1,32 @@
 # Changelog
 
+## [7.1.0] — 2026-10-18
+
+### Added
+
+- **`ecat-cli`：`ecat pet` 子命令** —— `list` / `show` / `export` 浏览并导出项目宠物的
+  13 个纯矢量形态（主形象 + 12 表情）。`PetForm` 枚举携带 slug、中英文名、README 短代码
+  与内嵌 SVG；`show` 接受 slug、短代码、中文名或英文名（如 `smile` / `:emoji-smile:` / `笑`）。
+  资源随 `ecat-cli` 打包，`ASSETS-LICENSE.md` 一并分发（SVG 不是 Apache-2.0）。
+- **项目宠物纯矢量化** —— 主形象与 12 个表情全部改为纯矢量 SVG，不再内嵌位图；
+  新增 `scripts/generate_pet_assets.py` 作为单一生成源，同步 `docs/`、12 份 i18n 与
+  `ecat-cli/assets/pet/`，并以测试防止 CLI 内嵌资源与 `docs/` 漂移。
+- **Social Preview 更新** —— 使用新矢量形象重新生成 1280×640 卡片；crate 数与数据后端数
+  改为从 workspace members 推导，不再硬编码。
+
+### Changed
+
+- **发布脚本** —— `scripts/release.sh` 支持 `patch` / `minor` / `major` / 显式 `X.Y.Z`，
+  并在发布时同步全部 Cargo.toml（含 workspace 依赖与成员）、14 份 README、配置示例中的
+  版本串；新增 `main` 分支、干净工作树、CHANGELOG 段落与 tag 冲突前置检查。
+- **文档** —— README 宠物章节补充 `ecat pet` 用法；`ecat-cli/README.md` 增加 Pet forms
+  说明与授权提示。
+
+### Fixed
+
+- `scripts/mk-social-preview.py` 的圆形蒙版未乘 SVG 自身 alpha，导致 transparent 背景
+  被渲染成黑色。
+
 ## [7.0.0] — 2026-10-08
 
 ### ⚠️ 破坏性变更

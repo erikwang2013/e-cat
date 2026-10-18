@@ -5,7 +5,14 @@
 双语排版不会出现字形不匹配。
 """
 import subprocess
+import tomllib
 from PIL import Image, ImageChops, ImageDraw, ImageFont
+
+# 计数从 workspace members 推导，避免文案里的数字与代码脱节。
+with open("Cargo.toml", "rb") as f:
+    members = tomllib.load(f)["workspace"]["members"]
+CRATES = sum(1 for m in members if not m.startswith("examples/"))
+DATA_BACKENDS = sum(1 for m in members if m.startswith("ecat-data-"))
 
 W, H = 1280, 640
 BG = (249, 246, 241)
@@ -77,8 +84,8 @@ LINE_GAP_EN = 40
 pairs = [
     ("Rust 微服务框架 · 对标 go-kratos/kratos",
      "Rust microservices framework · benchmarked against go-kratos/kratos"),
-    ("HTTP · gRPC · 16 数据后端 · 完整 ORM",
-     "HTTP · gRPC · 16 data backends · full ORM"),
+    (f"HTTP · gRPC · {DATA_BACKENDS} 数据后端 · 完整 ORM",
+     f"HTTP · gRPC · {DATA_BACKENDS} data backends · full ORM"),
 ]
 
 for zh, en in pairs:
@@ -89,7 +96,7 @@ for zh, en in pairs:
 
 # 徽章：56 crates
 f_badge = font(FONT_REG, 30)
-btext = "56 crates"
+btext = f"{CRATES} crates"
 tw = d.textlength(btext, font=f_badge)
 bx, by = X, y + 4
 d.rounded_rectangle([bx, by, bx + tw + 42, by + 54], radius=27,
