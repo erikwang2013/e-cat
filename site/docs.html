@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安装与使用 Ecat | 文档</title>
+<meta name="description" content="安装 ecat-cli，创建服务，组合中间件，连接数据后端，并用 Docker、Kubernetes 或 Helm 部署。">
+<meta name="theme-color" content="#0a0e13">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/space-grotesk-400700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/layout.css">
+<link rel="stylesheet" href="assets/css/layout-chrome.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/components-code.css">
+<link rel="stylesheet" href="assets/css/components-pet.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ecat">
+<meta property="og:title" content="安装与使用 Ecat | 文档">
+<meta property="og:description" content="安装 ecat-cli，创建服务，组合中间件，连接数据后端，并用 Docker、Kubernetes 或 Helm 部署。">
+<meta property="og:image" content="https://raw.githubusercontent.com/erikwang2013/e-cat/main/docs/social-preview.png">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary_large_image">
+<script>document.documentElement.classList.add("js");window.setTimeout(function(){if(!window.__ecatReady)document.documentElement.classList.remove("js")},3000);</script>
+<script src="assets/js/i18n-en.js" defer></script>
+<script src="assets/js/main.js" defer></script>
+</head>
+<body data-page="docs" data-title-zh="安装与使用 Ecat | 文档" data-title-en="Install and use Ecat | Documentation" data-desc-zh="安装 ecat-cli，创建服务，组合中间件，连接数据后端，并用 Docker、Kubernetes 或 Helm 部署。" data-desc-en="Install ecat-cli, scaffold a service, add middleware, connect data backends, and deploy with Docker, Kubernetes, or Helm.">
+<a class="skip-link" href="#main" data-i18n="a11y.skip">跳到主要内容</a>
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href="index.html" aria-label="Ecat">
+      <img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32">
+      <span class="brand-name">Ecat</span>
+      <span class="brand-cn" data-i18n="brand.cn">一只猫</span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="主导航" data-i18n-aria="a11y.nav">
+      <a href="index.html" data-i18n="nav.home">概览</a>
+      <a href="index.html#features" data-i18n="nav.features">功能</a>
+      <a href="index.html#timeline" data-i18n="nav.timeline">迭代</a>
+      <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
+      <a href="docs.html" aria-current="page" data-i18n="nav.docs">文档</a>
+      <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
+      <a href="index.html#download" data-i18n="nav.download">下载</a>
+    </nav>
+    <div class="header-actions">
+      <button class="lang-toggle" id="lang-toggle" type="button" aria-label="Switch to English" aria-pressed="false">EN</button>
+      <a class="icon-btn" href="https://github.com/erikwang2013/e-cat" target="_blank" rel="noopener" aria-label="GitHub" data-i18n-aria="a11y.github"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-brand-github"></use></svg></a>
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="打开菜单"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-menu"></use></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-hero">
+    <div class="shell page-hero-grid">
+      <div class="page-hero-copy">
+        <h1 data-i18n="docs.pageTitle">安装与使用 Ecat</h1>
+        <p data-i18n="docs.pageLead">从 cargo install 到运行中的 HTTP 与 gRPC 服务。示例与仓库 examples 使用同一套 API。</p>
+      </div>
+      <img class="page-hero-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
+    </div>
+  </section>
+  <div class="back-top-sentinel" id="back-top-sentinel" aria-hidden="true"></div>
+
+  <section class="section" id="install">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="docs.installTitle">让服务跑起来</h2>
+        <p data-i18n="docs.installLead">四个具体步骤。右栏保留完整命令序列。</p>
+      </div>
+      <div class="install-grid">
+        <div class="install-steps">
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-rocket"></use></svg><h3 data-i18n="docs.step1Title">准备 Rust 与 protoc</h3></div>
+            <p data-i18n="docs.step1Desc">Ecat 使用 edition 2024，需要 Rust 1.85 或更新版本。CLI 和生成的代码还需要 protoc。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-prereq" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-prereq"><span class="c" data-i18n="code.install.comment1"># Ubuntu / Debian</span>
+sudo apt install protobuf-compiler
+
+<span class="c" data-i18n="code.install.comment2"># macOS</span>
+brew install protobuf
+
+<span class="c" data-i18n="code.install.comment3"># verify</span>
+rustc --version
+protoc --version</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-package"></use></svg><h3 data-i18n="docs.step2Title">安装 CLI</h3></div>
+            <p data-i18n="docs.step2Desc">从 crates.io 安装。二进制随包携带宠物资源与 ASSETS-LICENSE 说明。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-install" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-install">cargo install ecat-cli
+ecat --version</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-git-branch"></use></svg><h3 data-i18n="docs.step3Title">创建服务</h3></div>
+            <p data-i18n="docs.step3Desc">创建项目，添加 proto 文件，再生成客户端与服务端代码。生成的 build.rs 已接好 tonic-build。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-scaffold" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-scaffold">ecat new helloworld
+cd helloworld
+ecat proto add proto/service.proto
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-terminal"></use></svg><h3 data-i18n="docs.step4Title">运行</h3></div>
+            <p data-i18n="docs.step4Desc">默认 HTTP 服务监听 0.0.0.0:8000。使用 --watch 在 src/ 变更时重启。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-run" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-run">ecat run
+ecat run --watch</code></pre>
+            </div>
+          </div>
+        </div>
+        <aside class="quickstart reveal">
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="docs.quickstartTitle">完整快速开始</span><button class="copy-btn" data-copy="#code-quickstart" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-quickstart"><span class="c" data-i18n="code.quickstart.comment1"># 脚手架</span>
+ecat new helloworld
+cd helloworld
+
+<span class="c" data-i18n="code.quickstart.comment2"># 添加 proto</span>
+ecat proto add proto/service.proto
+
+<span class="c" data-i18n="code.quickstart.comment3"># 生成客户端与服务端</span>
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service
+
+<span class="c" data-i18n="code.quickstart.comment4"># 运行</span>
+ecat run</code></pre>
+          </div>
+          <p class="quickstart-note" data-i18n="docs.quickstartNote">把整段命令复制到 shell。生成的服务地址是 http://localhost:8000/helloworld/ecat。</p>
+        </aside>
+      </div>
+
+      <details class="deploy-details reveal" id="deploy">
+        <summary><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-arrow-right"></use></svg><span data-i18n="docs.deploySummary">用 Docker、Kubernetes 或 Helm 部署</span></summary>
+        <div class="deploy-body">
+          <p data-i18n="docs.deployDesc">模板以仓库根目录作为构建上下文。</p>
+          <div class="code-block">
+            <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-deploy" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-deploy">docker build -t ecat-app -f ecat-deploy/Dockerfile .
+kubectl apply -f ecat-deploy/k8s-deployment.yaml
+helm install my-ecat ecat-deploy/helm/</code></pre>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section section--tint" id="usage">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="docs.usageTitle">使用各个部件</h2>
+        <p data-i18n="docs.usageLead">聚合 crate 按 feature 重新导出模块，只启用服务用到的部分。</p>
+      </div>
+      <div class="reveal">
+        <div class="tabs" role="tablist" aria-label="使用示例" data-i18n-aria="usage.tabsLabel">
+          <button class="tab" role="tab" id="tab-app" aria-controls="panel-app" aria-selected="true" data-tab="app" data-i18n="usage.tabApp">应用</button>
+          <button class="tab" role="tab" id="tab-middleware" aria-controls="panel-middleware" aria-selected="false" tabindex="-1" data-tab="middleware" data-i18n="usage.tabMiddleware">中间件</button>
+          <button class="tab" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1" data-tab="data" data-i18n="usage.tabData">数据</button>
+          <button class="tab" role="tab" id="tab-cli" aria-controls="panel-cli" aria-selected="false" tabindex="-1" data-tab="cli" data-i18n="usage.tabCli">CLI</button>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-app" aria-labelledby="tab-app">
+          <div class="tab-copy">
+            <h3 data-i18n="usage.appTitle">应用生命周期</h3>
+            <p data-i18n="usage.appDesc">AppBuilder 组合服务器、生命周期钩子和信号处理。run() 阻塞到 SIGTERM 或 SIGINT。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.appPoint1">HTTP 与 gRPC 服务监听不同端口。</li>
+              <li data-i18n="usage.appPoint2">on_start 与 on_stop 钩子是异步的。</li>
+              <li data-i18n="usage.appPoint3">聚合 crate 让导入路径更短。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeAppLabel">main.rs</span><button class="copy-btn" data-copy="#code-app" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-app"><span class="k">use</span> ecat::App;
+<span class="k">use</span> ecat_transport_http::HttpServer;
+<span class="k">use</span> ecat_transport_grpc::GrpcServer;
+
+#[tokio::main]
+<span class="k">async fn</span> <span class="f">main</span>() -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
+    <span class="k">let</span> app = App::builder()
+        .name(<span class="s">"my-service"</span>)
+        .version(<span class="s">"v1.0.0"</span>)
+        .server(HttpServer::new(<span class="s">"0.0.0.0:8000"</span>))
+        .server(GrpcServer::new(<span class="s">"0.0.0.0:9000"</span>))
+        .on_start(|| <span class="k">async</span> {
+            tracing::info!(<span class="s">"service started"</span>);
+            Ok(())
+        })
+        .on_stop(|| <span class="k">async</span> {
+            tracing::info!(<span class="s">"service stopped"</span>);
+            Ok(())
+        })
+        .build()?;
+
+    app.run().<span class="k">await</span>?; <span class="c" data-i18n="code.app.comment1">// 阻塞到 SIGTERM 或 SIGINT</span>
+    Ok(())
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-middleware" aria-labelledby="tab-middleware" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.middlewareTitle">组合中间件</h3>
+            <p data-i18n="usage.middlewareDesc">每个 layer 都是 tower::Layer。顺序有影响：恢复与追踪在外层，认证与安全靠近 Handler。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.middlewarePoint1">JWT 密钥至少 32 字节。</li>
+              <li data-i18n="usage.middlewarePoint2">超时与熔断保护下游调用。</li>
+              <li data-i18n="usage.middlewarePoint3">SecurityLayer 阻断高风险请求模式。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeMiddlewareLabel">middleware.rs</span><button class="copy-btn" data-copy="#code-middleware" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-middleware"><span class="k">use</span> tower::ServiceBuilder;
+<span class="k">use</span> ecat_middleware::{RecoveryLayer, TracingLayer, LoggingLayer, TimeoutLayer};
+<span class="k">use</span> ecat_circuit_breaker::CircuitBreakerLayer;
+<span class="k">use</span> ecat_security::SecurityLayer;
+<span class="k">use</span> ecat_auth::JwtAuthLayer;
+<span class="k">use</span> std::time::Duration;
+
+<span class="c" data-i18n="code.middleware.comment1">// JWT 密钥至少 32 字节</span>
+<span class="k">let</span> jwt = JwtAuthLayer::new(<span class="s">"change-me-32-bytes-minimum-secret"</span>)
+    .expect(<span class="s">"valid jwt secret"</span>);
+
+<span class="c" data-i18n="code.middleware.comment2">// 顺序有影响</span>
+<span class="k">let</span> layer = ServiceBuilder::new()
+    .layer(RecoveryLayer)
+    .layer(TracingLayer)
+    .layer(LoggingLayer)
+    .layer(TimeoutLayer::new(Duration::from_secs(<span class="n">30</span>)))
+    .layer(CircuitBreakerLayer::new())
+    .layer(jwt)
+    .layer(SecurityLayer::new());</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.dataTitle">连接数据后端</h3>
+            <p data-i18n="usage.dataDesc">每个后端都有 XxxConfig 与 from_config()。Redis、SQLx、ClickHouse 和其余后端形状一致。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.dataPoint1">配置可以来自 JSON 或 YAML。</li>
+              <li data-i18n="usage.dataPoint2">出站超时与熔断按 client 配置。</li>
+              <li data-i18n="usage.dataPoint3">feature 名与后端名对应。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeDataLabel">data.rs</span><button class="copy-btn" data-copy="#code-data" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-data"><span class="k">use</span> ecat_data_redis::{RedisCache, RedisConfig};
+<span class="k">use</span> ecat_data_sqlx::{SqlxClient, SqlxConfig};
+<span class="k">use</span> std::time::Duration;
+
+<span class="c" data-i18n="code.data.comment1">// 从 JSON 或 YAML 加载配置</span>
+<span class="k">let</span> config: serde_json::Value = serde_json::from_str(<span class="s">r#"{
+    "redis": {"url": "redis://localhost:6379"},
+    "sql":   {"url": "postgres://user:pass@localhost/db"}
+}"#</span>)?;
+
+<span class="c" data-i18n="code.data.comment2">// Redis</span>
+<span class="k">let</span> redis_cfg: RedisConfig = serde_json::from_value(config[<span class="s">"redis"</span>].clone())?;
+<span class="k">let</span> cache = RedisCache::from_config(redis_cfg).<span class="k">await</span>?;
+cache.set(<span class="s">"key"</span>, <span class="s">b"value"</span>, Duration::from_secs(<span class="n">60</span>)).<span class="k">await</span>?;
+
+<span class="c" data-i18n="code.data.comment3">// RDBMS</span>
+<span class="k">let</span> sql_cfg: SqlxConfig = serde_json::from_value(config[<span class="s">"sql"</span>].clone())?;
+<span class="k">let</span> db = SqlxClient::from_config(sql_cfg).<span class="k">await</span>?;
+<span class="k">let</span> rows = db.query(<span class="s">"SELECT * FROM users"</span>).<span class="k">await</span>?;</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-cli" aria-labelledby="tab-cli" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.cliTitle">CLI 工作流</h3>
+            <p data-i18n="usage.cliDesc">CLI 覆盖脚手架、proto 生成、开发运行、构建、升级与宠物导出。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.cliPoint1">ecat run --watch 在文件变更时重启。</li>
+              <li data-i18n="usage.cliPoint2">ecat upgrade 改写 ecat-* 依赖版本。</li>
+              <li data-i18n="usage.cliPoint3">ecat pet 导出全部 13 个矢量形态。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeCliLabel">terminal</span><button class="copy-btn" data-copy="#code-cli" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-cli">ecat new helloworld
+ecat run --watch
+ecat build
+ecat upgrade
+
+<span class="c" data-i18n="code.cli.comment1"># 浏览形态</span>
+ecat pet list
+
+<span class="c" data-i18n="code.cli.comment2"># 输出单个 SVG</span>
+ecat pet show smile
+
+<span class="c" data-i18n="code.cli.comment3"># 导出全部 13 个</span>
+ecat pet export ./pet</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="index.html"><img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32"><span class="brand-name">Ecat</span><span class="brand-cn" data-i18n="brand.cn">一只猫</span></a>
+      <p data-i18n="footer.tagline">对标 Kratos v3 的 Rust 微服务框架。</p>
+      <p class="footer-license"><span data-i18n="footer.codeLicense">代码遵循 Apache-2.0</span><span class="dot">·</span><a href="https://github.com/erikwang2013/e-cat/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener" data-i18n="footer.assetsLicense">视觉资产另附授权</a></p>
+    </div>
+    <div class="footer-links">
+      <h2 data-i18n="footer.project">项目</h2>
+      <a href="index.html#features" data-i18n="nav.features">功能</a>
+      <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
+      <a href="docs.html" data-i18n="nav.docs">文档</a>
+      <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
+    </div>
+    <div class="footer-links">
+      <h2 data-i18n="footer.resources">资源</h2>
+      <a href="https://github.com/erikwang2013/e-cat" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://crates.io/crates/ecat-cli" target="_blank" rel="noopener">crates.io</a>
+      <a href="https://docs.rs/ecat" target="_blank" rel="noopener">docs.rs</a>
+      <a href="https://github.com/erikwang2013/e-cat/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+    <div class="footer-meta">
+      <h2 data-i18n="footer.author">作者</h2>
+      <p><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik</a></p>
+      <p><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">粤ICP备2020136226号-6</a></p>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_site_pv">本站总访问量 <b id="busuanzi_value_site_pv">0</b> 次 👀</span><span class="dot">·</span><span id="busuanzi_container_site_uv">访客数 <b id="busuanzi_value_site_uv">0</b> 人次 🧑‍🚀</span>
+      </div>
+    </div>
+  </div>
+  <div class="shell footer-bottom">
+    <p>© 2026 Ecat. <span data-i18n="footer.rights">保留所有权利。</span></p>
+    <p data-i18n="footer.builtWith">用 Rust 构建</p>
+  </div>
+</footer>
+
+<button class="back-top" id="back-top" type="button" aria-label="回到顶部" data-i18n-aria="a11y.backTop"><img id="back-top-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480"></button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
