@@ -354,10 +354,11 @@
     revealItems.forEach((item) => item.classList.add("is-visible"));
   }
 
-  /* Three.js hero, loaded after first paint */
+  /* Three.js hero, loaded after first paint on wider screens only. */
 
   const saveData = navigator.connection && navigator.connection.saveData;
-  if (document.getElementById("cat-canvas") && !reduced && !saveData) {
+  const wideViewport = window.matchMedia("(min-width: 960px)").matches;
+  if (document.getElementById("cat-canvas") && !reduced && !saveData && wideViewport) {
     const loadScene = () => {
       const url = new URL("assets/js/three-scene.js", document.baseURI).href;
       import(url).catch(() => {});
@@ -368,6 +369,27 @@
       window.setTimeout(loadScene, 200);
     }
   }
+
+  /* Visitor counter: load after the page so a slow third party cannot delay it. */
+
+  function loadCounter() {
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = "https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js";
+    document.body.appendChild(script);
+  }
+
+  window.addEventListener(
+    "load",
+    () => {
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(loadCounter, { timeout: 2000 });
+      } else {
+        loadCounter();
+      }
+    },
+    { once: true },
+  );
 
   applyLang(storedLang === "en" ? "en" : "zh");
 })();
