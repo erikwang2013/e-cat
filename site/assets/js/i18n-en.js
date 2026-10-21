@@ -27,6 +27,12 @@ window.ECAT_EN = {
   "a11y.zoomAlipay": "Enlarge Alipay QR code",
   "a11y.breadcrumb": "Breadcrumb",
 
+  "notFound.eyebrow": "404",
+  "notFound.title": "Page not found",
+  "notFound.lead": "The link may be broken, or the address may be misspelled. Head back to the overview or continue with the docs.",
+  "notFound.home": "Back to overview",
+  "notFound.docs": "Browse the docs",
+
   "footer.tagline": "A Rust microservices framework modeled on Kratos v3.",
   "footer.codeLicense": "Code under Apache-2.0",
   "footer.assetsLicense": "Visual assets have a separate license",
