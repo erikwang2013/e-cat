@@ -3,10 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>一只猫 Ecat | Rust 微服务框架</title>
-<meta name="description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架。API-first，HTTP 与 gRPC 共享中间件，56 个 crate，19 个数据后端。">
+<title>一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架</title>
+<meta name="description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。">
+<meta name="keywords" content="Ecat,一只猫,Rust 微服务框架,Kratos,gRPC,HTTP,tower,ORM,微服务">
 <meta name="theme-color" content="#0a0e13">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+<meta name="author" content="erik">
+<meta name="applicable-device" content="pc,mobile">
+<link rel="canonical" href="https://e-cat.erik.xyz/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/img/e-cat.svg" as="image" type="image/svg+xml" fetchpriority="high">
 <link rel="preload" href="assets/fonts/space-grotesk-400700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/base.css">
@@ -17,32 +25,59 @@
 <link rel="stylesheet" href="assets/css/components-pet.css">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ecat">
-<meta property="og:title" content="一只猫 Ecat | Rust 微服务框架">
-<meta property="og:description" content="对标 Kratos v3 的 Rust 微服务框架。HTTP 与 gRPC 共享中间件，56 个 crate，19 个数据后端。">
-<meta property="og:image" content="https://raw.githubusercontent.com/erikwang2013/e-cat/main/docs/social-preview.png">
+<meta property="og:title" content="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架">
+<meta property="og:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。">
+<meta property="og:url" content="https://e-cat.erik.xyz/">
+<meta property="og:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Ecat 一只猫 Rust 微服务框架">
 <meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架">
+<meta name="twitter:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。">
+<meta name="twitter:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
+    {"@type":"Person","@id":"https://e-cat.erik.xyz/#person","name":"erik","url":"https://erik.xyz","email":"erik@erik.xyz","sameAs":["https://github.com/erikwang2013"]},
+    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.1.1","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
+    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/#webpage","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-21","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"mainEntity":{"@id":"https://e-cat.erik.xyz/#faq"}},
+    {"@type":"FAQPage","@id":"https://e-cat.erik.xyz/#faq","mainEntity":[
+      {"@type":"Question","name":"Ecat 是什么？","acceptedAnswer":{"@type":"Answer","text":"Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 56 个可按 feature 组合的 crate。"}},
+      {"@type":"Question","name":"Ecat 和 Kratos 有什么关系？","acceptedAnswer":{"@type":"Answer","text":"Ecat 对齐 Kratos 的 API-first、可插拔与统一抽象理念，但使用 Rust 生态：tower::Service/Layer、axum、tonic 与 prost，不做 Go in Rust。"}},
+      {"@type":"Question","name":"Ecat 支持哪些数据库？","acceptedAnswer":{"@type":"Answer","text":"19 个数据后端，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server）、缓存、搜索、图、时序、文档、对象存储与 OLAP；除 Memcached 外均带超时与熔断。"}},
+      {"@type":"Question","name":"如何安装 Ecat？","acceptedAnswer":{"@type":"Answer","text":"需要 Rust 1.85+ 与 protoc。运行 cargo install ecat-cli，然后用 ecat new 创建项目、ecat proto 生成代码、ecat run 启动服务。"}},
+      {"@type":"Question","name":"Ecat 可以用于生产吗？","acceptedAnswer":{"@type":"Answer","text":"内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、Metrics、Retry、Validate、CORS，提供健康检查、Prometheus 指标与 Docker/Kubernetes/Helm 模板；已知限制见文档参考页。"}}
+    ]}
+  ]
+}
+</script>
 <script>document.documentElement.classList.add("js");window.setTimeout(function(){if(!window.__ecatReady)document.documentElement.classList.remove("js")},3000);</script>
 <script src="assets/js/i18n-en.js" defer></script>
 <script src="assets/js/main.js" defer></script>
 </head>
-<body data-page="home" data-title-zh="一只猫 Ecat | Rust 微服务框架" data-title-en="Ecat | Rust microservices framework" data-desc-zh="Ecat 是对标 Kratos v3 的 Rust 微服务框架。API-first，HTTP 与 gRPC 共享中间件，56 个 crate，19 个数据后端。" data-desc-en="Ecat is a Rust microservices framework modeled on Kratos v3. API-first, shared HTTP and gRPC middleware, 56 crates, 19 data backends.">
+<body data-page="home" data-title-zh="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架" data-title-en="Ecat | A Rust microservices framework built on Kratos concepts" data-desc-zh="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，56 个 crate，19 个数据后端，内置 ORM。" data-desc-en="Ecat is a Rust microservices framework modeled on Kratos v3: API-first, shared HTTP and gRPC tower middleware, 56 crates, 19 data backends, and a built-in ORM.">
 <a class="skip-link" href="#main" data-i18n="a11y.skip">跳到主要内容</a>
 <header class="site-header">
   <div class="shell header-inner">
-    <a class="brand" href="index.html" aria-label="Ecat">
+    <a class="brand" href="./" aria-label="Ecat">
       <img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32">
       <span class="brand-name">Ecat</span>
       <span class="brand-cn" data-i18n="brand.cn">一只猫</span>
     </a>
     <nav class="site-nav" id="site-nav" aria-label="主导航" data-i18n-aria="a11y.nav">
-      <a href="index.html" aria-current="page" data-i18n="nav.home">概览</a>
-      <a href="index.html#features" data-i18n="nav.features">功能</a>
-      <a href="index.html#timeline" data-i18n="nav.timeline">迭代</a>
+      <a href="./" aria-current="page" data-i18n="nav.home">概览</a>
+      <a href="./#features" data-i18n="nav.features">功能</a>
+      <a href="./#timeline" data-i18n="nav.timeline">迭代</a>
       <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
       <a href="docs.html" data-i18n="nav.docs">文档</a>
       <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
-      <a href="index.html#download" data-i18n="nav.download">下载</a>
+      <a href="./#download" data-i18n="nav.download">下载</a>
     </nav>
     <div class="header-actions">
       <button class="lang-toggle" id="lang-toggle" type="button" aria-label="Switch to English" aria-pressed="false">EN</button>
@@ -98,9 +133,9 @@
       </div>
       <div class="intro-visual reveal" aria-hidden="true">
         <div class="pet-stack">
-          <img class="pet-stack-main" src="assets/img/e-cat.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
-          <img class="pet-stack-a" src="assets/img/pet/cute.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
-          <img class="pet-stack-b" src="assets/img/pet/joy.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
+          <img class="pet-stack-main" src="assets/img/e-cat.svg" alt="" width="480" height="480" loading="lazy" decoding="async" fetchpriority="low">
+          <img class="pet-stack-a" src="assets/img/pet/cute.svg" alt="" width="480" height="480" loading="lazy" decoding="async" fetchpriority="low">
+          <img class="pet-stack-b" src="assets/img/pet/joy.svg" alt="" width="480" height="480" loading="lazy" decoding="async" fetchpriority="low">
         </div>
       </div>
     </div>
@@ -133,7 +168,7 @@
           <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-server"></use></svg></span><h3 data-i18n="features.dual.title">HTTP 与 gRPC 共用一套中间件</h3></div>
           <p data-i18n="features.dual.desc">axum 与 tonic 都构建在 tower 之上，超时、限流、熔断、认证只需要写一次。</p>
           <div class="protocol-flow"><span class="chip">HTTP</span><span class="protocol-arrow">+</span><span class="chip">gRPC</span><span class="protocol-arrow">→</span><span class="chip core">tower::Layer</span></div>
-          <img class="bento-pet" src="assets/img/pet/cute.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
+          <img class="bento-pet" src="assets/img/pet/cute.svg" alt="" width="480" height="480" loading="lazy" decoding="async" fetchpriority="low">
         </article>
         <article class="bento-cell span-4 reveal">
           <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-stack-2"></use></svg></span><h3 data-i18n="features.middleware.title">11 个内置中间件</h3></div>
@@ -159,7 +194,7 @@
           <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-shield"></use></svg></span><h3 data-i18n="features.security.title">默认收紧的安全边界</h3></div>
           <p data-i18n="features.security.desc">SecurityLayer 检测 SQL 注入、XSS、SSRF；JWT、API Key 与 mTLS 按需启用。</p>
           <div class="bento-list"><span class="chip chip--teal">SQLi</span><span class="chip chip--teal">XSS</span><span class="chip chip--teal">SSRF</span><span class="chip chip--teal">JWT</span><span class="chip chip--teal">mTLS</span></div>
-          <img class="bento-pet" src="assets/img/pet/angry.svg" alt="" width="480" height="480" loading="lazy" decoding="async">
+          <img class="bento-pet" src="assets/img/pet/angry.svg" alt="" width="480" height="480" loading="lazy" decoding="async" fetchpriority="low">
         </article>
         <article class="bento-cell span-3 reveal">
           <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-code"></use></svg></span><h3 data-i18n="features.orm.title">编译期约束的 ORM</h3></div>
@@ -171,6 +206,16 @@
           <p data-i18n="features.cli.desc">new、proto、run --watch、build、upgrade，加上 pet 子命令。</p>
           <div class="mini-code"><span class="c">$ </span>ecat new helloworld</div>
         </article>
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-message"></use></svg></span><h3 data-i18n="features.comms.title">通信、消息与多协议</h3></div>
+          <p data-i18n="features.comms.desc">HttpClient 与 GrpcClient 接入服务发现和负载均衡；Kafka、RabbitMQ、MQTT、NATS 与 EventBus 传递消息；WebSocket、GraphQL、OpenAPI 和版本路由共用入口。</p>
+          <div class="bento-list"><span class="chip">HttpClient</span><span class="chip">GrpcClient</span><span class="chip">Kafka</span><span class="chip">RabbitMQ</span><span class="chip">MQTT</span><span class="chip">NATS</span><span class="chip">EventBus</span><span class="chip">WebSocket</span><span class="chip">GraphQL</span><span class="chip">OpenAPI</span></div>
+        </article>
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chart-bar"></use></svg></span><h3 data-i18n="features.delivery.title">基准、测试与交付</h3></div>
+          <p data-i18n="features.delivery.desc">ecat-bench 对比裸 axum、MetricsLayer 与完整中间件栈；Docker、Kubernetes、Helm 与 CI 模板随 ecat-deploy 提供。</p>
+          <div class="bento-list"><span class="chip">ecat-bench</span><span class="chip">p50 / p95 / p99</span><span class="chip">Docker</span><span class="chip">Kubernetes</span><span class="chip">Helm</span><span class="chip">GitHub Actions</span><span class="chip">GitLab CI</span></div>
+        </article>
       </div>
     </div>
   </section>
@@ -179,7 +224,7 @@
     <div class="shell">
       <div class="section-head reveal">
         <h2 data-i18n="timeline.title">从骨架到 56 个 crate</h2>
-        <p data-i18n="timeline.lead">从 2.x 的数据后端到 7.1 的宠物 CLI，八个节点。每个版本都已发布，并有测试覆盖。</p>
+        <p data-i18n="timeline.lead">从 2.x 的数据后端到 7.1 的宠物 CLI，八个节点。Phase 1–16 全部完成，每个版本都已发布并有测试覆盖。</p>
       </div>
       <div class="timeline">
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v2.1.7</strong><time datetime="2026-07-29">2026-07-29</time></div><h3 data-i18n="timeline.v217.title">数据层打开局面</h3><p data-i18n="timeline.v217.desc">11 个数据库后端，TLS、WebSocket、API 版本路由与部署模板落地。</p></article>
@@ -190,6 +235,37 @@
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v6.0.0</strong><span class="protocol-arrow">+</span><strong>v7.0.0</strong><time datetime="2026-10-08">2026-10-08</time></div><h3 data-i18n="timeline.v600.title">出站韧性覆盖全部后端</h3><p data-i18n="timeline.v600.desc">所有数据后端使用同一套许可、熔断、超时外壳，出站指标从配置自动注册。</p></article>
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v7.1.0</strong><time datetime="2026-10-18">2026-10-18</time></div><h3 data-i18n="timeline.v710.title">宠物进入工具链</h3><p data-i18n="timeline.v710.desc">13 个矢量形态，ecat pet 子命令，资源随 ecat-cli 打包。</p></article>
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v7.1.1</strong><time datetime="2026-10-19">2026-10-19</time></div><h3 data-i18n="timeline.v711.title">安全补丁</h3><p data-i18n="timeline.v711.desc">升级 rustls 与 quinn-proto，清理最新 RustSec 通告，无 API 变更。</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="faq.title">常见问题</h2>
+        <p data-i18n="faq.lead">关于定位、数据库、安装与生产可用性的快速回答。</p>
+      </div>
+      <div class="faq-list reveal">
+        <details class="faq-item">
+          <summary><span data-i18n="faq.q1">Ecat 是什么？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
+          <p data-i18n="faq.a1">Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 56 个可按 feature 组合的 crate。</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-i18n="faq.q2">Ecat 和 Kratos 有什么关系？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
+          <p data-i18n="faq.a2">Ecat 对齐 Kratos 的 API-first、可插拔与统一抽象理念，但使用 Rust 生态：tower::Service/Layer、axum、tonic 与 prost，不做 Go in Rust。</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-i18n="faq.q3">Ecat 支持哪些数据库？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
+          <p data-i18n="faq.a3">19 个数据后端，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server）、缓存、搜索、图、时序、文档、对象存储与 OLAP；除 Memcached 外均带超时与熔断。</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-i18n="faq.q4">如何安装 Ecat？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
+          <p data-i18n-html="faq.a4">需要 Rust 1.85+ 与 protoc。运行 <code>cargo install ecat-cli</code>，然后用 <code>ecat new</code> 创建项目、<code>ecat proto</code> 生成代码、<code>ecat run</code> 启动服务。</p>
+        </details>
+        <details class="faq-item">
+          <summary><span data-i18n="faq.q5">Ecat 可以用于生产吗？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
+          <p data-i18n="faq.a5">内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、Metrics、Retry、Validate、CORS，提供健康检查、Prometheus 指标与 Docker/Kubernetes/Helm 模板；已知限制见文档参考页。</p>
+        </details>
       </div>
     </div>
   </section>
@@ -227,21 +303,44 @@
       <p class="quickstart-note" data-i18n="download.license">代码遵循 Apache-2.0，视觉资产另附授权。</p>
     </div>
   </section>
+
+  <section class="section" id="support">
+    <div class="shell support reveal">
+      <div>
+        <h2 data-i18n="pet.supportTitle">支持项目</h2>
+        <p data-i18n="pet.supportDesc">如果 Ecat 节省了你的时间，可以支持维护。加密货币地址在仓库 README。</p>
+        <p><a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/README.md#虚拟币打赏-crypto-donation" target="_blank" rel="noopener" data-i18n="pet.cryptoLink">加密货币打赏地址</a></p>
+        <p><a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/README.md#全球转账银行汇款" target="_blank" rel="noopener" data-i18n="pet.bankLink">银行汇款信息</a></p>
+      </div>
+      <button class="support-qr" type="button" data-qr data-qr-img="assets/img/weixinpay.webp" data-qr-zh="微信支付" data-qr-en="WeChat Pay" data-qr-alt-zh="微信支付打赏二维码" data-qr-alt-en="WeChat Pay donation QR code" aria-label="放大微信支付二维码" aria-haspopup="dialog" aria-controls="qr-dialog" data-i18n-aria="a11y.zoomWechat">
+        <img src="assets/img/weixinpay.webp" alt="" width="320" height="405" loading="lazy" decoding="async" fetchpriority="low">
+        <span class="support-qr-label" data-i18n="pet.wechat">微信支付</span>
+        <span class="support-qr-hint" data-i18n="pet.qrHint">点击放大</span>
+      </button>
+      <button class="support-qr" type="button" data-qr data-qr-img="assets/img/alipay.webp" data-qr-zh="支付宝" data-qr-en="Alipay" data-qr-alt-zh="支付宝打赏二维码" data-qr-alt-en="Alipay donation QR code" aria-label="放大支付宝二维码" aria-haspopup="dialog" aria-controls="qr-dialog" data-i18n-aria="a11y.zoomAlipay">
+        <img src="assets/img/alipay.webp" alt="" width="320" height="401" loading="lazy" decoding="async" fetchpriority="low">
+        <span class="support-qr-label" data-i18n="pet.alipay">支付宝</span>
+        <span class="support-qr-hint" data-i18n="pet.qrHint">点击放大</span>
+      </button>
+    </div>
+  </section>
 </main>
 
 <footer class="site-footer">
   <div class="shell footer-grid">
     <div class="footer-brand">
-      <a class="brand" href="index.html"><img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32"><span class="brand-name">Ecat</span><span class="brand-cn" data-i18n="brand.cn">一只猫</span></a>
+      <a class="brand" href="./"><img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32"><span class="brand-name">Ecat</span><span class="brand-cn" data-i18n="brand.cn">一只猫</span></a>
       <p data-i18n="footer.tagline">对标 Kratos v3 的 Rust 微服务框架。</p>
       <p class="footer-license"><span data-i18n="footer.codeLicense">代码遵循 Apache-2.0</span><span class="dot">·</span><a href="https://github.com/erikwang2013/e-cat/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener" data-i18n="footer.assetsLicense">视觉资产另附授权</a></p>
     </div>
     <div class="footer-links">
       <h2 data-i18n="footer.project">项目</h2>
-      <a href="index.html#features" data-i18n="nav.features">功能</a>
+      <a href="./#features" data-i18n="nav.features">功能</a>
       <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
       <a href="docs.html" data-i18n="nav.docs">文档</a>
       <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
+      <a href="#faq" data-i18n="nav.faq">常见问题</a>
+      <a href="#support" data-i18n="footer.support">支持项目</a>
     </div>
     <div class="footer-links">
       <h2 data-i18n="footer.resources">资源</h2>
@@ -266,8 +365,15 @@
 </footer>
 
 <button class="back-top" id="back-top" type="button" aria-label="回到顶部" data-i18n-aria="a11y.backTop">
-  <img id="back-top-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480">
+  <img id="back-top-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480" loading="lazy" fetchpriority="low">
 </button>
+<dialog class="qr-dialog" id="qr-dialog" aria-labelledby="qr-dialog-title">
+  <button class="qr-dialog-close" type="button" data-qr-close aria-label="关闭二维码" data-i18n-aria="a11y.closeQr">
+    <svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-x"></use></svg>
+  </button>
+  <img id="qr-dialog-img" alt="" width="320" height="405" decoding="async">
+  <p id="qr-dialog-title"></p>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

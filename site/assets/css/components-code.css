@@ -243,6 +243,139 @@
   max-height: 520px;
 }
 
+/* FAQ */
+
+.faq-list { display: grid; gap: 10px; }
+
+.faq-item { border: 1px solid var(--line); border-radius: 14px; background: rgba(18, 26, 35, 0.64); }
+
+.faq-item[open] { border-color: rgba(232, 116, 59, 0.28); }
+
+.faq-item summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.faq-item summary::-webkit-details-marker { display: none; }
+
+.faq-item summary .icon {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--muted-2);
+  transition: transform 0.2s ease;
+}
+
+.faq-item[open] summary .icon { transform: rotate(180deg); }
+
+.faq-item p {
+  margin: 0;
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.faq-item code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--orange-soft);
+  background: rgba(232, 116, 59, 0.09);
+}
+
+/* Reference tab */
+
+.tab-panel--wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ref-panel {
+  display: grid;
+  gap: 28px;
+}
+
+.ref-block {
+  display: grid;
+  gap: 10px;
+}
+
+.ref-block h3 {
+  margin: 0;
+}
+
+.ref-block > p {
+  max-width: 80ch;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.ref-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ref-list li {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.28fr) minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 0.88rem;
+}
+
+.ref-list strong {
+  color: var(--ink);
+}
+
+.ref-list span {
+  color: var(--muted);
+}
+
+.ref-list em {
+  font-style: normal;
+  font-size: 0.8rem;
+  color: var(--teal-soft);
+}
+
+.ref-list code {
+  color: var(--orange-soft);
+}
+
+.ref-note {
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--muted-2);
+}
+
+.ref-stack {
+  font-size: 0.9rem;
+  line-height: 1.9;
+  color: var(--muted);
+}
+
+.ref-stack b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .ref-list li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
 /* Changelog */
 
 .log-toolbar {

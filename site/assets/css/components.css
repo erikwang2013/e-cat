@@ -347,3 +347,86 @@
   margin-top: auto;
 }
 
+/* Donation QR dialog */
+
+.qr-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(92vw, 360px);
+  max-height: 92vh;
+  margin: auto;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  overflow: auto;
+}
+
+.qr-dialog::backdrop {
+  background: rgba(4, 8, 12, 0.78);
+}
+
+.qr-dialog[open] {
+  animation: qr-in 0.18s ease-out;
+}
+
+@keyframes qr-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.qr-dialog img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.qr-dialog p {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.qr-dialog-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--ink);
+  background: rgba(10, 14, 19, 0.86);
+}
+
+.qr-dialog-close:hover,
+.qr-dialog-close:focus-visible {
+  border-color: var(--orange);
+  color: var(--orange-soft);
+}
+
+html.has-qr-dialog {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-dialog[open] {
+    animation: none;
+  }
+}
+

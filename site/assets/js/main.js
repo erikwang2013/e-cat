@@ -218,6 +218,21 @@
     });
   });
 
+  /* Defer images inside closed <details> until opened. */
+
+  document.querySelectorAll("details").forEach((details) => {
+    const loadDeferred = () => {
+      details.querySelectorAll("img[data-src]").forEach((img) => {
+        img.src = img.dataset.src;
+        img.removeAttribute("data-src");
+      });
+    };
+    details.addEventListener("toggle", () => {
+      if (details.open) loadDeferred();
+    });
+    if (details.open) loadDeferred();
+  });
+
   /* Tabs */
 
   const tabButtons = Array.from(document.querySelectorAll('[role="tab"]'));
@@ -334,6 +349,68 @@
     }
   }
 
+  /* Donation QR dialog */
+
+  const qrDialog = document.getElementById("qr-dialog");
+  const qrDialogImg = document.getElementById("qr-dialog-img");
+  const qrDialogTitle = document.getElementById("qr-dialog-title");
+  let qrTrigger = null;
+
+  function updateQrText() {
+    if (!qrTrigger) return;
+    qrDialogTitle.textContent = lang === "en" ? qrTrigger.dataset.qrEn : qrTrigger.dataset.qrZh;
+    qrDialogImg.alt = lang === "en" ? qrTrigger.dataset.qrAltEn : qrTrigger.dataset.qrAltZh;
+  }
+
+  function openQr(trigger) {
+    qrTrigger = trigger;
+    qrDialogImg.src = trigger.dataset.qrImg;
+    qrDialogImg.width = trigger.querySelector("img").naturalWidth || 320;
+    qrDialogImg.height = trigger.querySelector("img").naturalHeight || 405;
+    updateQrText();
+    if (typeof qrDialog.showModal === "function") {
+      qrDialog.showModal();
+    } else {
+      qrDialog.setAttribute("open", "");
+    }
+    document.documentElement.classList.add("has-qr-dialog");
+  }
+
+  function onQrClosed() {
+    document.documentElement.classList.remove("has-qr-dialog");
+    if (qrTrigger && document.contains(qrTrigger)) qrTrigger.focus();
+    qrTrigger = null;
+  }
+
+  function closeQr() {
+    if (typeof qrDialog.close === "function" && qrDialog.open) {
+      qrDialog.close();
+    } else {
+      qrDialog.removeAttribute("open");
+      onQrClosed();
+    }
+  }
+
+  if (qrDialog && qrDialogImg && qrDialogTitle) {
+    document.querySelectorAll("[data-qr]").forEach((trigger) => {
+      trigger.addEventListener("click", () => openQr(trigger));
+    });
+    qrDialog.addEventListener("close", onQrClosed);
+    qrDialog.addEventListener("click", (event) => {
+      if (event.target === qrDialog) closeQr();
+    });
+    const closeButton = qrDialog.querySelector("[data-qr-close]");
+    if (closeButton) closeButton.addEventListener("click", closeQr);
+    if (typeof qrDialog.showModal !== "function") {
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && qrDialog.hasAttribute("open")) closeQr();
+      });
+    }
+    document.addEventListener("ecat:lang", () => {
+      if (qrDialog.open) updateQrText();
+    });
+  }
+
   /* Reveal on scroll */
 
   const revealItems = document.querySelectorAll(".reveal");
@@ -354,7 +431,7 @@
     revealItems.forEach((item) => item.classList.add("is-visible"));
   }
 
-  /* Three.js hero, loaded after first paint on wider screens only. */
+  /* Three.js hero, loaded after a delay on wider screens only. */
 
   const saveData = navigator.connection && navigator.connection.saveData;
   const wideViewport = window.matchMedia("(min-width: 960px)").matches;
@@ -363,11 +440,8 @@
       const url = new URL("assets/js/three-scene.js", document.baseURI).href;
       import(url).catch(() => {});
     };
-    if ("requestIdleCallback" in window) {
-      window.requestIdleCallback(loadScene, { timeout: 1400 });
-    } else {
-      window.setTimeout(loadScene, 200);
-    }
+    // Decorative and CPU-heavy: keep it off the critical path.
+    window.setTimeout(loadScene, 4000);
   }
 
   /* Visitor counter: load after the page so a slow third party cannot delay it. */
