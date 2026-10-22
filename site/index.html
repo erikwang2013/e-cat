@@ -23,6 +23,9 @@
 <link rel="stylesheet" href="assets/css/components.css">
 <link rel="stylesheet" href="assets/css/components-code.css">
 <link rel="stylesheet" href="assets/css/components-pet.css">
+<link rel="modulepreload" href="assets/js/three-scene.js" media="(prefers-reduced-motion: no-preference)">
+<link rel="modulepreload" href="assets/js/three.module.min.js" media="(prefers-reduced-motion: no-preference)">
+<link rel="modulepreload" href="assets/js/three.core.min.js" media="(prefers-reduced-motion: no-preference)">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ecat">
 <meta property="og:title" content="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架">
@@ -105,6 +108,7 @@
       </div>
       <div class="hero-stage" aria-hidden="true">
         <canvas id="cat-canvas"></canvas>
+        <img class="hero-fallback" src="assets/img/e-cat.svg" alt="" width="480" height="480" fetchpriority="high" decoding="async">
       </div>
     </div>
   </section>
@@ -285,12 +289,6 @@
             <a class="text-link" href="https://crates.io/crates/ecat-cli" target="_blank" rel="noopener">crates.io <svg class="icon icon-sm" aria-hidden="true"><use href="assets/icons/sprite.svg#i-external-link"></use></svg></a>
             <a class="text-link" href="https://github.com/erikwang2013/e-cat/releases" target="_blank" rel="noopener" data-i18n="download.githubReleases">GitHub Releases</a>
           </div>
-        </div>
-        <div class="download-card reveal">
-          <span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-book"></use></svg></span>
-          <h3 data-i18n="download.docsCardTitle">API 文档</h3>
-          <p data-i18n="download.docsCardDesc">56 个 crate 的文档在 docs.rs，从 ecat 聚合入口开始。</p>
-          <a class="text-link" href="https://docs.rs/ecat" target="_blank" rel="noopener">docs.rs <svg class="icon icon-sm" aria-hidden="true"><use href="assets/icons/sprite.svg#i-external-link"></use></svg></a>
         </div>
         <div class="download-card reveal">
           <span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-box"></use></svg></span>

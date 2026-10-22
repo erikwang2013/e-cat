@@ -431,7 +431,7 @@
     revealItems.forEach((item) => item.classList.add("is-visible"));
   }
 
-  /* Three.js hero: no image fallback, so load the animation right away. */
+  /* Three.js hero: the static fallback covers the wait, so load the animation right away. */
 
   const saveData = navigator.connection && navigator.connection.saveData;
   if (document.getElementById("cat-canvas") && !reduced && !saveData) {

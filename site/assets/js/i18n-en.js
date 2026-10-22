@@ -144,8 +144,6 @@ window.ECAT_EN = {
   "download.versionLabel": "current",
   "download.latestRelease": "Latest release",
   "download.githubReleases": "GitHub Releases",
-  "download.docsCardTitle": "API docs",
-  "download.docsCardDesc": "56 crates on docs.rs. Start with the ecat facade, then follow the feature flags.",
   "download.deployCardTitle": "Deployment templates",
   "download.deployCardDesc": "Dockerfile, Kubernetes manifest, and Helm chart live in ecat-deploy.",
   "download.deployLink": "Deployment guide",
