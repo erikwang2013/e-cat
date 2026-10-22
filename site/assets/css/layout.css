@@ -211,21 +211,6 @@
   opacity: 1;
 }
 
-.hero-fallback {
-  position: relative;
-  z-index: 0;
-  width: 76%;
-  filter: drop-shadow(0 28px 48px rgba(0, 0, 0, 0.38));
-  transition:
-    opacity 0.55s ease,
-    transform 0.55s ease;
-}
-
-.hero-stage.is-3d .hero-fallback {
-  opacity: 0;
-  transform: scale(0.96);
-}
-
 /* Stats */
 
 .back-top-sentinel {

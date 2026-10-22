@@ -431,17 +431,12 @@
     revealItems.forEach((item) => item.classList.add("is-visible"));
   }
 
-  /* Three.js hero, loaded after a delay on wider screens only. */
+  /* Three.js hero: no image fallback, so load the animation right away. */
 
   const saveData = navigator.connection && navigator.connection.saveData;
-  const wideViewport = window.matchMedia("(min-width: 960px)").matches;
-  if (document.getElementById("cat-canvas") && !reduced && !saveData && wideViewport) {
-    const loadScene = () => {
-      const url = new URL("assets/js/three-scene.js", document.baseURI).href;
-      import(url).catch(() => {});
-    };
-    // Decorative and CPU-heavy: keep it off the critical path.
-    window.setTimeout(loadScene, 4000);
+  if (document.getElementById("cat-canvas") && !reduced && !saveData) {
+    const url = new URL("assets/js/three-scene.js", document.baseURI).href;
+    import(url).catch(() => {});
   }
 
   /* Visitor counter: load after the page so a slow third party cannot delay it. */
