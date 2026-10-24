@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 归档主循环：fake hot/cold + SQLite 状态库上的幂等、断点、dry-run、锁与窗口。
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration as StdDuration;
 
@@ -9,6 +10,9 @@ use ecat_data_sqlx::{PoolParams, SqlxClient};
 use ecat_lock::{DistributedLock, LockError};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
+
+mod fixes;
+mod window;
 
 use super::{ArchiveJob, ColdSink};
 use crate::{
@@ -76,18 +80,25 @@ fn event_row(id: i64) -> Row {
 struct FakeHot {
     partitions: Vec<String>,
     hot_rows: i64,
+    total_rows: AtomicI64,
     rows: Vec<Row>,
     dropped: Mutex<Vec<String>>,
 }
 
 impl FakeHot {
     fn new(partitions: &[&str], rows: Vec<Row>) -> Arc<Self> {
+        let total_rows = i64::try_from(rows.len()).unwrap_or(i64::MAX);
         Arc::new(Self {
             partitions: partitions.iter().map(|p| (*p).to_owned()).collect(),
             hot_rows: 0,
+            total_rows: AtomicI64::new(total_rows),
             rows,
             dropped: Mutex::new(Vec::new()),
         })
+    }
+
+    fn set_total_rows(&self, total: i64) {
+        self.total_rows.store(total, Ordering::Relaxed);
     }
 }
 
@@ -114,6 +125,12 @@ impl SqlExecutor for FakeHot {
             return Ok(vec![Row::new(
                 vec!["hot_rows".into()],
                 vec![json!(self.hot_rows)],
+            )]);
+        }
+        if sql.contains("COUNT(*) AS total_rows") {
+            return Ok(vec![Row::new(
+                vec!["total_rows".into()],
+                vec![json!(self.total_rows.load(Ordering::Relaxed))],
             )]);
         }
         let cursor = params.first().and_then(Value::as_i64).unwrap_or(0);
@@ -387,6 +404,7 @@ async fn archive_second_instance_skips_when_lock_held() {
 #[tokio::test]
 async fn archive_drops_partition_after_retention_and_marks_dropped() {
     let hot = FakeHot::new(&["p2026_01"], Vec::new());
+    hot.set_total_rows(4);
     let (job, state) = job(config(2), hot.clone(), FakeCold::new(true), None).await;
     for (chunk, low_id, high_id) in [(0, 1, 2), (1, 3, 4)] {
         let mut job_state = verified(chunk, low_id, high_id);
@@ -403,56 +421,6 @@ async fn archive_drops_partition_after_retention_and_marks_dropped() {
     );
     assert_eq!(phase_of(&state, 0).await, ArchivePhase::Dropped);
     assert_eq!(phase_of(&state, 1).await, ArchivePhase::Dropped);
-}
-
-fn hhmm(minute: u32) -> String {
-    format!("{:02}:{:02}", (minute / 60) % 24, minute % 60)
-}
-
-fn now_minute() -> u32 {
-    let now = OffsetDateTime::now_utc();
-    u32::from(now.hour()) * 60 + u32::from(now.minute())
-}
-
-#[tokio::test]
-async fn archive_skips_outside_window() {
-    let mut config = config(1);
-    let minute = now_minute();
-    config.window = Some(format!("{}-{}", hhmm(minute + 120), hhmm(minute + 180)));
-    let cold = FakeCold::new(true);
-    let (job, state) = job(
-        config,
-        FakeHot::new(&["p2026_01"], vec![event_row(1)]),
-        cold.clone(),
-        None,
-    )
-    .await;
-
-    let report = job.run_once().await.unwrap();
-
-    assert!(report.skipped);
-    assert_eq!(cold.write_count(), 0);
-    assert!(state.load("events", "p2026_01", 0).await.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn archive_runs_inside_window() {
-    let mut config = config(1);
-    let minute = now_minute();
-    config.window = Some(format!("{}-{}", hhmm(minute + 1435), hhmm(minute + 5)));
-    let cold = FakeCold::new(true);
-    let (job, _) = job(
-        config,
-        FakeHot::new(&["p2026_01"], vec![event_row(1)]),
-        cold.clone(),
-        None,
-    )
-    .await;
-
-    let report = job.run_once().await.unwrap();
-
-    assert!(!report.skipped);
-    assert_eq!(cold.write_count(), 1);
 }
 
 #[tokio::test]

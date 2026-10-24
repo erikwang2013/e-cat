@@ -8,6 +8,7 @@ use ecat_data::{Dialect, RdbmsClient, Row};
 use serde_json::Value;
 use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
+use tracing::warn;
 
 use crate::state::{ArchiveJobState, ArchivePhase};
 use crate::{ArchiveStateStore, TableTieringConfig, TieringConfig, TieringError, validate_ident};
@@ -15,6 +16,11 @@ use crate::{ArchiveStateStore, TableTieringConfig, TieringConfig, TieringError, 
 const LOCK_KEY: &str = "ecat-data-tiering:archive";
 // shortcut: 锁无续租，TTL 固定 300s；单次运行可能超过它时改成配置项。
 const LOCK_TTL: StdDuration = StdDuration::from_secs(300);
+mod pacer;
+
+pub use pacer::Pacer;
+pub(crate) use pacer::throttle_delay;
+use pacer::{DEFAULT_RUN_TIMEOUT, MonotonicPacer};
 
 /// 冷层写入/校验抽象；实现见后续 ClickHouse / S3 sink。
 #[async_trait]
@@ -42,6 +48,8 @@ pub struct ArchiveReport {
     pub chunks: u64,
     pub rows: u64,
     pub dropped_partitions: u64,
+    /// 行数对账不通过而跳过的 `DROP PARTITION` 次数。
+    pub skipped_drops: u64,
     pub dry_run: bool,
     pub skipped: bool,
 }
@@ -52,6 +60,8 @@ pub struct ArchiveJob {
     state: ArchiveStateStore,
     config: TieringConfig,
     lock: Option<Arc<dyn ecat_lock::DistributedLock>>,
+    run_timeout: StdDuration,
+    pacer: Option<Arc<dyn Pacer>>,
 }
 
 impl ArchiveJob {
@@ -68,7 +78,21 @@ impl ArchiveJob {
             state,
             config,
             lock,
+            run_timeout: DEFAULT_RUN_TIMEOUT,
+            pacer: None,
         }
+    }
+
+    /// 覆盖单次运行预算（默认 300s）；到点后不再取新 chunk，状态可续跑。
+    pub fn with_run_timeout(mut self, timeout: StdDuration) -> Self {
+        self.run_timeout = timeout;
+        self
+    }
+
+    /// 注入时钟/等待实现；不注入时用单调时钟 + `tokio::time::sleep`。
+    pub fn with_pacer(mut self, pacer: Arc<dyn Pacer>) -> Self {
+        self.pacer = Some(pacer);
+        self
     }
 
     /// 所有表各跑一轮。窗口外或锁被他人持有时返回 `skipped`，不做任何写入。
@@ -101,7 +125,11 @@ impl ArchiveJob {
         } else {
             None
         };
-        let result = self.archive_tables(&mut report).await;
+        let pacer = self
+            .pacer
+            .clone()
+            .unwrap_or_else(|| Arc::new(MonotonicPacer::default()));
+        let result = self.archive_tables(&mut report, &*pacer).await;
         if let (Some(lock), Some(token)) = (&self.lock, &token) {
             // 释放失败不影响已完成的工作；锁会按 TTL 自行过期。
             let _ = lock.release(LOCK_KEY, token).await;
@@ -110,7 +138,11 @@ impl ArchiveJob {
         Ok(report)
     }
 
-    async fn archive_tables(&self, report: &mut ArchiveReport) -> Result<(), TieringError> {
+    async fn archive_tables(
+        &self,
+        report: &mut ArchiveReport,
+        pacer: &dyn Pacer,
+    ) -> Result<(), TieringError> {
         for table in &self.config.tables {
             validate_ident(&table.name)?;
             validate_ident(&table.time_col)?;
@@ -121,7 +153,8 @@ impl ArchiveJob {
                 if self.hot_rows(table, &partition).await? > 0 {
                     continue;
                 }
-                self.archive_partition(table, &partition, report).await?;
+                self.archive_partition(table, &partition, report, pacer)
+                    .await?;
             }
         }
         Ok(())
@@ -179,13 +212,20 @@ impl ArchiveJob {
         table: &TableTieringConfig,
         partition: &str,
         report: &mut ArchiveReport,
+        pacer: &dyn Pacer,
     ) -> Result<(), TieringError> {
         let mut cursor = i64::MIN;
         let mut chunk = 0u64;
         let mut all_verified = true;
         let mut verified_at: Option<OffsetDateTime> = None;
         let mut copied_any = false;
+        let mut archived_rows = 0u64;
+        // 只有「读到空 chunk」才算走完；预算到点中断时不得 drop。
+        let mut complete = false;
         loop {
+            if pacer.elapsed() >= self.run_timeout {
+                break;
+            }
             let state = self.state.load(&table.name, partition, chunk).await?;
             if let Some(state) = &state {
                 match state.phase {
@@ -196,6 +236,7 @@ impl ArchiveJob {
                             Some(t) => t.max(state.updated_at),
                             None => state.updated_at,
                         });
+                        archived_rows = archived_rows.saturating_add(state.rows);
                         copied_any = true;
                         cursor = state.high_id;
                         chunk += 1;
@@ -231,6 +272,7 @@ impl ArchiveJob {
                         } else {
                             all_verified = false;
                         }
+                        archived_rows = archived_rows.saturating_add(state.rows);
                         copied_any = true;
                         cursor = state.high_id;
                         chunk += 1;
@@ -241,6 +283,7 @@ impl ArchiveJob {
             }
             let rows = self.read_chunk(table, partition, cursor).await?;
             let Some((low_id, high_id)) = id_bounds(&rows, &table.id_col)? else {
+                complete = true;
                 break;
             };
             if self.config.dry_run {
@@ -291,18 +334,36 @@ impl ArchiveJob {
             } else {
                 all_verified = false;
             }
+            archived_rows = archived_rows.saturating_add(rows.len() as u64);
             report.chunks += 1;
             report.rows += rows.len() as u64;
             copied_any = true;
             cursor = high_id;
             chunk += 1;
+            // 平均速率 ≤ max_rows_per_sec（None/0 = 不限速）。
+            if let Some(rate) = self.config.max_rows_per_sec.filter(|rate| *rate > 0) {
+                let delay = throttle_delay(report.rows, rate, pacer.elapsed());
+                if !delay.is_zero() {
+                    pacer.wait(delay).await;
+                }
+            }
         }
         // 带 `filter` 的分区可能仍有未归档行，DROPPED 会带走它们，所以永不 drop。
-        let droppable = all_verified
+        let droppable = complete
+            && all_verified
             && copied_any
             && table.filter.is_none()
             && !self.config.dry_run
             && self.retention_passed(verified_at);
+        // 走查后新增/回填的行会落在游标之外：行数对不上就不 drop。
+        if droppable
+            && !self
+                .row_count_matches(&table.name, partition, archived_rows)
+                .await?
+        {
+            report.skipped_drops += 1;
+            return Ok(());
+        }
         if droppable {
             self.drop_partition(&table.name, partition).await?;
             for n in 0..chunk {
@@ -334,6 +395,33 @@ impl ArchiveJob {
             Value::Number(i64::from(self.config.batch_size).into()),
         ];
         Ok(self.hot.query_with(&sql, &params).await?)
+    }
+
+    /// 分区实际行数必须等于已归档 chunk 的 `rows` 之和；不等说明有行落在游标之外。
+    async fn row_count_matches(
+        &self,
+        table: &str,
+        partition: &str,
+        archived_rows: u64,
+    ) -> Result<bool, TieringError> {
+        let sql = format!("SELECT COUNT(*) AS total_rows FROM `{table}` PARTITION (`{partition}`)");
+        let rows = self.hot.query_with(&sql, &[]).await?;
+        let actual = rows
+            .first()
+            .and_then(|row| row.get("total_rows"))
+            .and_then(Value::as_i64)
+            .ok_or_else(|| TieringError::State("total_rows query returned no count".into()))?;
+        let matches = u64::try_from(actual).ok() == Some(archived_rows);
+        if !matches {
+            warn!(
+                table,
+                partition,
+                archived_rows,
+                actual_rows = actual,
+                "partition row count changed during archive; skipping DROP PARTITION"
+            );
+        }
+        Ok(matches)
     }
 
     async fn drop_partition(&self, table: &str, partition: &str) -> Result<(), TieringError> {

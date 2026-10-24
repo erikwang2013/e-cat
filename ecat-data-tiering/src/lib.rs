@@ -4,6 +4,6 @@ mod archive;
 mod config;
 mod state;
 
-pub use archive::{ArchiveJob, ArchiveReport, ColdSink};
+pub use archive::{ArchiveJob, ArchiveReport, ColdSink, Pacer};
 pub use config::{ColdTarget, TableTieringConfig, TieringConfig, TieringError, validate_ident};
 pub use state::{ArchiveJobState, ArchivePhase, ArchiveStateStore};
