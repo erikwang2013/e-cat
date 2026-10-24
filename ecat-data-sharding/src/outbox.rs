@@ -129,8 +129,17 @@ impl OutboxStore {
         Ok(())
     }
 
-    /// 插入一条记录；`id` 冲突返回数据库错误（去重由消费方的幂等 handler 负责）。
+    /// 插入一条待消费的记录；`id` 冲突返回数据库错误（去重由消费方的幂等 handler 负责）。
+    ///
+    /// 只接受 `Pending`：`Processing` 行的 `claimed_at` 为 NULL，回收条件
+    /// `claimed_at < cutoff` 对它永不成立，会永远卡在领取之外却计入积压。
     pub async fn append(&self, r: &OutboxRecord) -> Result<(), ShardError> {
+        if r.status != OutboxStatus::Pending {
+            return Err(ShardError::Config(format!(
+                "outbox append requires Pending status, got `{}`",
+                r.status.as_str()
+            )));
+        }
         let dialect = self.dialect()?;
         // payload 列是 BLOB/BYTEA：PG/MySQL 用各自的解码函数把 base64 参数落成字节。
         // SQLite 的 BLOB 亲和性不转换文本，存的是 base64 文本；读回时 `Row` 对真实

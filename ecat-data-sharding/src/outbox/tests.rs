@@ -320,3 +320,69 @@ async fn outbox_mark_failed_does_not_revive_done() {
     );
     assert_eq!(store.pending_count().await.unwrap(), 0);
 }
+
+#[tokio::test]
+async fn outbox_append_rejects_non_pending() {
+    let store = fresh_store().await;
+    for status in [
+        OutboxStatus::Processing,
+        OutboxStatus::Failed,
+        OutboxStatus::Done,
+    ] {
+        let mut rec = record("a");
+        rec.status = status;
+        assert!(
+            matches!(store.append(&rec).await, Err(crate::ShardError::Config(_))),
+            "append must reject {status:?}"
+        );
+    }
+    // 拒绝的三条一条都没写进去。
+    assert_eq!(store.pending_count().await.unwrap(), 0);
+
+    // 对照组：Pending 正常写入（否则上面的断言只是证明了 append 永远失败）。
+    store.append(&record("ok")).await.unwrap();
+    assert_eq!(store.pending_count().await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn outbox_pending_count_counts_not_done() {
+    let store = fresh_store().await;
+    for id in ["a", "b", "c", "d"] {
+        store.append(&record(id)).await.unwrap();
+    }
+
+    // 造出四种状态各一行：1 条留在 Pending，其余依次领取/完成/失败。
+    store.claim(1, Duration::minutes(1)).await.unwrap();
+    let done = store.claim(1, Duration::minutes(1)).await.unwrap();
+    store.mark_done(&done[0].id).await.unwrap();
+    let failed = store.claim(1, Duration::minutes(1)).await.unwrap();
+    store
+        .mark_failed(&failed[0].id, Duration::minutes(5))
+        .await
+        .unwrap();
+
+    let rows = store
+        .db
+        .query("SELECT status, COUNT(*) AS n FROM ecat_outbox GROUP BY status")
+        .await
+        .unwrap();
+    let mut counts = std::collections::BTreeMap::new();
+    for row in &rows {
+        counts.insert(
+            row.get("status").unwrap().as_str().unwrap().to_owned(),
+            row.get("n").unwrap().as_i64().unwrap(),
+        );
+    }
+    assert_eq!(
+        counts,
+        std::collections::BTreeMap::from([
+            ("pending".to_owned(), 1),
+            ("processing".to_owned(), 1),
+            ("failed".to_owned(), 1),
+            ("done".to_owned(), 1),
+        ]),
+        "setup must produce one row of each status"
+    );
+    // 积压 = 非 Done：Pending + Processing + Failed；Done 不计。
+    assert_eq!(store.pending_count().await.unwrap(), 3);
+}
