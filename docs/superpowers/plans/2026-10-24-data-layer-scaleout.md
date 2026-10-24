@@ -805,9 +805,10 @@ git commit --only ecat-data-tiering -m "feat(tiering): add hot-cold range query"
   pub async fn drop_partition(db: &dyn ecat_data::SqlExecutor, table: &str, partition: &str) -> Result<u64, TieringError>;
   pub struct RestorePlan { pub table: String, pub partition: String, pub source: RestoreSource }
   pub enum RestoreSource { Clickhouse, S3 }
+  pub async fn prepare_staging(db: &dyn ecat_data::SqlExecutor, plan: &RestorePlan) -> Result<String, TieringError>;
   pub async fn restore_partition(db: &dyn ecat_data::SqlExecutor, plan: &RestorePlan) -> Result<u64, TieringError>;
   ```
-  `restore_partition` 生成 `CREATE TABLE staging LIKE ...` + `ALTER TABLE ... EXCHANGE PARTITION ... WITH TABLE staging`；表名/分区名先过 `validate_ident`。
+  `prepare_staging` 执行 `DROP TABLE IF EXISTS staging` → `CREATE TABLE staging LIKE ...` → `REMOVE PARTITIONING`，返回 staging 表名；调用方（Task 39）从 `RestoreSource` 装载数据后再调用 `restore_partition`。`restore_partition` 只做守卫（staging 非空、目标分区存在）→ `EXCHANGE PARTITION` → 成功后才 `reset_partition`；表名/分区名先过 `validate_ident`。
   CLI：`ecat-tier plan|run|verify|restore --config <path> [--dry-run]`。
   MySQL 8.4/9 的 `RANGE COLUMNS` 语法未变；首次 `PARTITION BY` 的算法/锁级别需在 8.4/9 实测，gh-ost 不用于分区转换。
 
@@ -1974,6 +1975,109 @@ Expected: PASS（live 用例未设 `ECAT_TEST_REDIS_URL` 时 skip）。
 ```bash
 git add ecat-data-redis
 git commit --only ecat-data-redis -m "feat(redis): add shared cache and lock connection pool"
+```
+
+---
+
+### Task 38: ClickHouse `ColdQuery` 适配器（执行期补充）
+
+> Discovered during Task 13 review: design §7.5 requires `TieredQuery` to read the cold layer from ClickHouse, but the original plan only defined the `ColdQuery` trait. This task adds the concrete adapter. Depends on Task 11 and Task 13.
+
+**Files:**
+- Create: `ecat-data-tiering/src/query/clickhouse.rs`
+- Create: `ecat-data-tiering/src/query/clickhouse/tests.rs`
+- Modify: `ecat-data-tiering/src/query.rs`（`#[cfg(feature = "clickhouse")] pub mod clickhouse;` + re-export）
+- Modify: `ecat-data-tiering/Cargo.toml`（reuse the existing optional `ecat-data-clickhouse` / `clickhouse` feature）
+
+**Interfaces:**
+- Produces:
+  ```rust
+  #[cfg(feature = "clickhouse")]
+  pub struct ClickhouseColdQuery { /* client + validated table/time_col/id_col */ }
+  #[cfg(feature = "clickhouse")]
+  impl ClickhouseColdQuery {
+      pub fn new(client: ecat_data_clickhouse::ClickhouseClient, table: String, time_col: String, id_col: String) -> Result<Self, TieringError>;
+  }
+  #[cfg(feature = "clickhouse")]
+  impl ColdQuery for ClickhouseColdQuery { /* query_range */ }
+  pub fn build_range_sql(table: &str, time_col: &str, id_col: &str, from: &str, to: &str, limit: u64, offset: u64) -> Result<String, TieringError>;
+  ```
+  `query_range` must return rows **PK-ascending before applying limit/offset** (the precondition documented in Task 13). `ClickhouseClient` has no parameter binding, so all identifiers go through `validate_ident`, and values are rendered with the existing `render_sql_value`; no arbitrary SQL fragments. Query: `SELECT * FROM <table> WHERE <time_col> >= <from> AND <time_col> < <to> ORDER BY <id_col> ASC LIMIT <limit> OFFSET <offset>`.
+
+- [ ] **Step 1: 写失败测试**
+
+`clickhouse_cold_query_builds_validated_sql`（table/time_col/id_col、from/to、limit/offset 都出现在固定位置）；`clickhouse_cold_query_rejects_bad_ident`；`clickhouse_cold_query_escapes_time_values`；`clickhouse_cold_query_orders_by_pk_before_limit`；live 用例 `clickhouse_cold_query_roundtrip` 用 `ECAT_TEST_CLICKHOUSE_URL` 门控（未设置时 skip）。
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `cargo test -p ecat-data-tiering --features clickhouse clickhouse_cold_query_`
+Expected: FAIL，`cannot find type ClickhouseColdQuery`。
+
+- [ ] **Step 3: 实现**
+
+用 `validate_ident` 校验 table/time_col/id_col；用 `render_sql_value` 转义 from/to；`ClickhouseClient::query` 执行；把返回的 `Vec<Row>` 原样交给 `TieredQuery`。不要新增参数绑定抽象；标识符和值都必须白名单/转义。MSSQL/SQLite/MySQL 不走这个适配器。
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `cargo test -p ecat-data-tiering --features clickhouse clickhouse_cold_query_`
+Expected: PASS（live 用例未设 env 时 skip）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md
+git commit --only ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md -m "feat(tiering): add ClickHouse ColdQuery adapter"
+```
+
+---
+
+### Task 39: `ecat-tier` CLI 运行接线（执行期补充）
+
+> Discovered during Task 14 review: `run|verify|restore` parse config then return an explicit error. This task wires `run` and `verify`; `restore` remains an explicit "load staging first" workflow because the cold sinks have no read API. Depends on Tasks 9–14, 38.
+
+**Files:**
+- Modify: `ecat-data-tiering/src/bin/ecat-tier.rs`
+- Create: `ecat-data-tiering/src/cli.rs`
+- Create: `ecat-data-tiering/src/cli/tests.rs`
+- Modify: `ecat-data-tiering/Cargo.toml`（feature `cli` enables `clap`, `ecat-data-sqlx`, `clickhouse`/`s3` sinks as selected）
+
+**Interfaces:**
+- Produces:
+  ```rust
+  #[derive(serde::Deserialize)]
+  #[serde(deny_unknown_fields)]
+  pub struct CliConfig {
+      pub database: ecat_data_sqlx::SqlxConfig,
+      pub tiering: crate::TieringConfig,
+  }
+  pub async fn run_cli(config: CliConfig, command: Command, dry_run: bool) -> Result<(), TieringError>;
+  ```
+  `run`: build `SqlxClient` from `database`; for each table, build the `ClickhouseSink`/`S3Sink` from `TieringConfig`/feature; build `ArchiveJob`; call `run_once` (or `run_until`). `verify`: load `tier_archive_jobs` rows and call `ColdSink::verify_chunk`; report mismatches. `restore`: keep the explicit error that staging must be loaded by the operator via `restore_partition` after the cold data is in staging.
+- CLI tests: parse config; `plan` unchanged; `run`/`verify` dispatch with a fake executor/sink behind a trait; no live DB.
+
+- [ ] **Step 1: 写失败测试**
+
+`cli_config_parses_database_and_tiering`；`cli_run_dispatches_to_archive_job`（fake hot/cold）；`cli_verify_reports_checksum_mismatch`；`cli_restore_still_requires_staging`；`cli_rejects_unknown_key`。
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `cargo test -p ecat-data-tiering --features cli cli_`
+Expected: FAIL。
+
+- [ ] **Step 3: 实现**
+
+Config: reuse `SqlxConfig` + `TieringConfig`; no new DB abstraction. Sink selection by `TableTieringConfig.target` and feature. Keep `restore` explicit (cold sinks have no read API; `RestoreSource` is a caller-side loader). Do not add a general CLI framework.
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `cargo test -p ecat-data-tiering --features cli cli_`
+Expected: PASS（no live DB）。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md
+git commit --only ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md -m "feat(tiering): wire ecat-tier run and verify"
 ```
 
 ---
