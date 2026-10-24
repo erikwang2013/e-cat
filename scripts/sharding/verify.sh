@@ -34,14 +34,24 @@ check_sections() {
   done
 }
 
-# Never echo a DSN's userinfo: it may contain the password.
+# Never echo a DSN's raw input: a malformed DSN can carry the password anywhere.
+# Only the fixed mysql:// prefix and the host part of that scheme survive redaction.
 redact_dsn() {
-  local dsn=$1 scheme=
-  if [[ "$dsn" == *@* ]]; then
-    [[ "$dsn" == *://* ]] && scheme=${dsn%%://*}
-    printf '%s***@%s' "${scheme:+$scheme://}" "${dsn##*@}"
+  if [[ "$1" != mysql://* ]]; then
+    printf '<redacted DSN>'
+  elif [[ "$1" == *@* ]]; then
+    printf 'mysql://***@%s' "${1##*@}"
   else
-    printf '%s' "$dsn"
+    printf 'mysql://***'
+  fi
+}
+
+# Unknown arguments can themselves be pasted DSNs; redact anything DSN-shaped.
+redact_arg() {
+  if [[ "$1" == *://* || "$1" == *@* ]]; then
+    redact_dsn "$1"
+  else
+    printf '%s' "$1"
   fi
 }
 
@@ -89,7 +99,7 @@ while (($#)); do
     --target-dsn) target_dsn=${2:-}; shift ;;
     --table) table=${2:-}; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) echo "unknown argument: $(redact_arg "$1")" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
