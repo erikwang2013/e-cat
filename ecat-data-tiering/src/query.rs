@@ -58,6 +58,7 @@ impl TieredQuery {
     ///
     /// 区间全在热层保留期内只查热层，全在边界外只查冷层；跨边界时两侧各取
     /// `limit + offset` 行，按主键合并去重、排序后再分页。冷层失败直接返回错误。
+    /// 热层本期只支持 MySQL 方言，其他方言返回 [`TieringError::UnsupportedDialect`]。
     ///
     /// `params` 是**冷层绑定值**（如冷层谓词），不是全局行过滤器：热层 SQL 只由
     /// 表元数据与区间构造。只有全冷区间会把它原样下发给冷层；热层参与（全热或
@@ -72,8 +73,10 @@ impl TieredQuery {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<Row>, TieringError> {
-        let dialect = self.hot.dialect();
-        if dialect == Dialect::Mssql {
+        // 热层本期只支持 MySQL（archive 同样只支持 MySQL）。其他方言的占位符与
+        // 时间列绑定未在真实后端验证过：Postgres 的 `$n` + `&str` 会绑成 TEXT，
+        // 对 timestamp 列没有 cast，属未实测路径，直接拒绝。
+        if self.hot.dialect() != Dialect::MySql {
             return Err(TieringError::UnsupportedDialect);
         }
         let table = self
@@ -94,9 +97,7 @@ impl TieredQuery {
             )));
         }
         if from >= boundary {
-            return self
-                .hot_range(table, dialect, from, to, limit, offset)
-                .await;
+            return self.hot_range(table, from, to, limit, offset).await;
         }
         if to < boundary {
             return self
@@ -106,9 +107,7 @@ impl TieredQuery {
         }
         // 跨边界：任一侧都可能贡献前 limit+offset 行，两侧都按它下推。
         let pushdown = limit.saturating_add(offset);
-        let mut rows = self
-            .hot_range(table, dialect, boundary, to, pushdown, 0)
-            .await?;
+        let mut rows = self.hot_range(table, boundary, to, pushdown, 0).await?;
         rows.extend(
             self.cold
                 .query_range(&table.name, from, boundary, params, pushdown, 0)
@@ -120,22 +119,17 @@ impl TieredQuery {
     async fn hot_range(
         &self,
         table: &TieredTable,
-        dialect: Dialect,
         from: OffsetDateTime,
         to: OffsetDateTime,
         limit: u64,
         offset: u64,
     ) -> Result<Vec<Row>, TieringError> {
         let sql = format!(
-            "SELECT * FROM {table} WHERE {ts} >= {p1} AND {ts} <= {p2} \
-             ORDER BY {id} LIMIT {p3} OFFSET {p4}",
-            table = quote_ident(dialect, &table.name),
-            ts = quote_ident(dialect, &table.time_col),
-            id = quote_ident(dialect, &table.id_col),
-            p1 = placeholder(dialect, 1),
-            p2 = placeholder(dialect, 2),
-            p3 = placeholder(dialect, 3),
-            p4 = placeholder(dialect, 4),
+            "SELECT * FROM {table} WHERE {ts} >= ? AND {ts} <= ? \
+             ORDER BY {id} LIMIT ? OFFSET ?",
+            table = quote_ident(&table.name),
+            ts = quote_ident(&table.time_col),
+            id = quote_ident(&table.id_col),
         );
         let params = [
             Value::String(fmt_time(from)?),
@@ -160,6 +154,13 @@ fn sort_dedupe_paginate(
             let key = row.get(&table.id_col).cloned().ok_or_else(|| {
                 TieringError::State(format!("row has no `{}` column", table.id_col))
             })?;
+            // NULL 主键两两相等，去重时会被静默折叠成一行。
+            if key.is_null() {
+                return Err(TieringError::State(format!(
+                    "row has a NULL `{}` primary key",
+                    table.id_col
+                )));
+            }
             Ok((key, row))
         })
         .collect::<Result<Vec<_>, TieringError>>()?;
@@ -203,19 +204,8 @@ fn type_rank(v: &Value) -> u8 {
     }
 }
 
-fn quote_ident(dialect: Dialect, ident: &str) -> String {
-    if dialect == Dialect::MySql {
-        format!("`{ident}`")
-    } else {
-        format!("\"{ident}\"")
-    }
-}
-
-fn placeholder(dialect: Dialect, n: usize) -> String {
-    match dialect {
-        Dialect::Postgres => format!("${n}"),
-        _ => "?".to_string(),
-    }
+fn quote_ident(ident: &str) -> String {
+    format!("`{ident}`")
 }
 
 fn as_i64(n: u64, what: &str) -> Result<i64, TieringError> {

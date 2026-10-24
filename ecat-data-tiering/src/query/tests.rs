@@ -32,6 +32,13 @@ fn row(id: i64) -> Row {
     )
 }
 
+fn null_id_row() -> Row {
+    Row::new(
+        vec!["id".into(), "ts".into()],
+        vec![Value::Null, json!("2025-01-01 00:00:00")],
+    )
+}
+
 fn ids(rows: &[Row]) -> Vec<i64> {
     rows.iter()
         .map(|r| r.get("id").and_then(Value::as_i64).unwrap())
@@ -407,27 +414,53 @@ async fn query_mssql_is_unsupported() {
     assert!(hot.queries().is_empty());
 }
 
+/// 热层本期只支持 MySQL；其余方言不做未实测的适配（PG 的 `$n` + TEXT 绑定对时间列无 cast）。
 #[tokio::test]
-async fn query_hot_sql_uses_dialect_placeholders() {
-    let hot = FakeHot::new(Dialect::Postgres, vec![row(1)]);
-    let cold = FakeCold::new(vec![]);
-    let q = query(hot.clone(), cold);
+async fn query_non_mysql_hot_dialects_are_unsupported() {
     let now = now();
+    for dialect in [Dialect::Postgres, Dialect::Sqlite, Dialect::Standard] {
+        let hot = FakeHot::new(dialect, vec![row(1)]);
+        let cold = FakeCold::new(vec![]);
+        let q = query(hot.clone(), cold);
 
-    q.query_range("events", now - Duration::days(1), now, &[], 10, 0)
-        .await
-        .unwrap();
+        let err = q
+            .query_range("events", now - Duration::days(1), now, &[], 10, 0)
+            .await;
 
-    let queries = hot.queries();
-    let (sql, params) = &queries[0];
-    for p in ["$1", "$2", "$3", "$4"] {
-        assert!(sql.contains(p), "missing {p}: {sql}");
+        assert!(
+            matches!(err, Err(TieringError::UnsupportedDialect)),
+            "{dialect:?}: {err:?}"
+        );
+        assert!(hot.queries().is_empty(), "{dialect:?}: 拒绝时不得查询热层");
     }
-    assert!(!sql.contains('?'), "PostgreSQL must not use `?`: {sql}");
-    assert!(sql.contains("FROM \"events\""), "got: {sql}");
-    assert_eq!(params[2], json!(10));
-    assert_eq!(params[3], json!(0));
-    assert!(matches!(params[0].as_str(), Some(s) if !s.is_empty()));
+}
+
+/// NULL 主键在合并去重时会互相「相等」而被静默折叠成一行，必须报错。
+#[tokio::test]
+async fn query_null_primary_keys_are_rejected() {
+    let now = now();
+    let from = now - Duration::days(400);
+    let to = now - Duration::days(1);
+
+    let hot = FakeHot::new(Dialect::MySql, vec![row(1)]);
+    let cold = FakeCold::new(vec![null_id_row(), null_id_row()]);
+    let err = query(hot, cold)
+        .query_range("events", from, to, &[], 10, 0)
+        .await;
+    assert!(
+        matches!(err, Err(TieringError::State(ref m)) if m.contains("NULL")),
+        "got: {err:?}"
+    );
+
+    let hot = FakeHot::new(Dialect::MySql, vec![null_id_row()]);
+    let cold = FakeCold::new(vec![]);
+    let err = query(hot, cold)
+        .query_range("events", from, to, &[], 10, 0)
+        .await;
+    assert!(
+        matches!(err, Err(TieringError::State(ref m)) if m.contains("NULL")),
+        "got: {err:?}"
+    );
 }
 
 #[tokio::test]
