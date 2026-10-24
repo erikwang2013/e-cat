@@ -34,12 +34,23 @@ check_sections() {
   done
 }
 
+# Never echo a DSN's userinfo: it may contain the password.
+redact_dsn() {
+  local dsn=$1 scheme=
+  if [[ "$dsn" == *@* ]]; then
+    [[ "$dsn" == *://* ]] && scheme=${dsn%%://*}
+    printf '%s***@%s' "${scheme:+$scheme://}" "${dsn##*@}"
+  else
+    printf '%s' "$dsn"
+  fi
+}
+
 # mysql://user[:pass]@host[:port]/db -> DSN_USER/DSN_PASS/DSN_HOST/DSN_PORT/DSN_DB.
 # shortcut: no IPv6 literals or DSN query parameters (e.g. ?ssl-mode=); user/password must be URL-encoded.
 parse_dsn() {
   local dsn=${1#mysql://}
   if [[ "$1" != mysql://* || "$dsn" != *@* || "${dsn#*@}" != */* ]]; then
-    echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $1" >&2
+    echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $(redact_dsn "$1")" >&2
     exit 1
   fi
   local userinfo=${dsn%%@*}
@@ -56,7 +67,7 @@ parse_dsn() {
   DSN_USER=$(urldecode "$DSN_USER")
   DSN_PASS=$(urldecode "$DSN_PASS")
   [[ -n "$DSN_USER" && -n "$DSN_HOST" && -n "$DSN_DB" ]] \
-    || { echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $1" >&2; exit 1; }
+    || { echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $(redact_dsn "$1")" >&2; exit 1; }
 }
 
 # Run the rendered SQL for one side on stdout; password stays out of argv/ps.
@@ -94,19 +105,24 @@ fi
 [[ -n "$source_dsn" ]] || { echo "--source-dsn is required" >&2; exit 2; }
 [[ -n "$target_dsn" ]] || { echo "--target-dsn is required" >&2; exit 2; }
 
+check_sections
+
 tmpdir=$(mktemp -d)
 src="$tmpdir/source"
 tgt="$tmpdir/target"
 trap 'rm -rf "$tmpdir"' EXIT
 
 # Some hosts put a broken diff first in PATH (it exits 0 even for different files),
-# which would turn every comparison green; pick the first candidate that proves itself.
+# which would turn every comparison green. A candidate qualifies only if it reports
+# identical files as equal AND different files as different (a tool that always fails
+# would otherwise look like a detector).
 printf 'a\n' >"$tmpdir/probe-a"
 printf 'b\n' >"$tmpdir/probe-b"
 DIFF=
 for candidate in /usr/bin/diff "$(command -v diff || true)"; do
   [[ -n "$candidate" && -x "$candidate" ]] || continue
-  if ! "$candidate" -u "$tmpdir/probe-a" "$tmpdir/probe-b" >/dev/null 2>&1; then
+  if "$candidate" -u "$tmpdir/probe-a" "$tmpdir/probe-a" >/dev/null 2>&1 \
+     && ! "$candidate" -u "$tmpdir/probe-a" "$tmpdir/probe-b" >/dev/null 2>&1; then
     DIFF=$candidate
     break
   fi
@@ -116,9 +132,15 @@ done
 sed "s/{{TABLE}}/$table/g" "$SQL" | run_side "$source_dsn" >"$src"
 sed "s/{{TABLE}}/$table/g" "$SQL" | run_side "$target_dsn" >"$tgt"
 
-if "$DIFF" -u "$src" "$tgt"; then
-  echo "sharding-checksum: ok (table $table)"
-else
-  echo "sharding-checksum: MISMATCH (table $table)" >&2
-  exit 1
-fi
+# mysql exits non-zero on errors, but a gutted checksum.sql could still exit 0 with no
+# output; refuse to compare two empty results.
+[[ -s "$src" ]] || { echo "sharding-checksum: no output from source (checksum.sql produced nothing)" >&2; exit 1; }
+[[ -s "$tgt" ]] || { echo "sharding-checksum: no output from target (checksum.sql produced nothing)" >&2; exit 1; }
+
+rc=0
+"$DIFF" -u "$src" "$tgt" || rc=$?
+case "$rc" in
+  0) echo "sharding-checksum: ok (table $table)" ;;
+  1) echo "sharding-checksum: MISMATCH (table $table)" >&2; exit 1 ;;
+  *) echo "sharding-checksum: diff failed with rc=$rc (tool error, not a data mismatch)" >&2; exit 2 ;;
+esac

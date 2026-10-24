@@ -5,6 +5,9 @@
 -- bucket = CRC32(pk) DIV 268435456, so bucket k covers [k*2^28, (k+1)*2^28).
 -- Sections: ROW_COUNTS, PK_RANGES, CHECKSUMS, ORPHANS.
 SET SESSION group_concat_max_len = 1048576;
+-- Columns are compared via CAST(... AS CHAR); pin UTC so the session time zone of the
+-- source and target connections cannot make identical TIMESTAMP values hash differently.
+SET SESSION time_zone = '+00:00';
 
 -- SECTION: ROW_COUNTS
 SELECT 'ROW_COUNTS' AS section, '{{TABLE}}' AS tbl, COUNT(*) AS row_count
@@ -57,8 +60,9 @@ DEALLOCATE PREPARE checksum_stmt;
 
 -- SECTION: ORPHANS
 -- Foreign-key orphans: rows of {{TABLE}} where every FK column is non-NULL (MySQL only
--- enforces the constraint then) but no parent row matches. Same-schema FKs only;
--- cross-schema parents are skipped.
+-- enforces the constraint then) but no parent row matches in the same schema.
+-- Cross-schema and differently-sharded parents are out of scope: only same-schema FKs
+-- are checked, so run this per shard.
 SET @orphan_sql = (
   SELECT CONCAT(
            'SELECT * FROM (',
