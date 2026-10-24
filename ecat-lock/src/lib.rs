@@ -14,6 +14,16 @@ pub trait DistributedLock: Send + Sync {
 
     /// Release the lock for `key`, but only if `token` still matches the holder.
     async fn release(&self, key: &str, token: &str) -> Result<(), LockError>;
+
+    /// Extend the lock's TTL to `ttl`, but only if `token` still matches the holder.
+    ///
+    /// 默认实现返回错误而非静默成功：不支持续租的后端必须让调用方知道
+    /// 「我以为续上了，其实没有」是危险的（锁会在预期之前过期）。
+    async fn renew(&self, _key: &str, _token: &str, _ttl: Duration) -> Result<(), LockError> {
+        Err(LockError::Other(
+            "renew not supported by this backend".into(),
+        ))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -170,6 +180,19 @@ mod tests {
         let lock = MemoryLock::new();
         let err = lock.release("job-a", "tok-job-a").await.unwrap_err();
         assert_eq!(err.to_string(), "lock error: lock not held");
+    }
+
+    #[tokio::test]
+    async fn default_renew_is_not_supported() {
+        let lock = MemoryLock::new();
+        let err = lock
+            .renew("job-a", "tok-job-a", Duration::from_secs(30))
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("renew not supported"),
+            "got: {err}"
+        );
     }
 
     #[tokio::test]

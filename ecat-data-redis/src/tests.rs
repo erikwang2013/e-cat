@@ -162,6 +162,96 @@ async fn lock_from_config_with_password_path_fails_on_unreachable() {
     }
 }
 
+#[test]
+fn renew_script_compares_token_and_pexpires() {
+    for needle in [r#"redis.call("get""#, r#"redis.call("pexpire""#, "ARGV[2]"] {
+        assert!(RENEW_SCRIPT.contains(needle), "missing {needle}");
+    }
+}
+
+#[tokio::test]
+async fn redis_lock_from_config_reads_query_timeout() {
+    let url = spawn_silent_redis().await;
+    let lock = RedisLock::connect(&url).await.unwrap();
+    assert_eq!(lock.query_timeout, Some(Duration::from_secs(30)));
+
+    let cfg: RedisConfig =
+        serde_json::from_str(&format!(r#"{{"url": "{url}", "query_timeout_secs": 5}}"#)).unwrap();
+    let lock = RedisLock::from_config(cfg).await.unwrap();
+    assert_eq!(lock.query_timeout, Some(Duration::from_secs(5)));
+
+    let cfg: RedisConfig =
+        serde_json::from_str(&format!(r#"{{"url": "{url}", "query_timeout_secs": 0}}"#)).unwrap();
+    let lock = RedisLock::from_config(cfg).await.unwrap();
+    assert_eq!(lock.query_timeout, None, "0 = 禁用超时");
+}
+
+/// 外层 5 秒兜底：漏包 `query_timeout` 的后果是永久挂住，兜底把它变成红灯。
+async fn assert_lock_times_out<F>(label: &str, fut: F)
+where
+    F: std::future::Future<Output = Result<(), LockError>>,
+{
+    let err = tokio::time::timeout(Duration::from_secs(5), fut)
+        .await
+        .unwrap_or_else(|_| panic!("{label}: 内层超时没开火"))
+        .expect_err("装死的后端不该报成功");
+    assert!(err.to_string().contains("timed out"), "{label}: {err}");
+}
+
+/// 三个锁命令都必须包上 `query_timeout`：假服务端对数据命令与 EVALSHA 都装死。
+#[tokio::test]
+async fn lock_commands_time_out_when_the_backend_stalls() {
+    let url = spawn_silent_redis().await;
+    let mut lock = RedisLock::connect(&url).await.unwrap();
+    lock.query_timeout = Some(Duration::from_millis(50));
+
+    assert_lock_times_out("acquire", async {
+        lock.acquire("k", Duration::from_secs(30)).await.map(|_| ())
+    })
+    .await;
+    assert_lock_times_out("release", lock.release("k", "tok")).await;
+    assert_lock_times_out("renew", lock.renew("k", "tok", Duration::from_secs(30))).await;
+}
+
+#[tokio::test]
+async fn renew_extends_ttl() {
+    let Ok(url) = std::env::var("ECAT_TEST_REDIS_URL") else {
+        eprintln!("skip renew_extends_ttl: ECAT_TEST_REDIS_URL not set");
+        return;
+    };
+    let lock = RedisLock::connect(&url).await.expect("connect lock");
+    let cache = RedisCache::connect(&url).await.expect("connect cache");
+    let key = format!("ecat:test:renew:{}", Uuid::new_v4());
+
+    let token = lock
+        .acquire(&key, Duration::from_millis(300))
+        .await
+        .expect("acquire")
+        .expect("fresh key must be acquirable");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    lock.renew(&key, &token, Duration::from_secs(30))
+        .await
+        .expect("holder must be able to renew");
+
+    let ttl = cache
+        .ttl(&key)
+        .await
+        .expect("ttl")
+        .expect("renewed key must still exist");
+    assert!(
+        ttl > Duration::from_secs(20),
+        "renew must reset the TTL, got {ttl:?}"
+    );
+
+    let err = lock
+        .renew(&key, "forged-token", Duration::from_secs(30))
+        .await
+        .expect_err("non-holder must not renew");
+    assert!(err.to_string().contains("token mismatch"), "got: {err}");
+
+    lock.release(&key, &token).await.expect("cleanup release");
+}
+
 /// 假 Redis 服务端：**应答握手、对数据命令装死**。
 ///
 /// 数据命令不回应 ⇒ 调用方在超时前一直挂着。这正是「一个卡死的 Redis GET」。
@@ -190,9 +280,18 @@ pub(crate) async fn spawn_silent_redis() -> String {
                     buf.extend_from_slice(&chunk[..n]);
                     // RESP 数组：`*<n>\r\n` 之后是 n 个 `$<len>\r\n<bytes>\r\n`
                     for cmd in drain_commands(&mut buf) {
+                        // EVALSHA 也装死：锁的 release/renew 走脚本，超时测试要能挂住。
                         let is_data = matches!(
                             cmd.as_str(),
-                            "GET" | "MGET" | "SET" | "PSETEX" | "DEL" | "INCR" | "INCRBY" | "TTL"
+                            "GET"
+                                | "MGET"
+                                | "SET"
+                                | "PSETEX"
+                                | "DEL"
+                                | "INCR"
+                                | "INCRBY"
+                                | "TTL"
+                                | "EVALSHA"
                         );
                         if !is_data {
                             let _ =

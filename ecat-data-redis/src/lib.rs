@@ -11,7 +11,7 @@
 //!
 //! `Cache` 六个方法的**出站调用**都经过 `guarded`（熔断在外、超时在内，见批次 5a「出入 4」）；
 //! 纯本地分支不走外壳 —— `multi_get` 空 keys 的提前返回就是如此，理由见
-//! `RedisCache::guarded` 的注释。[`RedisLock`] 不在出站韧性范围内。
+//! `RedisCache::guarded` 的注释。[`RedisLock`] 不接熔断器，只有命令超时（`query_timeout`）。
 use async_trait::async_trait;
 use ecat_circuit_breaker::{Breaker, BreakerConfig};
 use ecat_data::Cache;
@@ -267,9 +267,20 @@ fn ttl_to_duration(ttl: i64) -> Option<Duration> {
     }
 }
 
+/// 续租脚本：token 仍匹配持有者时才重置 TTL（compare-and-pexpire）。
+const RENEW_SCRIPT: &str = r#"
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("pexpire", KEYS[1], ARGV[2])
+    else
+        return 0
+    end
+"#;
+
 /// Distributed lock backed by Redis `SET NX PX`.
 pub struct RedisLock {
     conn: MultiplexedConnection,
+    /// 单次命令超时；`None` = 禁用（配置 `query_timeout_secs: 0`）。
+    query_timeout: Option<Duration>,
 }
 
 impl RedisLock {
@@ -280,12 +291,15 @@ impl RedisLock {
             .get_multiplexed_async_connection()
             .await
             .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            query_timeout: query_timeout(None),
+        })
     }
 
     pub async fn from_config(cfg: RedisConfig) -> Result<Self, LockError> {
         let url = build_url(&cfg);
-        if let Some(pw) = cfg.password.as_ref().filter(|p| !p.is_empty()) {
+        let mut lock = if let Some(pw) = cfg.password.as_ref().filter(|p| !p.is_empty()) {
             // 通过 ConnectionInfo 单独传密码，避免密码嵌入 URL 后泄露在错误消息中
             let mut info: ConnectionInfo = url
                 .parse()
@@ -297,14 +311,35 @@ impl RedisLock {
                 .get_multiplexed_async_connection()
                 .await
                 .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
-            Ok(Self { conn })
+            Self {
+                conn,
+                query_timeout: query_timeout(None),
+            }
         } else {
-            Self::connect(&url).await
-        }
+            Self::connect(&url).await?
+        };
+        lock.query_timeout = query_timeout(cfg.query_timeout_secs);
+        Ok(lock)
     }
 
     pub fn from_connection(conn: MultiplexedConnection) -> Self {
-        Self { conn }
+        Self {
+            conn,
+            query_timeout: query_timeout(None),
+        }
+    }
+
+    /// 给单次命令套上 `query_timeout`；`None` 时直通。
+    async fn with_timeout<F, T>(&self, op: &str, fut: F) -> Result<T, LockError>
+    where
+        F: std::future::Future<Output = Result<T, LockError>> + Send,
+    {
+        match self.query_timeout {
+            Some(limit) => tokio::time::timeout(limit, fut)
+                .await
+                .map_err(|_| LockError::Other(format!("redis {op}: timed out after {limit:?}")))?,
+            None => fut.await,
+        }
     }
 }
 
@@ -320,21 +355,24 @@ impl DistributedLock for RedisLock {
         } else {
             millis as u64
         };
-        let acquired: Option<()> = conn
-            .set_options(
-                key,
-                token.as_str(),
-                redis::SetOptions::default()
-                    .conditional_set(redis::ExistenceCheck::NX)
-                    .with_expiration(redis::SetExpiry::PX(px)),
-            )
-            .await
-            .map_err(|e| LockError::Other(format!("redis acquire: {e}")))?;
-        if acquired.is_some() {
-            Ok(Some(token))
-        } else {
-            Ok(None)
-        }
+        self.with_timeout("acquire", async move {
+            let acquired: Option<()> = conn
+                .set_options(
+                    key,
+                    token.as_str(),
+                    redis::SetOptions::default()
+                        .conditional_set(redis::ExistenceCheck::NX)
+                        .with_expiration(redis::SetExpiry::PX(px)),
+                )
+                .await
+                .map_err(|e| LockError::Other(format!("redis acquire: {e}")))?;
+            Ok(if acquired.is_some() {
+                Some(token)
+            } else {
+                None
+            })
+        })
+        .await
     }
 
     async fn release(&self, key: &str, token: &str) -> Result<(), LockError> {
@@ -347,13 +385,44 @@ impl DistributedLock for RedisLock {
                 return 0
             end
         "#;
-        let (): () = redis::Script::new(script)
-            .key(key)
-            .arg(token)
-            .invoke_async(&mut conn)
-            .await
-            .map_err(|e| LockError::Other(format!("redis release: {e}")))?;
-        Ok(())
+        self.with_timeout("release", async move {
+            let (): () = redis::Script::new(script)
+                .key(key)
+                .arg(token)
+                .invoke_async(&mut conn)
+                .await
+                .map_err(|e| LockError::Other(format!("redis release: {e}")))?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn renew(&self, key: &str, token: &str, ttl: Duration) -> Result<(), LockError> {
+        let mut conn = self.conn.clone();
+        let millis = ttl.as_millis();
+        // 与 acquire 一致：ttl 溢出时钳制为 u64::MAX
+        let px = if millis > u64::MAX as u128 {
+            u64::MAX
+        } else {
+            millis as u64
+        };
+        self.with_timeout("renew", async move {
+            // Compare-and-pexpire：非持有者不能续租。
+            let renewed: i64 = redis::Script::new(RENEW_SCRIPT)
+                .key(key)
+                .arg(token)
+                .arg(px)
+                .invoke_async(&mut conn)
+                .await
+                .map_err(|e| LockError::Other(format!("redis renew: {e}")))?;
+            if renewed == 0 {
+                return Err(LockError::Other(
+                    "renew: token mismatch or lock not held".into(),
+                ));
+            }
+            Ok(())
+        })
+        .await
     }
 }
 
