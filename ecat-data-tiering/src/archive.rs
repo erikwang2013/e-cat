@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use async_trait::async_trait;
-use ecat_data::{Dialect, RdbmsClient, Row};
+use ecat_data::{Dialect, RdbmsClient, Row, Shutdown};
 use serde_json::Value;
 use time::macros::format_description;
 use time::{Duration, OffsetDateTime, UtcOffset};
@@ -93,6 +93,21 @@ impl ArchiveJob {
     pub fn with_pacer(mut self, pacer: Arc<dyn Pacer>) -> Self {
         self.pacer = Some(pacer);
         self
+    }
+
+    /// 按 60s 间隔循环执行 `run_once`，直到停机；停机时本轮跑完再返回（状态可续跑）。
+    pub async fn run_until(&self, shutdown: &mut Shutdown) -> Result<(), TieringError> {
+        let mut ticker = tokio::time::interval(StdDuration::from_secs(60));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                // 停机优先：已取消时不再起新一轮。
+                biased;
+                _ = shutdown.cancelled() => return Ok(()),
+                _ = ticker.tick() => {}
+            }
+            self.run_once().await?;
+        }
     }
 
     /// 所有表各跑一轮。窗口外或锁被他人持有时返回 `skipped`，不做任何写入。

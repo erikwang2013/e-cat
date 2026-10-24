@@ -21,8 +21,8 @@ serde_json.workspace = true
 async-trait.workspace = true
 # 分布式锁 trait 在 ecat-lock；本 crate 只依赖抽象，不引入 Redis 客户端。
 ecat-lock = { version = "7.1.1", path = "../ecat-lock" }
-# 单次运行预算：默认 pacer 的限速等待用 tokio::time::sleep。
-tokio = { workspace = true, features = ["time"] }
+# 单次运行预算：默认 pacer 的限速等待用 tokio::time::sleep；`run_until` 的 select! 需要 macros。
+tokio = { workspace = true, features = ["macros", "time"] }
 # DROP 前行数对账失败时告警（仓库统一日志门面）。
 tracing.workspace = true
 time.workspace = true

@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
 mod fixes;
+mod shutdown;
 mod window;
 
 use super::{ArchiveJob, ColdSink};
@@ -249,7 +250,7 @@ impl DistributedLock for FakeLock {
 async fn job(
     config: TieringConfig,
     hot: Arc<FakeHot>,
-    cold: Arc<FakeCold>,
+    cold: Arc<dyn ColdSink>,
     lock: Option<Arc<dyn DistributedLock>>,
 ) -> (ArchiveJob, ArchiveStateStore) {
     let (state, inspect) = stores().await;
