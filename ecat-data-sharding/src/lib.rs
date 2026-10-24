@@ -1,10 +1,11 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 分库分表目录：配置类型、拓扑校验与按分片键路由；不含 SQL 与网络 I/O。
+//! 分库分表目录：配置类型、拓扑校验、按分片键路由与显式 scatter 归并。
 mod catalog;
 mod client;
 mod config;
 mod proxy;
 mod router;
+mod scatter;
 
 pub use catalog::{
     ShardAlgorithm, ShardCatalog, ShardEndpoint, ShardError, ShardTable, stable_hash64,
@@ -13,3 +14,4 @@ pub use client::KeyedClient;
 pub use config::{ShardingConfig, ShardingMode};
 pub use proxy::validate_proxy;
 pub use router::ShardRouter;
+pub use scatter::ScatterRequest;

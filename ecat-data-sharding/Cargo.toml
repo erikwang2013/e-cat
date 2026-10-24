@@ -16,6 +16,8 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# scatter 的 JoinSet / Semaphore / 总超时。tokio 原先只在 dev-dependencies 里。
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 # 测试里开启 preserve_order，让对象键的排序规范化成为可证伪的行为
