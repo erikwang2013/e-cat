@@ -3,12 +3,18 @@
 //!
 //! 所有标识符先过 [`validate_ident`]，SQL 是固定模板 —— 不接受调用方 SQL。
 use ecat_data::{Dialect, SqlExecutor};
+use serde_json::Value;
 use time::macros::format_description;
 use time::util::days_in_month;
 use time::{Date, Month, OffsetDateTime, UtcOffset};
 
 use crate::state;
 use crate::{TieringError, validate_ident};
+
+const PARTITION_EXISTS_SQL: &str = "SELECT COUNT(*) AS n FROM information_schema.PARTITIONS \
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME = ?";
+const STAGING_IS_PARTITIONED_SQL: &str = "SELECT COUNT(*) AS n FROM information_schema.PARTITIONS \
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL";
 
 /// 一张表的 `RANGE COLUMNS` 分区计划。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +101,10 @@ pub async fn drop_partition(
 }
 
 /// 用 staging 表恢复分区，然后清掉该分区的归档状态。
+///
+/// 调用方负责把 `plan.source` 的数据装进名为 `<table>_restore_<partition>` 的 staging 表
+/// （可先按同一名字建表再装载）；本函数只做安全检查、EXCHANGE 和状态重置，不访问冷层。
+/// staging 为空或目标分区不存在时报错，绝不交换空表。
 pub async fn restore_partition(
     db: &dyn SqlExecutor,
     plan: &RestorePlan,
@@ -106,17 +116,78 @@ pub async fn restore_partition(
     // 超长表名需改成短名映射。
     let staging = format!("{}_restore_{}", plan.table, plan.partition);
     validate_ident(&staging)?;
-    db.execute(&format!("CREATE TABLE `{staging}` LIKE `{}`", plan.table))
-        .await?;
+    // 调用方可以先用同名 staging 建表并装载冷层数据；不存在时这里建空表，
+    // 由下面的空表护栏拦下，不会交换空表。
+    db.execute(&format!(
+        "CREATE TABLE IF NOT EXISTS `{staging}` LIKE `{}`",
+        plan.table
+    ))
+    .await?;
+    // LIKE 复制分区定义，而 EXCHANGE PARTITION 要求交换表非分区；调用方装载的 staging
+    // 可能已经去掉过分区，所以只在仍有分区时执行。
+    let staging_is_partitioned = count_rows(
+        db,
+        STAGING_IS_PARTITIONED_SQL,
+        &[Value::String(staging.clone())],
+    )
+    .await?;
+    if staging_is_partitioned > 0 {
+        db.execute(&format!("ALTER TABLE `{staging}` REMOVE PARTITIONING"))
+            .await?;
+    }
+    let staging_rows =
+        count_rows(db, &format!("SELECT COUNT(*) AS n FROM `{staging}`"), &[]).await?;
+    if staging_rows == 0 {
+        return Err(TieringError::State(format!(
+            "staging table `{staging}` is empty; load it from {} before restoring `{}`.`{}`",
+            source_name(plan.source),
+            plan.table,
+            plan.partition
+        )));
+    }
+    let partition_exists = count_rows(
+        db,
+        PARTITION_EXISTS_SQL,
+        &[
+            Value::String(plan.table.clone()),
+            Value::String(plan.partition.clone()),
+        ],
+    )
+    .await?;
+    if partition_exists == 0 {
+        return Err(TieringError::State(format!(
+            "partition `{}` does not exist on `{}`; ADD PARTITION or REORGANIZE it first",
+            plan.partition, plan.table
+        )));
+    }
     let rows = db
         .execute(&format!(
             "ALTER TABLE `{}` EXCHANGE PARTITION `{}` WITH TABLE `{staging}`",
             plan.table, plan.partition
         ))
         .await?;
-    // 恢复的数据又进了热表：陈旧的 Verified 行会让下一次归档直接 DROP 掉它。
+    // 只有 EXCHANGE 成功后：恢复的数据又进了热表，陈旧的 Verified 行会让下一次归档直接 DROP 掉它。
     state::reset_partition(db, &plan.table, &plan.partition).await?;
     Ok(rows)
+}
+
+fn source_name(source: RestoreSource) -> &'static str {
+    match source {
+        RestoreSource::Clickhouse => "ClickHouse",
+        RestoreSource::S3 => "S3",
+    }
+}
+
+async fn count_rows(
+    db: &dyn SqlExecutor,
+    sql: &str,
+    params: &[Value],
+) -> Result<i64, TieringError> {
+    let rows = db.query_with(sql, params).await?;
+    rows.first()
+        .and_then(|row| row.get("n"))
+        .and_then(Value::as_i64)
+        .ok_or_else(|| TieringError::State("count query returned no `n` column".into()))
 }
 
 /// `RANGE COLUMNS` 的 `CREATE TABLE LIKE` / `EXCHANGE PARTITION` 只有 MySQL 语法。

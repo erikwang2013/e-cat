@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use ecat_data::{Dialect, RdbmsError, Row, SqlExecutor};
+use serde_json::Value;
 use time::macros::datetime;
 
 use super::{
@@ -13,9 +14,13 @@ use super::{
 use crate::TieringError;
 
 /// 记录执行的 SQL；`execute`/`execute_with` 都记，便于断言「拒绝时不执行」。
+/// `query_with` 按 SQL 返回三处计数：staging 是否分区、staging 行数、目标分区是否存在。
 struct Recorder {
     dialect: Dialect,
     sql: Mutex<Vec<String>>,
+    staging_partitions: i64,
+    loaded_rows: i64,
+    target_partitions: i64,
 }
 
 impl Recorder {
@@ -23,7 +28,20 @@ impl Recorder {
         Self {
             dialect,
             sql: Mutex::new(Vec::new()),
+            staging_partitions: 1,
+            loaded_rows: 1,
+            target_partitions: 1,
         }
+    }
+
+    fn with_loaded_rows(mut self, rows: i64) -> Self {
+        self.loaded_rows = rows;
+        self
+    }
+
+    fn with_target_partitions(mut self, partitions: i64) -> Self {
+        self.target_partitions = partitions;
+        self
     }
 
     fn statements(&self) -> Vec<String> {
@@ -42,11 +60,18 @@ impl SqlExecutor for Recorder {
         Ok(Vec::new())
     }
 
-    async fn execute_with(
-        &self,
-        sql: &str,
-        _params: &[serde_json::Value],
-    ) -> Result<u64, RdbmsError> {
+    async fn query_with(&self, sql: &str, _params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
+        let n = if sql.contains("PARTITION_NAME IS NOT NULL") {
+            self.staging_partitions
+        } else if sql.contains("information_schema.PARTITIONS") {
+            self.target_partitions
+        } else {
+            self.loaded_rows
+        };
+        Ok(vec![Row::new(vec!["n".into()], vec![serde_json::json!(n)])])
+    }
+
+    async fn execute_with(&self, sql: &str, _params: &[Value]) -> Result<u64, RdbmsError> {
         self.execute(sql).await
     }
 
@@ -160,27 +185,35 @@ async fn drop_partition_rejects_semicolon() {
     assert!(sqlite.statements().is_empty());
 }
 
-#[tokio::test]
-async fn restore_uses_staging_and_exchange_partition() {
-    let db = Recorder::new(Dialect::MySql);
-    let plan = RestorePlan {
+fn restore_plan() -> RestorePlan {
+    RestorePlan {
         table: "events".into(),
         partition: "p2026_01".into(),
         source: RestoreSource::Clickhouse,
-    };
-    assert_eq!(restore_partition(&db, &plan).await.unwrap(), 1);
+    }
+}
+
+#[tokio::test]
+async fn restore_uses_staging_and_exchange_partition() {
+    let db = Recorder::new(Dialect::MySql);
+    assert_eq!(restore_partition(&db, &restore_plan()).await.unwrap(), 1);
     let stmts = db.statements();
-    assert_eq!(stmts.len(), 3, "{stmts:?}");
+    assert_eq!(stmts.len(), 4, "{stmts:?}");
     assert_eq!(
         stmts[0],
-        "CREATE TABLE `events_restore_p2026_01` LIKE `events`"
+        "CREATE TABLE IF NOT EXISTS `events_restore_p2026_01` LIKE `events`"
     );
+    // CREATE LIKE 会复制分区定义，必须先去掉，EXCHANGE 才能接受 staging。
     assert_eq!(
         stmts[1],
+        "ALTER TABLE `events_restore_p2026_01` REMOVE PARTITIONING"
+    );
+    assert_eq!(
+        stmts[2],
         "ALTER TABLE `events` EXCHANGE PARTITION `p2026_01` WITH TABLE `events_restore_p2026_01`"
     );
     assert!(
-        stmts[2].starts_with("DELETE FROM tier_archive_jobs"),
+        stmts[3].starts_with("DELETE FROM tier_archive_jobs"),
         "恢复后必须清掉陈旧的归档状态：{stmts:?}"
     );
 
@@ -191,5 +224,39 @@ async fn restore_uses_staging_and_exchange_partition() {
     };
     let err = restore_partition(&db, &bad).await.unwrap_err();
     assert!(matches!(err, TieringError::Config(_)), "{err}");
-    assert_eq!(db.statements().len(), 3, "拒绝时不得追加 SQL");
+    assert_eq!(db.statements().len(), 4, "拒绝时不得追加 SQL");
+}
+
+#[tokio::test]
+async fn restore_rejects_empty_staging() {
+    let db = Recorder::new(Dialect::MySql).with_loaded_rows(0);
+    let err = restore_partition(&db, &restore_plan()).await.unwrap_err();
+    assert!(matches!(err, TieringError::State(_)), "{err}");
+    assert!(err.to_string().contains("empty"), "{err}");
+    let stmts = db.statements();
+    assert!(
+        !stmts.iter().any(|sql| sql.contains("EXCHANGE")),
+        "空 staging 不得 EXCHANGE：{stmts:?}"
+    );
+    assert!(
+        !stmts.iter().any(|sql| sql.contains("DELETE")),
+        "空 staging 不得重置状态：{stmts:?}"
+    );
+}
+
+#[tokio::test]
+async fn restore_rejects_missing_partition() {
+    let db = Recorder::new(Dialect::MySql).with_target_partitions(0);
+    let err = restore_partition(&db, &restore_plan()).await.unwrap_err();
+    assert!(matches!(err, TieringError::State(_)), "{err}");
+    assert!(err.to_string().contains("REORGANIZE"), "{err}");
+    let stmts = db.statements();
+    assert!(
+        !stmts.iter().any(|sql| sql.contains("EXCHANGE")),
+        "分区不存在不得 EXCHANGE：{stmts:?}"
+    );
+    assert!(
+        !stmts.iter().any(|sql| sql.contains("DELETE")),
+        "分区不存在不得重置状态：{stmts:?}"
+    );
 }
