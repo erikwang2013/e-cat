@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 分区 DDL：UTC 边界、标识符白名单、DROP 与恢复语句。
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use async_trait::async_trait;
 use ecat_data::{Dialect, RdbmsError, Row, SqlExecutor};
@@ -9,7 +10,7 @@ use time::macros::datetime;
 
 use super::{
     PartitionSpec, RestorePlan, RestoreSource, drop_partition, plan_range_partitions,
-    restore_partition,
+    prepare_staging, restore_partition,
 };
 use crate::TieringError;
 
@@ -18,7 +19,7 @@ use crate::TieringError;
 struct Recorder {
     dialect: Dialect,
     sql: Mutex<Vec<String>>,
-    loaded_rows: i64,
+    loaded_rows: AtomicI64,
     target_partitions: i64,
 }
 
@@ -27,14 +28,19 @@ impl Recorder {
         Self {
             dialect,
             sql: Mutex::new(Vec::new()),
-            loaded_rows: 1,
+            loaded_rows: AtomicI64::new(1),
             target_partitions: 1,
         }
     }
 
-    fn with_loaded_rows(mut self, rows: i64) -> Self {
-        self.loaded_rows = rows;
+    fn with_loaded_rows(self, rows: i64) -> Self {
+        self.loaded_rows.store(rows, Ordering::Relaxed);
         self
+    }
+
+    /// 模拟调用方把冷层数据装进 staging。
+    fn load_staging(&self, rows: i64) {
+        self.loaded_rows.store(rows, Ordering::Relaxed);
     }
 
     fn with_target_partitions(mut self, partitions: i64) -> Self {
@@ -62,7 +68,7 @@ impl SqlExecutor for Recorder {
         let n = if sql.contains("information_schema.PARTITIONS") {
             self.target_partitions
         } else {
-            self.loaded_rows
+            self.loaded_rows.load(Ordering::Relaxed)
         };
         Ok(vec![Row::new(vec!["n".into()], vec![serde_json::json!(n)])])
     }
@@ -190,11 +196,12 @@ fn restore_plan() -> RestorePlan {
 }
 
 #[tokio::test]
-async fn restore_uses_staging_and_exchange_partition() {
+async fn prepare_staging_drops_creates_and_unpartitions() {
     let db = Recorder::new(Dialect::MySql);
-    assert_eq!(restore_partition(&db, &restore_plan()).await.unwrap(), 1);
+    let staging = prepare_staging(&db, &restore_plan()).await.unwrap();
+    assert_eq!(staging, "events_restore_p2026_01");
     let stmts = db.statements();
-    assert_eq!(stmts.len(), 5, "{stmts:?}");
+    assert_eq!(stmts.len(), 3, "{stmts:?}");
     // 残留 staging 会让 CREATE 失败，必须先删。
     assert_eq!(stmts[0], "DROP TABLE IF EXISTS `events_restore_p2026_01`");
     assert_eq!(
@@ -206,6 +213,34 @@ async fn restore_uses_staging_and_exchange_partition() {
         stmts[2],
         "ALTER TABLE `events_restore_p2026_01` REMOVE PARTITIONING"
     );
+
+    let bad = RestorePlan {
+        table: "events; DROP TABLE users".into(),
+        partition: "p2026_01".into(),
+        source: RestoreSource::S3,
+    };
+    let err = prepare_staging(&db, &bad).await.unwrap_err();
+    assert!(matches!(err, TieringError::Config(_)), "{err}");
+    assert_eq!(db.statements().len(), 3, "拒绝时不得追加 SQL");
+
+    let sqlite = Recorder::new(Dialect::Sqlite);
+    assert!(matches!(
+        prepare_staging(&sqlite, &restore_plan()).await,
+        Err(TieringError::UnsupportedDialect)
+    ));
+    assert!(sqlite.statements().is_empty());
+}
+
+#[tokio::test]
+async fn prepare_then_restore_exchanges_loaded_staging() {
+    let db = Recorder::new(Dialect::MySql);
+    let staging = prepare_staging(&db, &restore_plan()).await.unwrap();
+    assert_eq!(staging, "events_restore_p2026_01");
+    // 调用方在 prepare 之后、restore 之前从 RestoreSource 装载数据。
+    db.load_staging(42);
+    assert_eq!(restore_partition(&db, &restore_plan()).await.unwrap(), 1);
+    let stmts = db.statements();
+    assert_eq!(stmts.len(), 5, "{stmts:?}");
     assert_eq!(
         stmts[3],
         "ALTER TABLE `events` EXCHANGE PARTITION `p2026_01` WITH TABLE `events_restore_p2026_01`"
@@ -214,15 +249,13 @@ async fn restore_uses_staging_and_exchange_partition() {
         stmts[4].starts_with("DELETE FROM tier_archive_jobs"),
         "恢复后必须清掉陈旧的归档状态：{stmts:?}"
     );
-    let drop = stmts
-        .iter()
-        .position(|sql| sql.starts_with("DROP TABLE IF EXISTS"))
-        .expect("missing DROP TABLE IF EXISTS");
-    let create = stmts
-        .iter()
-        .position(|sql| sql.starts_with("CREATE TABLE"))
-        .expect("missing CREATE TABLE");
-    assert!(drop < create, "DROP IF EXISTS 必须先于 CREATE：{stmts:?}");
+    // restore 不再建/删 staging：EXCHANGE 之后只有状态重置。
+    assert!(
+        stmts[3..].iter().all(|sql| !sql.starts_with("DROP TABLE")
+            && !sql.starts_with("CREATE TABLE")
+            && !sql.contains("REMOVE PARTITIONING")),
+        "{stmts:?}"
+    );
 
     let bad = RestorePlan {
         table: "events; DROP TABLE users".into(),
@@ -241,14 +274,7 @@ async fn restore_rejects_empty_staging() {
     assert!(matches!(err, TieringError::State(_)), "{err}");
     assert!(err.to_string().contains("empty"), "{err}");
     let stmts = db.statements();
-    assert!(
-        !stmts.iter().any(|sql| sql.contains("EXCHANGE")),
-        "空 staging 不得 EXCHANGE：{stmts:?}"
-    );
-    assert!(
-        !stmts.iter().any(|sql| sql.contains("DELETE")),
-        "空 staging 不得重置状态：{stmts:?}"
-    );
+    assert!(stmts.is_empty(), "空 staging 不得执行任何 SQL：{stmts:?}");
 }
 
 #[tokio::test]
@@ -259,11 +285,7 @@ async fn restore_rejects_missing_partition() {
     assert!(err.to_string().contains("REORGANIZE"), "{err}");
     let stmts = db.statements();
     assert!(
-        !stmts.iter().any(|sql| sql.contains("EXCHANGE")),
-        "分区不存在不得 EXCHANGE：{stmts:?}"
-    );
-    assert!(
-        !stmts.iter().any(|sql| sql.contains("DELETE")),
-        "分区不存在不得重置状态：{stmts:?}"
+        stmts.is_empty(),
+        "分区不存在不得执行任何 SQL（含状态重置）：{stmts:?}"
     );
 }

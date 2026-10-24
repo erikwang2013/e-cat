@@ -11,7 +11,7 @@ pub use archive::{ArchiveJob, ArchiveReport, ColdSink, Pacer};
 pub use config::{ColdTarget, TableTieringConfig, TieringConfig, TieringError, validate_ident};
 pub use partition::{
     PartitionSpec, RestorePlan, RestoreSource, drop_partition, plan_range_partitions,
-    restore_partition,
+    prepare_staging, restore_partition,
 };
 pub use query::{ColdQuery, TieredQuery, TieredTable};
 pub use sink::render_sql_value;

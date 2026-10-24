@@ -98,28 +98,19 @@ pub async fn drop_partition(
     Ok(rows)
 }
 
-/// 用 staging 表恢复分区，然后清掉该分区的归档状态。
+/// 准备恢复用的 staging 表：`DROP TABLE IF EXISTS` → `CREATE TABLE ... LIKE` →
+/// `ALTER TABLE ... REMOVE PARTITIONING`，返回 staging 表名。
 ///
-/// staging（`<table>_restore_<partition>`）每次调用都先 `DROP TABLE IF EXISTS` 再 `CREATE
-/// TABLE ... LIKE`：残留表（包括上次的回滚副本）不可能带着旧数据通过非空守卫，因此不存在
-/// 「陈旧 staging 被换进在线分区」的风险，调用方也无需在调用前清表。EXCHANGE 成功后 staging
-/// 保留（内含交换前的分区数据），可用于回滚。调用方必须在 EXCHANGE 前把 `plan.source` 的数据
-/// 装进 staging；本函数只做安全检查、EXCHANGE 和状态重置，不访问冷层。staging 为空或目标分区
-/// 不存在时报错，绝不交换空表。
-///
-/// shortcut: 先删后建意味着单次调用里没有装载窗口，生产恢复会停在空 staging 守卫（fail
-/// closed）；要真正恢复须改成两阶段 API：先准备并装载 staging，再单独执行交换。
-pub async fn restore_partition(
+/// 调用方随后从 `plan.source` 装载数据（Task 39），再调用 [`restore_partition`] 完成交换。
+/// 每次调用都先删后建，残留表（包括上次的回滚副本）不会带着旧数据通过非空守卫。
+pub async fn prepare_staging(
     db: &dyn SqlExecutor,
     plan: &RestorePlan,
-) -> Result<u64, TieringError> {
+) -> Result<String, TieringError> {
     validate_ident(&plan.table)?;
     validate_ident(&plan.partition)?;
     ensure_mysql(db)?;
-    // shortcut: staging 名是「表_restore_分区」，两者合计超 64 字符会撞 MySQL 标识符上限；
-    // 超长表名需改成短名映射。
-    let staging = format!("{}_restore_{}", plan.table, plan.partition);
-    validate_ident(&staging)?;
+    let staging = staging_name(plan)?;
     db.execute(&format!("DROP TABLE IF EXISTS `{staging}`"))
         .await?;
     db.execute(&format!("CREATE TABLE `{staging}` LIKE `{}`", plan.table))
@@ -127,6 +118,23 @@ pub async fn restore_partition(
     // LIKE 复制分区定义，而 EXCHANGE PARTITION 要求交换表非分区。
     db.execute(&format!("ALTER TABLE `{staging}` REMOVE PARTITIONING"))
         .await?;
+    Ok(staging)
+}
+
+/// 用已装载的 staging 表恢复分区，然后清掉该分区的归档状态。
+///
+/// 调用顺序：`prepare_staging` → 调用方从 `plan.source` 装载 staging → 本函数。本函数不创建、
+/// 不删除 staging，只做安全检查、EXCHANGE 和状态重置，不访问冷层。staging 为空或目标分区
+/// 不存在时报错，绝不交换空表。EXCHANGE 成功后 staging 保留（内含交换前的分区数据），可用于
+/// 回滚；再次恢复前须重新调用 `prepare_staging` 清掉它。
+pub async fn restore_partition(
+    db: &dyn SqlExecutor,
+    plan: &RestorePlan,
+) -> Result<u64, TieringError> {
+    validate_ident(&plan.table)?;
+    validate_ident(&plan.partition)?;
+    ensure_mysql(db)?;
+    let staging = staging_name(plan)?;
     let staging_rows =
         count_rows(db, &format!("SELECT COUNT(*) AS n FROM `{staging}`"), &[]).await?;
     if staging_rows == 0 {
@@ -161,6 +169,14 @@ pub async fn restore_partition(
     // 只有 EXCHANGE 成功后：恢复的数据又进了热表，陈旧的 Verified 行会让下一次归档直接 DROP 掉它。
     state::reset_partition(db, &plan.table, &plan.partition).await?;
     Ok(rows)
+}
+
+// shortcut: staging 名是「表_restore_分区」，两者合计超 64 字符会撞 MySQL 标识符上限；
+// 超长表名需改成短名映射。
+fn staging_name(plan: &RestorePlan) -> Result<String, TieringError> {
+    let staging = format!("{}_restore_{}", plan.table, plan.partition);
+    validate_ident(&staging)?;
+    Ok(staging)
 }
 
 fn source_name(source: RestoreSource) -> &'static str {
