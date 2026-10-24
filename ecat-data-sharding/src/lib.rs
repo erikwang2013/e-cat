@@ -2,8 +2,10 @@
 //! 分库分表目录：配置类型、拓扑校验与按分片键路由；不含 SQL 与网络 I/O。
 mod catalog;
 mod config;
+mod proxy;
 
 pub use catalog::{
     ShardAlgorithm, ShardCatalog, ShardEndpoint, ShardError, ShardTable, stable_hash64,
 };
 pub use config::{ShardingConfig, ShardingMode};
+pub use proxy::validate_proxy;
