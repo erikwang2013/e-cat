@@ -99,6 +99,39 @@ impl Fake {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).cold = cold_lines(rows);
     }
 
+    /// ClickHouse JSONEachRow 默认把 64 位整数写成十进制字符串
+    /// （`output_format_json_quote_64bit_integers=1`）。
+    fn set_metadata_quoted(&self, digest: &ChunkDigest) {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .metadata = json!({
+            "checksum": digest.checksum,
+            "sample_checksum": digest.sample_checksum,
+            "sample_rows": digest.sample_rows.to_string(),
+            "low_id": digest.low_id.to_string(),
+            "high_id": digest.high_id.to_string(),
+        })
+        .to_string();
+    }
+
+    fn set_cold_quoted_ids(&self, rows: &[Row]) {
+        let mut out = String::new();
+        for row in rows {
+            let mut map = serde_json::Map::new();
+            for (col, value) in row.iter() {
+                let value = match (col, value.as_i64()) {
+                    (ID_COL, Some(id)) => Value::String(id.to_string()),
+                    _ => value.clone(),
+                };
+                map.insert(col.to_string(), value);
+            }
+            out.push_str(&serde_json::to_string(&map).unwrap());
+            out.push('\n');
+        }
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).cold = out;
+    }
+
     fn sql(&self) -> Vec<String> {
         self.state
             .lock()
@@ -228,7 +261,7 @@ fn clickhouse_cold_rows_preserve_value_wire_format() {
             json!("2026-01-02"),
         ],
     );
-    let line = canonical_ndjson(&[&record]).unwrap();
+    let line = canonical_ndjson(&[&record], ID_COL).unwrap();
     assert_eq!(
         line,
         "{\"day\":\"2026-01-02\",\"id\":1,\"payload\":\"aGVsbG8=\",\"ts\":\"2026-01-02T03:04:05Z\"}\n"
@@ -244,7 +277,18 @@ fn clickhouse_cold_rows_preserve_value_wire_format() {
         object.keys().cloned().collect(),
         object.values().cloned().collect(),
     );
-    assert_eq!(canonical_ndjson(&[&roundtrip]).unwrap(), line);
+    assert_eq!(canonical_ndjson(&[&roundtrip], ID_COL).unwrap(), line);
+    // 64 位整数被引用的服务器：主键 "1" 必须与 1 规范化成同一行。
+    let quoted = Row::new(
+        vec!["id".into(), "ts".into(), "payload".into(), "day".into()],
+        vec![
+            json!("1"),
+            json!("2026-01-02T03:04:05Z"),
+            json!("aGVsbG8="),
+            json!("2026-01-02"),
+        ],
+    );
+    assert_eq!(canonical_ndjson(&[&quoted], ID_COL).unwrap(), line);
 }
 
 #[test]
@@ -306,6 +350,31 @@ async fn clickhouse_verify_chunk_detects_sample_mismatch() {
         sink.verify_chunk("events", "p202601", 0, &digest.checksum)
             .await
             .unwrap()
+    );
+}
+
+/// 真实 ClickHouse 默认 `output_format_json_quote_64bit_integers=1`：
+/// 元数据里的 UInt64/Int64 与冷表的 id 都会是十进制字符串，抽样校验仍须通过。
+#[tokio::test]
+async fn clickhouse_verify_chunk_accepts_quoted_64bit_fields() {
+    let fake = Fake::spawn().await;
+    let sink = fake.sink(Some(0.2));
+    let chunk = rows(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    let digest = chunk_digest(&chunk, ID_COL, Some(0.2)).unwrap();
+    fake.set_metadata_quoted(&digest);
+    fake.set_cold_quoted_ids(&chunk);
+    assert!(
+        sink.verify_chunk("events", "p202601", 0, &digest.checksum)
+            .await
+            .unwrap()
+    );
+    // 抽样范围读必须去重（FINAL）且请求服务端不引用 64 位整数。
+    let sql = fake.sql();
+    let cold_sql = sql.iter().find(|s| s.contains("SELECT *")).unwrap();
+    assert!(cold_sql.contains("FINAL"), "{cold_sql}");
+    assert!(
+        cold_sql.contains("output_format_json_quote_64bit_integers = 0"),
+        "{cold_sql}"
     );
 }
 

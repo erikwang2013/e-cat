@@ -173,25 +173,34 @@ impl ColdSink for ClickhouseSink {
             .ok_or_else(|| TieringError::Cold("checksum row has no `sample_checksum`".into()))?;
         let sample_rows = meta
             .get("sample_rows")
-            .and_then(Value::as_u64)
+            .and_then(json_u64)
             .ok_or_else(|| TieringError::Cold("checksum row has no `sample_rows`".into()))?;
         let low_id = meta
             .get("low_id")
-            .and_then(Value::as_i64)
+            .and_then(json_i64)
             .ok_or_else(|| TieringError::Cold("checksum row has no `low_id`".into()))?;
         let high_id = meta
             .get("high_id")
-            .and_then(Value::as_i64)
+            .and_then(json_i64)
             .ok_or_else(|| TieringError::Cold("checksum row has no `high_id`".into()))?;
 
-        // 只回读该 chunk 的 id 区间；chunk 按 `id > cursor ORDER BY id` 切分，
-        // 同表不同 chunk 的 id 区间不重叠，所以区间内只有本 chunk 的行。
+        // 抽样范围读只按 id 区间，不按冷表分区：归档只拿到热库分区名，冷表分区键
+        // 可能不存在或命名不同，没有可安全下推的谓词（deferred limitation）。
+        // 假设：chunk 按 `id > cursor ORDER BY id` 切分，同表各 chunk 的 id 区间不重叠，
+        // 区间里只有本 chunk 的行。假设不成立（如跨分区回填低 id）时样本校验返回
+        // false → 不 DROP，安全方向。
+        //
+        // `FINAL`：数据与元数据两次 INSERT 非原子，元数据失败后的重试会重写数据行；
+        // ReplacingMergeTree 的重复行在这里折叠，样本行数才不会多算。
+        // `SETTINGS`：JSONEachRow 默认把 64 位整数写成字符串
+        // （`output_format_json_quote_64bit_integers=1`），关掉后冷行与写入侧
+        // 热行的 NDJSON 形态一致，其他 Int64 列也不会误判。
         let id = &spec.id_col;
         let cold = self
             .client
             .query(&format!(
-                "SELECT * FROM `{table}` WHERE `{id}` >= {low_id} AND `{id}` <= {high_id} \
-                 ORDER BY `{id}`"
+                "SELECT * FROM `{table}` FINAL WHERE `{id}` >= {low_id} AND `{id}` <= {high_id} \
+                 ORDER BY `{id}` SETTINGS output_format_json_quote_64bit_integers = 0"
             ))
             .await?;
         let keyed = sorted_by_id(&cold, id)?;
@@ -199,7 +208,7 @@ impl ColdSink for ClickhouseSink {
         if picked.len() as u64 != sample_rows {
             return Ok(false);
         }
-        let recomputed = sha256_hex(canonical_ndjson(&picked)?.as_bytes());
+        let recomputed = sha256_hex(canonical_ndjson(&picked, id)?.as_bytes());
         Ok(recomputed == sample_checksum)
     }
 
@@ -229,12 +238,12 @@ fn chunk_digest(
         return Err(TieringError::Cold("cannot write an empty chunk".into()));
     };
     let ordered: Vec<&Row> = keyed.iter().map(|(_, row)| *row).collect();
-    let checksum = sha256_hex(canonical_ndjson(&ordered)?.as_bytes());
+    let checksum = sha256_hex(canonical_ndjson(&ordered, id_col)?.as_bytes());
     let (sample_checksum, sample_rows) = match verify_sample.filter(|rate| *rate > 0.0) {
         Some(rate) => {
             let picked = pick_sample(&keyed, sample_step(rate));
             (
-                sha256_hex(canonical_ndjson(&picked)?.as_bytes()),
+                sha256_hex(canonical_ndjson(&picked, id_col)?.as_bytes()),
                 picked.len() as u64,
             )
         }
@@ -253,7 +262,7 @@ fn sorted_by_id<'a>(rows: &'a [Row], id_col: &str) -> Result<Vec<(i64, &'a Row)>
     let mut keyed: Vec<(i64, &Row)> = rows
         .iter()
         .map(|row| {
-            let id = row.get(id_col).and_then(Value::as_i64).ok_or_else(|| {
+            let id = row.get(id_col).and_then(json_i64).ok_or_else(|| {
                 TieringError::Cold(format!("cold sink row has no integer `{id_col}`"))
             })?;
             Ok((id, row))
@@ -263,8 +272,27 @@ fn sorted_by_id<'a>(rows: &'a [Row], id_col: &str) -> Result<Vec<(i64, &'a Row)>
     Ok(keyed)
 }
 
+/// ClickHouse JSONEachRow 默认把 64 位整数序列化成十进制字符串
+/// （`output_format_json_quote_64bit_integers=1`）；数字与字符串两种形态都接受。
+fn json_i64(value: &Value) -> Option<i64> {
+    match value {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+fn json_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 /// 规范化 NDJSON：列名按字典序，值用 serde_json 序列化（字符串/数值/布尔/NULL 直出）。
-fn canonical_ndjson(rows: &[&Row]) -> Result<String, TieringError> {
+/// 主键列若是十进制字符串（见 [`json_i64`]）统一写成数值，与写入侧热行一致。
+fn canonical_ndjson(rows: &[&Row], id_col: &str) -> Result<String, TieringError> {
     let mut out = String::new();
     for row in rows {
         out.push('{');
@@ -275,8 +303,7 @@ fn canonical_ndjson(rows: &[&Row]) -> Result<String, TieringError> {
                 out.push(',');
             }
             let key = serde_json::to_string(col).map_err(|e| TieringError::Cold(e.to_string()))?;
-            let value =
-                serde_json::to_string(value).map_err(|e| TieringError::Cold(e.to_string()))?;
+            let value = canonical_json_value(col, id_col, value)?;
             out.push_str(&key);
             out.push(':');
             out.push_str(&value);
@@ -284,6 +311,13 @@ fn canonical_ndjson(rows: &[&Row]) -> Result<String, TieringError> {
         out.push_str("}\n");
     }
     Ok(out)
+}
+
+fn canonical_json_value(col: &str, id_col: &str, value: &Value) -> Result<String, TieringError> {
+    if let (true, Value::String(_), Some(id)) = (col == id_col, value, json_i64(value)) {
+        return Ok(id.to_string());
+    }
+    serde_json::to_string(value).map_err(|e| TieringError::Cold(e.to_string()))
 }
 
 /// 抽样步长 `ceil(1/rate)`；`rate = 1.0` 抽全量。非法 rate 退化为 1（全量）。
