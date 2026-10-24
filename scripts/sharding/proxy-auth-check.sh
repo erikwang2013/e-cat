@@ -36,7 +36,8 @@ usage: proxy-auth-check.sh --check
     GRANT SELECT ON <db>.* TO 'ecat_proxy'@'%';
 
   Live gate: connect through the proxy, run SELECT 1, record proxy and MySQL
-  versions. Exit 0 when the query returns 1, 1 when it fails.
+  versions. Exit 0 only when SELECT 1 returns 1 and the MySQL version matches
+  MYSQL_VERSION (8.4.x for 8.4, 9.x for 9); exit 1 otherwise.
 EOF
 }
 
@@ -56,9 +57,8 @@ check_static() {
   [[ "$(backend_image 8.4 || true)" == "mysql:8.4" ]] || fail "missing mysql:8.4 branch"
   [[ "$(backend_image 9 || true)" == "mysql:9" ]] || fail "missing mysql:9 branch"
 
-  # Built from a variable so the check's own line is not the match it looks for.
-  local create_user="CREATE USER"
-  grep -Eq "$create_user .*IDENTIFIED WITH caching_sha2_password" "$SELF" \
+  # Anchored at line start so a commented-out recipe does not count.
+  grep -Eq '^[[:space:]]*CREATE USER .*IDENTIFIED WITH caching_sha2_password' "$SELF" \
     || fail "missing backend account creation with caching_sha2_password"
 
   local plugins
@@ -74,12 +74,14 @@ check_static() {
 }
 
 # Never echo a DSN's raw input: a malformed DSN can carry the password anywhere.
-# Only the fixed mysql:// prefix and the host part of that scheme survive redaction.
+# Only the fixed mysql:// prefix and the part after the last @, cut before any
+# query string, survive redaction.
 redact_dsn() {
   if [[ "$1" != mysql://* ]]; then
     printf '<redacted DSN>'
   elif [[ "$1" == *@* ]]; then
-    printf 'mysql://***@%s' "${1##*@}"
+    local tail=${1##*@}
+    printf 'mysql://***@%s' "${tail%%\?*}"
   else
     printf 'mysql://***'
   fi
@@ -94,13 +96,31 @@ redact_arg() {
   fi
 }
 
+# Strict %HH decoder for DSN userinfo. A bare % or a malformed escape is rejected;
+# printf %b would instead eat raw backslash sequences and mangle the credential.
+urldecode() {
+  local in=$1 out= byte
+  while [[ "$in" == *%* ]]; do
+    out+=${in%%\%*}
+    in=${in#*%}
+    if [[ ! "$in" =~ ^[0-9A-Fa-f]{2} ]]; then
+      echo "invalid percent-encoding (user and password must be URL-encoded)" >&2
+      return 1
+    fi
+    printf -v byte '%b' "\\x${in:0:2}"
+    out+=$byte
+    in=${in:2}
+  done
+  printf '%s' "$out$in"
+}
+
 # mysql://user[:pass]@host[:port]/db -> DSN_USER/DSN_PASS/DSN_HOST/DSN_PORT/DSN_DB.
 # shortcut: no IPv6 literals or DSN query parameters (e.g. ?ssl-mode=); user/password must be URL-encoded.
 parse_dsn() {
   local dsn=${1#mysql://}
   if [[ "$1" != mysql://* || "$dsn" != *@* || "${dsn#*@}" != */* ]]; then
     echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $(redact_dsn "$1")" >&2
-    exit 1
+    exit 2
   fi
   local userinfo=${dsn%%@*}
   local hostdb=${dsn#*@}
@@ -112,17 +132,31 @@ parse_dsn() {
   DSN_USER=${userinfo%%:*}
   DSN_PASS=
   [[ "$userinfo" == *:* ]] && DSN_PASS=${userinfo#*:}
-  urldecode() { printf '%b' "${1//%/\\x}"; }
-  DSN_USER=$(urldecode "$DSN_USER")
-  DSN_PASS=$(urldecode "$DSN_PASS")
+  DSN_USER=$(urldecode "$DSN_USER") || exit 2
+  DSN_PASS=$(urldecode "$DSN_PASS") || exit 2
   [[ -n "$DSN_USER" && -n "$DSN_HOST" && -n "$DSN_DB" ]] \
-    || { echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $(redact_dsn "$1")" >&2; exit 1; }
+    || { echo "invalid DSN (want mysql://user[:pass]@host[:port]/db): $(redact_dsn "$1")" >&2; exit 2; }
 }
 
 # Password stays out of argv/ps; stderr is left to the caller.
 mysql_proxy() {
   mysql --batch --raw --skip-column-names --protocol=TCP --connect-timeout=10 \
     --host="$DSN_HOST" --port="$DSN_PORT" --user="$DSN_USER" --database="$DSN_DB" "$@"
+}
+
+# MYSQL_VERSION is a claim about the backend line: 8.4 -> 8.4.x, 9 -> 9.x.
+# Uses run_gate's locals (bash dynamic scoping).
+check_backend_version() {
+  local pattern
+  case "$MYSQL_VERSION" in
+    8.4) pattern='^8[.]4[.]' ;;
+    9) pattern='^9[.]' ;;
+  esac
+  if [[ "$mysql_version" == unavailable ]]; then
+    fail "backend version unavailable through the proxy (proxy version: $proxy_version); cannot verify MYSQL_VERSION=$MYSQL_VERSION"
+  fi
+  [[ "$mysql_version" =~ $pattern ]] \
+    || fail "backend version mismatch: MYSQL_VERSION=$MYSQL_VERSION requires ${MYSQL_VERSION}.x, but SELECT VERSION() returned '$mysql_version' (proxy version: $proxy_version)"
 }
 
 run_gate() {
@@ -136,7 +170,8 @@ run_gate() {
     exit 2
   fi
 
-  command -v mysql >/dev/null || fail "mysql client not found in PATH"
+  command -v mysql >/dev/null \
+    || { echo "proxy-auth-check: mysql client not found in PATH" >&2; exit 2; }
   parse_dsn "$PROXY_DSN"
   if [[ -n "$DSN_PASS" ]]; then export MYSQL_PWD="$DSN_PASS"; else unset MYSQL_PWD; fi
 
@@ -159,6 +194,8 @@ run_gate() {
     echo "mysql version: $mysql_version" >&2
     exit 1
   fi
+
+  check_backend_version
 
   echo "proxy-auth-check: ok"
   echo "backend image: $image"
