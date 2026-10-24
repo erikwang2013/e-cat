@@ -9,6 +9,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - run: cargo check --workspace
       - run: cargo test --workspace
+      # 默认 feature 全关也必须能编译：feature 门控不得把核心 API 编坏。
+      - run: cargo check --workspace --no-default-features
+      # 兼容性最低门：只引用公开签名、不执行 I/O；破坏性改动在此红灯。
+      # （cargo semver-checks 需要 7.1.1 baseline tag，有 tag 后再加。）
+      - run: cargo test -p ecat-data --test public_api_smoke
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
   audit:
@@ -24,3 +29,85 @@ jobs:
             https://github.com/rustsec/cargo-audit/releases/download/cargo-audit/v0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz
           tar -xzf /tmp/cargo-audit.tgz -C /tmp
           /tmp/cargo-audit-x86_64-unknown-linux-musl-v0.22.2/cargo-audit audit --deny warnings
+  # MySQL 8.4 / 9 认证与版本矩阵（真机门，需 Docker）。
+  # 认证插件必须是 caching_sha2_password：mysql_native_password 在 8.4 默认禁用、
+  # 9.0 已移除，任何情况下都不得用它绕过连接失败。
+  mysql-matrix:
+    name: mysql ${{ matrix.mysql-version }} (${{ matrix.tls }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql-version: ["8.4", "9"]
+        # TLS 与非 TLS 各跑一次。TLS 只走 URL 参数（SqlxConfig.tls 字段不支持，
+        # 配了会报错）。非 TLS 下 caching_sha2_password 走 RSA 公钥交换
+        # （sqlx-mysql 0.8.6 会自行向服务器索取公钥）；若该 leg 因公钥失败，已知
+        # 限制的处理方式是强制 TLS（删掉 DISABLED），不是改认证插件。
+        tls: ["REQUIRED", "DISABLED"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Start MySQL ${{ matrix.mysql-version }}
+        run: |
+          docker run -d --name mysql \
+            -e MYSQL_ROOT_PASSWORD=root \
+            -e MYSQL_DATABASE=ecat \
+            -p 3306:3306 \
+            mysql:${{ matrix.mysql-version }}
+          # 官方镜像首次启动会先临时起一个 skip-networking 的实例再重启，
+          # 故必须等隧道可达（-h127.0.0.1 走 TCP），不能只 ping socket。
+          for _ in $(seq 1 60); do
+            docker exec mysql mysqladmin ping -uroot -proot -h127.0.0.1 --silent && exit 0
+            sleep 2
+          done
+          docker logs mysql
+          exit 1
+      - name: Create ecat user with caching_sha2_password
+        run: |
+          docker exec -i mysql mysql -uroot -proot <<'SQL'
+          CREATE USER 'ecat'@'%' IDENTIFIED WITH caching_sha2_password BY 'ecat';
+          GRANT ALL PRIVILEGES ON ecat.* TO 'ecat'@'%';
+          FLUSH PRIVILEGES;
+          SQL
+      # 单机实例上 SHOW REPLICA STATUS 返回空集且退出码 0；8.4/9 已删除
+      # SHOW SLAVE STATUS，后端按版本选择语句（见 mysql_replica_status_sql）。
+      - name: Assert SHOW REPLICA STATUS is accepted on standalone
+        run: |
+          docker exec mysql mysql -uroot -proot --batch --skip-column-names \
+            -e "SHOW REPLICA STATUS" > /tmp/replica-status.out
+          test ! -s /tmp/replica-status.out
+      # 先 --no-run 预热编译，计时才只含进程启动 + 连接 + 查询。
+      # #4244（sqlx 0.8.6 caching_sha2_password fast-auth 路径异常）的细粒度
+      # 复现需真机 instrument；现有 live 用例是单连接池，fast-auth 路径未被覆盖。
+      - name: Build test binaries
+        run: cargo test -p ecat-data-sqlx --lib --no-run
+      - name: Enable general log
+        run: docker exec mysql mysql -uroot -proot -e "SET GLOBAL general_log=ON"
+      - name: Run MySQL live test
+        env:
+          ECAT_TEST_MYSQL_URL: "mysql://ecat:ecat@127.0.0.1:3306/ecat?ssl-mode=${{ matrix.tls }}"
+          ECAT_REQUIRE_LIVE_DB: "1"
+        run: |
+          # ECAT_REQUIRE_LIVE_DB 是 crate 级开关：整包 cargo test 会因缺
+          # ECAT_TEST_PG_URL 让 PG 用例 panic，故只按名字挑 MySQL 用例；
+          # 再断言确实跑了 1 个（过滤到 0 个时 cargo 仍退出 0）。
+          out=$(/usr/bin/time -f 'mysql connect+query wall: %e s' \
+            cargo test -p ecat-data-sqlx --lib mysql_unsigned_columns_decode_and_unsupported_type_errors 2>&1)
+          echo "$out"
+          grep -q "test result: ok. 1 passed" <<< "$out"
+      - name: Assert no SHOW SLAVE STATUS was executed
+        run: |
+          docker exec mysql mysql -uroot -proot -e "SET GLOBAL general_log=OFF"
+          log=$(docker exec mysql mysql -uroot -proot --batch --skip-column-names -e "SELECT @@general_log_file")
+          count=$(docker exec mysql grep -ci "SHOW SLAVE STATUS" "$log" || true)
+          echo "SHOW SLAVE STATUS in $log: $count"
+          test "$count" = "0"
+      # 版本选择器本身也钉住：8.4/9 必须映射到 SHOW REPLICA STATUS。
+      - name: Assert version gate picks SHOW REPLICA STATUS
+        run: |
+          out=$(cargo test -p ecat-data-sqlx --lib mysql_replica_status_sql 2>&1)
+          echo "$out"
+          grep -q "test result: ok. 2 passed" <<< "$out"
+      - name: Stop MySQL
+        if: always()
+        run: docker rm -f mysql
