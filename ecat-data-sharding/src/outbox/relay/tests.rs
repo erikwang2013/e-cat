@@ -144,6 +144,34 @@ impl OutboxHandler for DedupHandler {
 }
 
 #[tokio::test]
+async fn relay_rejects_zero_batch_lease_and_interval() {
+    let store = Arc::new(FakeStore::default());
+    store.push(record("a", 0));
+
+    // 无效配置必须在 claim 之前报错：否则 batch = 0 会静默空转，
+    // lease = 0 会让整批刚领到的记录立即可被回收。
+    let zero_batch = relay(&store, Arc::new(OkHandler)).with_batch(0);
+    assert!(matches!(
+        zero_batch.run_once().await,
+        Err(ShardError::Config(_))
+    ));
+    let zero_lease = relay(&store, Arc::new(OkHandler)).with_lease(Duration::ZERO);
+    assert!(matches!(
+        zero_lease.run_once().await,
+        Err(ShardError::Config(_))
+    ));
+    let (_handle, mut shutdown) = Shutdown::new();
+    let zero_interval = relay(&store, Arc::new(OkHandler)).with_interval(StdDuration::ZERO);
+    assert!(matches!(
+        zero_interval.run_until(&mut shutdown).await,
+        Err(ShardError::Config(_))
+    ));
+
+    assert_eq!(store.claim_count(), 0, "无效配置不得领取记录");
+    assert!(store.done().is_empty());
+}
+
+#[tokio::test]
 async fn relay_marks_done_on_success() {
     let store = Arc::new(FakeStore::default());
     store.push(record("a", 0));

@@ -64,6 +64,10 @@ impl OutboxOps for OutboxStore {
 }
 
 /// 串行投递 outbox 的后台循环。
+///
+/// 一个批次共用 `claim` 里的一次 `claimed_at`，而 handler 是串行执行的：`lease` 必须
+/// 覆盖 `batch × 单条处理时长`。租约过短时，批尾记录还没轮到处理就可能被其他 relay
+/// 回收并并发处理；正确性由 `OutboxHandler` 的幂等契约兜底（同一 `id` 至多一次副作用）。
 pub struct OutboxRelay {
     store: Arc<dyn OutboxOps>,
     handler: Arc<dyn OutboxHandler>,
@@ -83,13 +87,14 @@ impl OutboxRelay {
         }
     }
 
-    /// 每轮最多领取的条数。
+    /// 每轮最多领取的条数，必须 > 0（`run_once` 报 `Config` 错误）。
     pub fn with_batch(mut self, batch: u32) -> Self {
         self.batch = batch;
         self
     }
 
-    /// 领取后的租约时长；超过它仍未完成的行会被回收重投。
+    /// 领取后的租约时长，必须 > 0；超过它仍未完成的行会被回收重投。
+    /// 长度需覆盖 `batch × 单条处理时长`，见类型文档的并发说明。
     pub fn with_lease(mut self, lease: Duration) -> Self {
         self.lease = lease;
         self
@@ -104,6 +109,12 @@ impl OutboxRelay {
     /// 领取一批并串行投递：成功 `mark_done`，失败 `mark_failed`（按 `attempts`
     /// 指数退避）。handler 失败只记在那条记录上，不中断本轮。
     pub async fn run_once(&self) -> Result<RelayReport, ShardError> {
+        if self.batch == 0 {
+            return Err(ShardError::Config("outbox relay batch must be > 0".into()));
+        }
+        if self.lease.is_zero() {
+            return Err(ShardError::Config("outbox relay lease must be > 0".into()));
+        }
         let records = self.store.claim(self.batch, self.lease).await?;
         let mut report = RelayReport {
             claimed: u32::try_from(records.len()).unwrap_or(u32::MAX),
