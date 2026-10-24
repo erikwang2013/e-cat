@@ -182,10 +182,13 @@ async fn relay_rejects_zero_interval() {
 
 #[test]
 fn relay_backoff_saturates_at_max() {
-    // 1s 起翻倍；2^12s = 4096s 已超过 1h 上限，故 attempts >= 12 恒定 1h。
+    // 上限以下仍按 2 的幂增长：2^10s、2^11s。
+    assert_eq!(backoff(10), Duration::seconds(1024));
     assert_eq!(backoff(11), Duration::seconds(2048));
+    // 2^12s = 4096s 已超过 1h 上限，故 attempts >= 12 恒定 1h。
     assert_eq!(backoff(12), MAX_BACKOFF);
     assert_eq!(backoff(13), MAX_BACKOFF);
+    assert_eq!(backoff(20), MAX_BACKOFF);
     assert_eq!(backoff(u32::MAX), MAX_BACKOFF);
 }
 
