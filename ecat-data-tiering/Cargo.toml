@@ -24,8 +24,17 @@ tracing.workspace = true
 time.workspace = true
 # 错误显示与 source 链（仓库内自定义错误枚举统一用它）。
 thiserror.workspace = true
+# 冷层 sink 可选后端；默认不把 reqwest/ecat-tls 拖进默认依赖树。
+ecat-data-clickhouse = { version = "7.1.1", path = "../ecat-data-clickhouse", optional = true }
+# 冷 chunk 规范化 NDJSON 的 SHA-256（仅 clickhouse feature 用）。
+sha2 = { workspace = true, optional = true }
+
+[features]
+clickhouse = ["dep:ecat-data-clickhouse", "dep:sha2", "tokio/sync"]
 
 [dev-dependencies]
 # 状态机测试跑在 SQLite 内存库上。
 ecat-data-sqlx.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+# 假 ClickHouse HTTP 端点（无需 live 服务）。
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net"] }

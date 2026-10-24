@@ -1685,12 +1685,15 @@ name = "ecat-data-tiering"
 version = "7.1.1"
 dependencies = [
  "async-trait",
+ "axum 0.8.9",
  "ecat-data",
+ "ecat-data-clickhouse",
  "ecat-data-sqlx",
  "ecat-errors",
  "ecat-lock",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.19",
  "time",
  "tokio",
