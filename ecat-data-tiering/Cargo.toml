@@ -18,3 +18,8 @@ async-trait.workspace = true
 time.workspace = true
 # 错误显示与 source 链（仓库内自定义错误枚举统一用它）。
 thiserror.workspace = true
+
+[dev-dependencies]
+# 状态机测试跑在 SQLite 内存库上。
+ecat-data-sqlx.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
