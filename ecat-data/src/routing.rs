@@ -255,5 +255,80 @@ impl RdbmsClient for RdbmsRouting {
     }
 }
 
+/// 读己之写的显式句柄：读写与事务**全部**落主库，不参与副本轮询。
+///
+/// 只读副本天然有复制延迟，写完立刻读会读到旧值；需要「读己之写」的场景
+/// 用 [`RdbmsRouting::primary_only`] 显式声明，而不是把整条链路改成读主。
+pub struct PrimaryOnly<'a> {
+    router: &'a RdbmsRouting,
+}
+
+impl RdbmsRouting {
+    /// 返回读己之写句柄。它只借用路由、不改变路由状态，
+    /// 副本轮询与各自熔断器的既有行为不受影响。
+    pub fn primary_only(&self) -> PrimaryOnly<'_> {
+        PrimaryOnly { router: self }
+    }
+}
+
+#[async_trait]
+impl SqlExecutor for PrimaryOnly<'_> {
+    async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
+        self.router.primary.execute(sql).await
+    }
+
+    async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
+        self.router.primary.query(sql).await
+    }
+
+    async fn execute_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<u64, RdbmsError> {
+        self.router.primary.execute_with(sql, params).await
+    }
+
+    async fn query_with(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        self.router.primary.query_with(sql, params).await
+    }
+
+    async fn query_write(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<Row>, RdbmsError> {
+        self.router.primary.query_write(sql, params).await
+    }
+
+    async fn execute_then_query(
+        &self,
+        first: &str,
+        first_params: &[serde_json::Value],
+        second: &str,
+    ) -> Result<Vec<Row>, RdbmsError> {
+        self.router
+            .primary
+            .execute_then_query(first, first_params, second)
+            .await
+    }
+
+    fn dialect(&self) -> Dialect {
+        self.router.primary.dialect()
+    }
+}
+
+#[async_trait]
+impl RdbmsClient for PrimaryOnly<'_> {
+    /// 与路由一致：事务走主库客户端，不经熔断。
+    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+        self.router.primary.client.transaction().await
+    }
+}
+
 #[cfg(test)]
 mod tests;

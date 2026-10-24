@@ -135,6 +135,16 @@ impl RdbmsClient for FakeClient {
     }
 }
 
+/// `primary_only` 用例共用：主库 + 两个副本。
+fn build_three(log: &Log) -> RdbmsRouting {
+    let p = FakeClient::shared("primary", PG, log, false);
+    let rs = [
+        FakeClient::shared("r1", LITE, log, false),
+        FakeClient::shared("r2", LITE, log, false),
+    ];
+    RdbmsRouting::new(p, rs.into())
+}
+
 /// 造路由：`(名字, 方言, 是否失败)`，**第一个是主库**，其余是副本。
 fn build(spec: &[(&'static str, Dialect, bool)], log: &Log) -> RdbmsRouting {
     let mut clients: Vec<Arc<dyn RdbmsClient>> = spec
@@ -380,6 +390,35 @@ async fn transaction_lands_on_primary_without_breaker() {
     assert_eq!(log.hits("primary:transaction"), 1);
     assert_eq!(log.hits("r1:transaction"), 0, "事务不得走副本");
     let _ = r.fallback_to_primary(true);
+}
+
+/// 读己之写显式句柄：六个方法全部落主库，副本一次都不碰。
+#[tokio::test]
+async fn primary_only_routes_all_reads_to_primary() {
+    let log = Log::new();
+    let r = build_three(&log);
+    let p = r.primary_only();
+    p.execute("DELETE FROM t").await.unwrap();
+    p.query("SELECT 1").await.unwrap();
+    p.execute_with("UPDATE t SET v = ?", &[]).await.unwrap();
+    p.query_with("SELECT ?", &[]).await.unwrap();
+    p.query_write("INSERT ... RETURNING id", &[]).await.unwrap();
+    p.execute_then_query("INSERT INTO t", &[], "SELECT LAST_INSERT_ID()")
+        .await
+        .unwrap();
+    assert_eq!(log.hits("primary:"), 6, "六个方法都要落主库");
+    assert_eq!(log.hits("r1:") + log.hits("r2:"), 0, "副本一次都不碰");
+}
+
+#[tokio::test]
+async fn primary_only_transaction_uses_primary() {
+    let log = Log::new();
+    build_three(&log)
+        .primary_only()
+        .transaction()
+        .await
+        .unwrap();
+    assert_eq!(log.entries(), vec!["primary:transaction"]);
 }
 
 #[tokio::test]
