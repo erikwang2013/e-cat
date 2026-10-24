@@ -25,6 +25,24 @@ fn row_get_uses_first_matching_column() {
     assert_eq!(row.get("a"), Some(&serde_json::json!(1)));
 }
 
+#[test]
+fn row_accessors_preserve_column_order() {
+    let row = Row::new(
+        vec!["id".into(), "name".into()],
+        vec![serde_json::json!(1), serde_json::json!("a")],
+    );
+    assert_eq!(row.columns(), ["id", "name"]);
+    assert_eq!(row.values(), [serde_json::json!(1), serde_json::json!("a")]);
+    let pairs: Vec<_> = row.iter().map(|(c, v)| (c, v.clone())).collect();
+    assert_eq!(
+        pairs,
+        [
+            ("id", serde_json::json!(1)),
+            ("name", serde_json::json!("a"))
+        ]
+    );
+}
+
 #[derive(Clone, Default)]
 struct Tracked {
     commits: Arc<AtomicUsize>,

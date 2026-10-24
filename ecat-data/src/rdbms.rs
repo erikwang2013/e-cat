@@ -26,6 +26,22 @@ impl Row {
             .position(|c| c == col)
             .and_then(|i| self.values.get(i))
     }
+
+    pub fn columns(&self) -> &[String] {
+        &self.columns
+    }
+
+    pub fn values(&self) -> &[serde_json::Value] {
+        &self.values
+    }
+
+    /// 按列顺序逐对产出 `(列名, 值)`，用于跨分片合并 / 冷存轮转。
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &serde_json::Value)> {
+        self.columns
+            .iter()
+            .map(String::as_str)
+            .zip(self.values.iter())
+    }
 }
 
 /// 事务内部实现。后端（sqlx / tiberius）实现它，`Transaction` 转发调用。
