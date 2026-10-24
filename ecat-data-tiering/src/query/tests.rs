@@ -152,7 +152,16 @@ impl ColdQuery for FakeCold {
         });
         match &self.error {
             Some(message) => Err(TieringError::Cold(message.clone())),
-            None => Ok(self.rows.clone()),
+            None => {
+                // 冷层契约：按主键升序返回后再应用 limit/offset。
+                let mut rows = self.rows.clone();
+                rows.sort_by_key(|row| row.get("id").and_then(Value::as_i64).unwrap_or(i64::MAX));
+                Ok(rows
+                    .into_iter()
+                    .skip(usize::try_from(offset).unwrap_or(usize::MAX))
+                    .take(usize::try_from(limit).unwrap_or(usize::MAX))
+                    .collect())
+            }
         }
     }
 }
@@ -190,7 +199,7 @@ async fn query_hot_only_range_reads_hot() {
 #[tokio::test]
 async fn query_cold_only_range_reads_cold() {
     let hot = FakeHot::new(Dialect::MySql, vec![row(1)]);
-    let cold = FakeCold::new(vec![row(7), row(8)]);
+    let cold = FakeCold::new(vec![row(9), row(7), row(8)]);
     let q = query(hot.clone(), cold.clone());
     let now = now();
     let from = now - Duration::days(400);
@@ -198,11 +207,12 @@ async fn query_cold_only_range_reads_cold() {
     let params = vec![json!({"tenant": 1})];
 
     let rows = q
-        .query_range("events", from, to, &params, 5, 2)
+        .query_range("events", from, to, &params, 2, 1)
         .await
         .unwrap();
 
-    assert_eq!(ids(&rows), vec![7, 8]);
+    // 冷层自己按 limit/offset 切页（全冷区间没有再合并），offset 原样下发。
+    assert_eq!(ids(&rows), vec![8, 9]);
     assert!(hot.queries().is_empty(), "全冷区间不得访问热层");
     let calls = cold.calls();
     assert_eq!(calls.len(), 1);
@@ -210,8 +220,78 @@ async fn query_cold_only_range_reads_cold() {
     assert_eq!(calls[0].from, from);
     assert_eq!(calls[0].to, to);
     assert_eq!(calls[0].params, params);
-    assert_eq!(calls[0].limit, 5);
-    assert_eq!(calls[0].offset, 2);
+    assert_eq!(calls[0].limit, 2);
+    assert_eq!(calls[0].offset, 1);
+}
+
+/// 冷层只返回 `limit+offset` 前缀；少于这个数就会在全局切页时丢行。
+#[tokio::test]
+async fn query_crossing_pushes_limit_plus_offset_and_paginates() {
+    let hot = FakeHot::new(Dialect::MySql, vec![row(7), row(8)]);
+    let cold = FakeCold::new(vec![row(6), row(1), row(4), row(2), row(5), row(3)]);
+    let q = query(hot.clone(), cold.clone());
+    let now = now();
+
+    let rows = q
+        .query_range(
+            "events",
+            now - Duration::days(400),
+            now - Duration::days(1),
+            &[],
+            2,
+            3,
+        )
+        .await
+        .unwrap();
+
+    // 冷层前缀 [1..=5] + 热层 [7, 8] → 全局序 [1, 2, 3, 4, 5, 7, 8]，跳过 3 取 2。
+    assert_eq!(ids(&rows), vec![4, 5]);
+    let calls = cold.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].limit, 5, "冷层必须收到 limit+offset");
+    assert_eq!(
+        calls[0].offset, 0,
+        "两侧各自从头取，全局 offset 由合并后切页"
+    );
+    let queries = hot.queries();
+    assert_eq!(queries[0].1[2], json!(5), "热层同样下推 limit+offset");
+    assert_eq!(queries[0].1[3], json!(0));
+}
+
+/// `params` 是冷层绑定值；热层参与时无法应用，必须报错而不是静默忽略。
+#[tokio::test]
+async fn query_hot_paths_reject_cold_only_params() {
+    let hot = FakeHot::new(Dialect::MySql, vec![row(1)]);
+    let cold = FakeCold::new(vec![row(2)]);
+    let q = query(hot.clone(), cold.clone());
+    let now = now();
+    let params = vec![json!({"tenant": 1})];
+
+    let hot_only = q
+        .query_range("events", now - Duration::days(1), now, &params, 10, 0)
+        .await;
+    assert!(
+        matches!(hot_only, Err(TieringError::Config(ref m)) if m.contains("cold-side")),
+        "got: {hot_only:?}"
+    );
+
+    let crossing = q
+        .query_range(
+            "events",
+            now - Duration::days(400),
+            now - Duration::days(1),
+            &params,
+            10,
+            0,
+        )
+        .await;
+    assert!(
+        matches!(crossing, Err(TieringError::Config(_))),
+        "got: {crossing:?}"
+    );
+
+    assert!(hot.queries().is_empty(), "拒绝时不得查询热层");
+    assert!(cold.calls().is_empty(), "拒绝时不得查询冷层");
 }
 
 #[tokio::test]

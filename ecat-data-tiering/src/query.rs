@@ -16,6 +16,9 @@ use crate::{TieringError, validate_ident};
 pub trait ColdQuery: Send + Sync {
     /// 返回 `[from, to]` 内的行。`params` 原样下发给冷层：热层 SQL 只由表元数据
     /// 与区间构造，不接收任意谓词。
+    ///
+    /// 实现必须**按表主键升序**返回，再应用 `limit`/`offset`：跨边界查询按
+    /// `limit + offset` 向两侧下推前缀，依赖该顺序才能合并出正确的全局页。
     async fn query_range(
         &self,
         table: &str,
@@ -55,6 +58,11 @@ impl TieredQuery {
     ///
     /// 区间全在热层保留期内只查热层，全在边界外只查冷层；跨边界时两侧各取
     /// `limit + offset` 行，按主键合并去重、排序后再分页。冷层失败直接返回错误。
+    ///
+    /// `params` 是**冷层绑定值**（如冷层谓词），不是全局行过滤器：热层 SQL 只由
+    /// 表元数据与区间构造。只有全冷区间会把它原样下发给冷层；热层参与（全热或
+    /// 跨边界）时传入非空 `params` 返回 [`TieringError::Config`]，避免热层被静默
+    /// 忽略而返回错结果。
     pub async fn query_range(
         &self,
         table: &str,
@@ -78,6 +86,13 @@ impl TieredQuery {
         validate_ident(&table.id_col)?;
 
         let boundary = OffsetDateTime::now_utc() - Duration::days(i64::from(table.hot_days));
+        // `params` 只能由冷层绑定；热层 SQL 不接受任意谓词，忽略会造成静默错结果。
+        if to >= boundary && !params.is_empty() {
+            return Err(TieringError::Config(format!(
+                "params are cold-side only; the hot side cannot apply them (table `{}`)",
+                table.name
+            )));
+        }
         if from >= boundary {
             return self
                 .hot_range(table, dialect, from, to, limit, offset)
