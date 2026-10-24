@@ -43,6 +43,9 @@ pub mod config {
 #[cfg(feature = "orm")]
 pub use ecat_orm as orm;
 
+#[cfg(feature = "tiering")]
+pub use ecat_data_tiering as tiering;
+
 #[cfg(any(feature = "redis", feature = "mssql"))]
 pub mod data {
     #[cfg(feature = "redis")]

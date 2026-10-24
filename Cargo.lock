@@ -1283,6 +1283,7 @@ dependencies = [
  "ecat-config-remote",
  "ecat-data-mssql",
  "ecat-data-redis",
+ "ecat-data-tiering",
  "ecat-errors",
  "ecat-events",
  "ecat-logging",
