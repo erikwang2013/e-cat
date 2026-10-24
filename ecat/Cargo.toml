@@ -43,6 +43,7 @@ redis = ["dep:ecat-data-redis"]
 orm = ["dep:ecat-orm"]
 mssql = ["dep:ecat-data-mssql"]
 tiering = ["dep:ecat-data-tiering"]
+sharding = ["dep:ecat-data-sharding"]
 
 [dependencies]
 ecat-transport = { workspace = true }
@@ -65,6 +66,8 @@ ecat-orm = { workspace = true, optional = true }
 ecat-data-mssql = { version = "7.1.1", path = "../ecat-data-mssql", optional = true }
 # ecat-data-tiering 不在 workspace.dependencies 表里，直写 path 依赖。
 ecat-data-tiering = { version = "7.1.1", path = "../ecat-data-tiering", optional = true }
+# ecat-data-sharding 不在 workspace.dependencies 表里，直写 path 依赖。
+ecat-data-sharding = { version = "7.1.1", path = "../ecat-data-sharding", optional = true }
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true
 async-trait.workspace = true
