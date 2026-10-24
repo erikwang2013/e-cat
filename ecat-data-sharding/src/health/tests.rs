@@ -88,7 +88,7 @@ impl SqlExecutor for FakeClient {
             tokio::time::sleep(self.delay).await;
         }
         if self.fail {
-            Err(RdbmsError::Connection("shard down".into()))
+            Err(RdbmsError::Connection("backend down".into()))
         } else {
             Ok(self.rows.clone())
         }
@@ -156,14 +156,27 @@ async fn shard_health_fails_on_invalid_topology() {
 
 #[tokio::test]
 async fn shard_health_fails_when_probe_times_out() {
-    let router = router(vec![(
-        "s0",
-        Arc::new(FakeClient::slow(Duration::from_secs(30))),
-    )]);
+    // s0 秒回、s1 卡住：超时错误必须点名当时在探的 s1，而不是笼统的总超时。
+    let router = router(vec![
+        ("s0", Arc::new(FakeClient::ok())),
+        ("s1", Arc::new(FakeClient::slow(Duration::from_secs(30)))),
+    ]);
     let check = ShardHealthCheck::new(router, Duration::from_millis(20));
 
     let err = check.check().await.unwrap_err();
-    assert!(err.contains("timed out"), "{err}");
+    assert!(err.contains("shard `s1` health probe timed out"), "{err}");
+}
+
+#[tokio::test]
+async fn shard_health_fails_when_shard_has_no_client() {
+    let router = Arc::new(ShardRouter {
+        catalog: catalog(&["s0"]),
+        clients: HashMap::new(),
+    });
+    let check = ShardHealthCheck::new(router, Duration::from_secs(1));
+
+    let err = check.check().await.unwrap_err();
+    assert!(err.contains("s0") && err.contains("has no client"), "{err}");
 }
 
 #[tokio::test]
@@ -183,4 +196,12 @@ async fn outbox_health_fails_over_backlog() {
         5,
     );
     assert_eq!(at_limit.check().await, Ok(()));
+}
+
+#[tokio::test]
+async fn outbox_health_surfaces_store_error() {
+    let check = OutboxHealthCheck::new(Arc::new(OutboxStore::new(Arc::new(FakeClient::down()))), 5);
+
+    let err = check.check().await.unwrap_err();
+    assert!(err.contains("backend down"), "{err}");
 }

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use ecat_health::HealthCheck;
+use tokio::sync::Mutex;
 
 use crate::{OutboxStore, ShardError, ShardRouter};
 
@@ -16,25 +17,40 @@ mod tests;
 const PROBE_SQL: &str = "SELECT 1";
 
 impl ShardRouter {
-    /// 拓扑校验 + 每个分片 `SELECT 1`；整次探针共享一个总超时。
+    /// 拓扑校验 + 每个分片 `SELECT 1`；整次探针共享一个总超时，
+    /// 超时错误指出当时正在探的分片。
     pub async fn check_health(&self, timeout: Duration) -> Result<(), ShardError> {
         self.catalog.validate()?;
-        let probe = async {
-            for table in &self.catalog.tables {
-                for shard in &table.shards {
-                    let client = self.clients.get(&shard.name).ok_or_else(|| {
-                        ShardError::Config(format!("shard `{}` has no client", shard.name))
-                    })?;
-                    client.query(PROBE_SQL).await.map_err(|e| {
-                        ShardError::Database(format!("shard `{}`: {e}", shard.name))
-                    })?;
+        let current = Arc::new(Mutex::new(None::<String>));
+        let probe = {
+            let current = Arc::clone(&current);
+            async move {
+                for table in &self.catalog.tables {
+                    for shard in &table.shards {
+                        *current.lock().await = Some(shard.name.clone());
+                        let client = self.clients.get(&shard.name).ok_or_else(|| {
+                            ShardError::Config(format!("shard `{}` has no client", shard.name))
+                        })?;
+                        client.query(PROBE_SQL).await.map_err(|e| {
+                            ShardError::Database(format!("shard `{}`: {e}", shard.name))
+                        })?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
         };
-        tokio::time::timeout(timeout, probe).await.map_err(|_| {
-            ShardError::Database(format!("shard health check timed out after {timeout:?}"))
-        })?
+        match tokio::time::timeout(timeout, probe).await {
+            Ok(result) => result,
+            Err(_) => {
+                let shard = current.lock().await.clone();
+                Err(ShardError::Database(match shard {
+                    Some(name) => {
+                        format!("shard `{name}` health probe timed out after {timeout:?}")
+                    }
+                    None => format!("shard health check timed out after {timeout:?}"),
+                }))
+            }
+        }
     }
 }
 
@@ -66,6 +82,8 @@ impl HealthCheck for ShardHealthCheck {
 }
 
 /// outbox 积压检查：未完成条数超过阈值即不健康。
+///
+/// 自身不带超时；后端负责兜底（`ecat-data-sqlx` 池默认 `query_timeout` 为 30s）。
 pub struct OutboxHealthCheck {
     store: Arc<OutboxStore>,
     max_backlog: u64,

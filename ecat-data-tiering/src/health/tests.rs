@@ -79,7 +79,7 @@ async fn tiering_health_ok_when_cold_store_answers() {
 }
 
 #[tokio::test]
-async fn tiering_health_fails_when_probe_exceeds_lag_budget() {
+async fn tiering_health_fails_when_probe_exceeds_budget() {
     let sink = FakeSink {
         delay: Duration::from_secs(30),
         ..FakeSink::ok()
