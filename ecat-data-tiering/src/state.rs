@@ -232,11 +232,14 @@ impl ArchiveStateStore {
         }
     }
 
+    /// 清掉某表/某分区的全部 chunk 状态；恢复后调用，避免陈旧的 `Verified`
+    /// 行让下一次归档再次 `DROP PARTITION`。
+    pub async fn reset_partition(&self, table: &str, partition: &str) -> Result<u64, TieringError> {
+        reset_partition(&*self.db, table, partition).await
+    }
+
     fn dialect(&self) -> Result<Dialect, TieringError> {
-        match self.db.dialect() {
-            Dialect::Mssql => Err(TieringError::UnsupportedDialect),
-            dialect => Ok(dialect),
-        }
+        supported_dialect(&*self.db)
     }
 
     fn from_row(row: &Row) -> Result<ArchiveJobState, TieringError> {
@@ -256,6 +259,30 @@ impl ArchiveStateStore {
             updated_at: OffsetDateTime::parse(text(row, "updated_at")?, &Rfc3339)
                 .map_err(|e| TieringError::State(format!("updated_at is not RFC3339: {e}")))?,
         })
+    }
+}
+
+/// 同 [`ArchiveStateStore::reset_partition`]，供只有 `&dyn SqlExecutor` 的恢复路径使用。
+pub(crate) async fn reset_partition(
+    db: &dyn SqlExecutor,
+    table: &str,
+    partition: &str,
+) -> Result<u64, TieringError> {
+    let dialect = supported_dialect(db)?;
+    let sql = format!(
+        "DELETE FROM {TABLE} WHERE table_name = {p1} AND partition_name = {p2}",
+        p1 = placeholder(dialect, 1),
+        p2 = placeholder(dialect, 2),
+    );
+    let params = [Value::String(table.into()), Value::String(partition.into())];
+    let rows = db.execute_with(&sql, &params).await?;
+    Ok(rows)
+}
+
+fn supported_dialect(db: &dyn SqlExecutor) -> Result<Dialect, TieringError> {
+    match db.dialect() {
+        Dialect::Mssql => Err(TieringError::UnsupportedDialect),
+        dialect => Ok(dialect),
     }
 }
 

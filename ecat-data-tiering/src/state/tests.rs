@@ -159,6 +159,24 @@ async fn state_load_missing_returns_none() {
 }
 
 #[tokio::test]
+async fn state_reset_partition_clears_stale_rows() {
+    let store = fresh_store().await;
+    store.upsert(&job(ArchivePhase::Verified)).await.unwrap();
+    let other = ArchiveJobState {
+        partition: "2026_02".into(),
+        ..job(ArchivePhase::Verified)
+    };
+    store.upsert(&other).await.unwrap();
+
+    assert_eq!(store.reset_partition("events", "2026_01").await.unwrap(), 1);
+    assert!(store.load("events", "2026_01", 3).await.unwrap().is_none());
+    assert!(
+        store.load("events", "2026_02", 3).await.unwrap().is_some(),
+        "只清目标分区"
+    );
+}
+
+#[tokio::test]
 async fn state_mssql_is_unsupported() {
     struct Mssql;
     #[async_trait::async_trait]

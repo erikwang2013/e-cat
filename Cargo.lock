@@ -1686,6 +1686,7 @@ version = "7.1.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
+ "clap",
  "ecat-data",
  "ecat-data-clickhouse",
  "ecat-data-s3",
@@ -1699,6 +1700,7 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+ "yaml_serde",
 ]
 
 [[package]]

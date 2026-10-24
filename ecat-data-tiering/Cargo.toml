@@ -9,6 +9,10 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "ecat-tier"
+path = "src/bin/ecat-tier.rs"
+
 [dependencies]
 ecat-data = { version = "7.1.1", path = "../ecat-data" }
 ecat-errors.workspace = true
@@ -24,6 +28,10 @@ tracing.workspace = true
 time.workspace = true
 # 错误显示与 source 链（仓库内自定义错误枚举统一用它）。
 thiserror.workspace = true
+# `ecat-tier` bin 的参数解析。
+clap = { version = "4", features = ["derive"] }
+# 读取应用 YAML 配置的 `tiering:` 段（与 ecat-config 同一解析器）。
+yaml_serde = "0.10"
 # 冷层 sink 可选后端；默认不把 reqwest/ecat-tls 拖进默认依赖树。
 ecat-data-clickhouse = { version = "7.1.1", path = "../ecat-data-clickhouse", optional = true }
 ecat-data-s3 = { version = "7.1.1", path = "../ecat-data-s3", optional = true }
