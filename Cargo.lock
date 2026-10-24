@@ -1296,6 +1296,7 @@ dependencies = [
  "ecat-transport",
  "ecat-transport-grpc",
  "ecat-transport-http",
+ "serde",
  "tokio",
  "tracing",
 ]
