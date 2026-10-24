@@ -8,6 +8,7 @@ mod live_tests;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod pool;
+mod routing;
 #[cfg(test)]
 mod tests;
 // **不**随 feature 门控：feature 关闭时 `timed` 是直通函数（见模块文档），
@@ -30,6 +31,7 @@ pub use health::RdbmsHealthCheck;
 #[cfg(feature = "metrics")]
 pub use metrics::register_pool_metrics;
 pub use pool::{Pool, PoolGuard};
+pub use routing::{SqlxRoutingConfig, build_routing};
 
 fn percent_encode(s: &str) -> String {
     s.chars()
