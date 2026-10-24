@@ -27,7 +27,8 @@ pub struct ScatterRequest {
     pub order_by: String,
     pub limit: u64,
     pub offset: u64,
-    /// 整次 scatter 的总超时。
+    /// 分片扇出/收集阶段的总超时（`tokio::time::timeout` 只包住 gather）；
+    /// 收集完成后的排序/去重/分页是同步的，不受此超时约束。
     pub timeout: Duration,
     /// 同时在飞的分片数上限；必须 ≥ 1。
     pub max_concurrency: usize,
@@ -121,9 +122,10 @@ fn merge(
             )));
         };
         for row in rows {
-            let Some(value) = row.get(order_by) else {
+            // NULL 的跨库排序语义不一致，放行会让归并顺序依赖分片实现。
+            let Some(value) = row.get(order_by).filter(|value| !value.is_null()) else {
                 return Err(ShardError::Config(format!(
-                    "scatter row is missing order_by column `{order_by}`"
+                    "scatter row is missing or null order_by column `{order_by}`"
                 )));
             };
             ordered.push((value.clone(), index, row));
@@ -138,7 +140,7 @@ fn merge(
     for (_, _, row) in ordered {
         let Some(pk_value) = row.get(pk).filter(|value| !value.is_null()) else {
             return Err(ShardError::Config(format!(
-                "scatter row is missing pk column `{pk}`"
+                "scatter row is missing or null pk column `{pk}`"
             )));
         };
         if seen.insert(pk_value.to_string()) {

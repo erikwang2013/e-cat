@@ -145,6 +145,11 @@ fn row(id: i64, shard: &str) -> Row {
     )
 }
 
+/// 自定义主键与列值的行，用于 NULL / 类型混排 / 缺列分支。
+fn row_with(id: Value, column: &str, value: Value) -> Row {
+    Row::new(vec!["id".to_owned(), column.to_owned()], vec![id, value])
+}
+
 fn empty_shards() -> [Behavior; SHARDS.len()] {
     [(); SHARDS.len()].map(|_| Behavior::Rows(Vec::new()))
 }
@@ -296,4 +301,139 @@ async fn scatter_concurrency_is_bounded() {
     let rows = handle.await.unwrap().unwrap();
 
     assert_eq!(ids(&rows), vec![1, 2, 3, 4]);
+}
+
+/// 断言是 `Config` 且消息点名了出问题的列。
+fn assert_config_mentions(err: ShardError, needle: &str) {
+    match err {
+        ShardError::Config(message) => {
+            assert!(
+                message.contains(needle),
+                "message `{message}` 缺少 `{needle}`"
+            )
+        }
+        other => panic!("expected Config, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn scatter_null_order_by_is_error() {
+    let (router, _) = router([
+        Behavior::Rows(vec![row_with(json!(1), "rank", Value::Null)]),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+    ]);
+    let mut req = request();
+    req.order_by = "rank".to_owned();
+
+    // 跨库 NULL 排序语义不一致，放行会让归并顺序随分片实现漂移。
+    assert_config_mentions(router.scatter(&req).await.unwrap_err(), "order_by");
+}
+
+#[tokio::test]
+async fn scatter_missing_order_by_is_error() {
+    let (router, _) = router([
+        Behavior::Rows(vec![Row::new(vec!["id".to_owned()], vec![json!(1)])]),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+    ]);
+    let mut req = request();
+    req.order_by = "rank".to_owned();
+
+    assert_config_mentions(router.scatter(&req).await.unwrap_err(), "order_by");
+}
+
+#[tokio::test]
+async fn scatter_null_pk_is_error() {
+    let (router, _) = router([
+        Behavior::Rows(vec![row_with(Value::Null, "rank", json!(1))]),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+    ]);
+    let mut req = request();
+    req.order_by = "rank".to_owned();
+
+    assert_config_mentions(router.scatter(&req).await.unwrap_err(), "pk");
+}
+
+#[tokio::test]
+async fn scatter_missing_pk_is_error() {
+    let (router, _) = router([
+        Behavior::Rows(vec![Row::new(vec!["rank".to_owned()], vec![json!(1)])]),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+        Behavior::Rows(Vec::new()),
+    ]);
+    let mut req = request();
+    req.order_by = "rank".to_owned();
+
+    assert_config_mentions(router.scatter(&req).await.unwrap_err(), "pk");
+}
+
+#[tokio::test]
+async fn scatter_zero_concurrency_is_error() {
+    let (router, calls) = router(empty_shards());
+    let mut req = request();
+    req.max_concurrency = 0;
+
+    // 0 个许可会永远挂起，必须在信任边界拒绝；且不得触达任何分片。
+    assert_config_mentions(router.scatter(&req).await.unwrap_err(), "max_concurrency");
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+/// NULL 已在 `merge` 入口被拒，走不到 `compare_values`；其全序位置只能直接测。
+#[test]
+fn scatter_compare_values_is_total_across_types() {
+    let ordered = [
+        Value::Null,
+        json!(false),
+        json!(-1),
+        json!(2),
+        json!(2.5),
+        json!(10),
+        json!("a"),
+        json!("b"),
+    ];
+    for pair in ordered.windows(2) {
+        assert_eq!(
+            super::compare_values(&pair[0], &pair[1]),
+            std::cmp::Ordering::Less,
+            "{:?} 应排在 {:?} 之前",
+            pair[0],
+            pair[1]
+        );
+        assert_eq!(
+            super::compare_values(&pair[1], &pair[0]),
+            std::cmp::Ordering::Greater
+        );
+    }
+}
+
+#[tokio::test]
+async fn scatter_orders_mixed_json_types_deterministically() {
+    let (router, _) = router([
+        Behavior::Rows(vec![
+            row_with(json!(2), "k", json!(10)),
+            row_with(json!(3), "k", json!("b")),
+        ]),
+        Behavior::Rows(vec![
+            row_with(json!(4), "k", json!(2)),
+            row_with(json!(5), "k", json!("a")),
+        ]),
+        Behavior::Rows(vec![
+            row_with(json!(6), "k", json!(2.5)),
+            row_with(json!(7), "k", json!(false)),
+        ]),
+        Behavior::Rows(vec![row_with(json!(8), "k", json!(3.0))]),
+    ]);
+    let mut req = request();
+    req.order_by = "k".to_owned();
+
+    let rows = router.scatter(&req).await.unwrap();
+
+    // 全序：bool < 数字（按数值，int/float 混排）< 字符串。
+    assert_eq!(ids(&rows), vec![7, 4, 6, 8, 2, 5, 3]);
 }
