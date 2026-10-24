@@ -322,6 +322,57 @@ async fn outbox_mark_failed_does_not_revive_done() {
 }
 
 #[tokio::test]
+async fn outbox_mark_done_does_not_revive_reclaimed() {
+    let store = fresh_store().await;
+    store.append(&record("a")).await.unwrap();
+    store.claim(10, Duration::hours(1)).await.unwrap();
+
+    // 租约过期，另一实例把行回收成 Pending（attempts + 1、进入退避）。
+    let old = OffsetDateTime::now_utc() - Duration::hours(2);
+    store
+        .db
+        .execute_with(
+            "UPDATE ecat_outbox SET claimed_at = ? WHERE id = ?",
+            &[
+                serde_json::json!(fmt_ts(old).unwrap()),
+                serde_json::json!("a"),
+            ],
+        )
+        .await
+        .unwrap();
+    assert!(
+        store
+            .claim(10, Duration::hours(1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        status_and_attempts(&store, "a").await,
+        ("pending".to_owned(), 1)
+    );
+
+    // 迟到的 mark_done（原 worker 在回收后才回来）不能把重投中的行翻成 Done 丢掉。
+    store.mark_done("a").await.unwrap();
+    assert_eq!(
+        status_and_attempts(&store, "a").await,
+        ("pending".to_owned(), 1)
+    );
+
+    // 行仍可在退避到期后被重新领取。
+    set_next_attempt(
+        &store,
+        "a",
+        OffsetDateTime::now_utc() - Duration::seconds(1),
+    )
+    .await;
+    assert_eq!(
+        ids(&store.claim(10, Duration::hours(1)).await.unwrap()),
+        ["a"]
+    );
+}
+
+#[tokio::test]
 async fn outbox_append_rejects_non_pending() {
     let store = fresh_store().await;
     for status in [

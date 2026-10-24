@@ -20,8 +20,10 @@ thiserror.workspace = true
 time.workspace = true
 # outbox 的 `Vec<u8>` payload 走 `SqlExecutor` 的字符串参数（`Row` 对 BLOB 也返回 base64）。
 base64 = "0.22"
-# scatter 的 JoinSet / Semaphore / 总超时。tokio 原先只在 dev-dependencies 里。
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+# scatter 的 JoinSet / Semaphore / 总超时；relay 的 `select!` 需要 macros。tokio 原先只在 dev-dependencies 里。
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+# relay 失败日志带 outbox_id / attempts。
+tracing.workspace = true
 # 可选：`health` feature 的 readyz 探针；默认不进依赖树。
 ecat-health = { workspace = true, optional = true }
 

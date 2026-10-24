@@ -11,8 +11,11 @@ use time::{Duration, OffsetDateTime, UtcOffset};
 
 use crate::ShardError;
 
+mod relay;
 #[cfg(test)]
 mod tests;
+
+pub use relay::{OutboxHandler, OutboxRelay, RelayReport};
 
 const TABLE: &str = "ecat_outbox";
 const COLS: &str = "id, aggregate, payload, status, attempts, next_attempt_at";
@@ -269,11 +272,12 @@ impl OutboxStore {
             .collect())
     }
 
-    /// 标记完成；重复调用是幂等的。
+    /// 标记完成。只从 `Processing` 迁移：迟到的 `mark_done`（租约已过期、行已被
+    /// 回收重投）是 no-op，不能把重投中的行翻成 `Done` 丢掉；重复调用同样幂等。
     pub async fn mark_done(&self, id: &str) -> Result<(), ShardError> {
         let dialect = self.dialect()?;
         let sql = format!(
-            "UPDATE {TABLE} SET status = 'done' WHERE id = {}",
+            "UPDATE {TABLE} SET status = 'done' WHERE id = {} AND status = 'processing'",
             placeholder(dialect, 1),
         );
         self.db
