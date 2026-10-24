@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use ecat_circuit_breaker::{Breaker, BreakerConfig, BreakerState};
@@ -28,8 +29,15 @@ impl Endpoint {
     }
 
     /// 熔断打开 ⇒ 不参与轮询。这是「跳过已熔断端点」的唯一依据（spec:235-236）。
-    fn is_available(&self) -> bool {
-        self.breaker.state() != BreakerState::Open
+    /// 配了延迟阈值时再按探针实测值过滤；探针无数据（`None`）视为可用。
+    async fn is_available(&self, max_lag: Option<Duration>) -> bool {
+        if self.breaker.state() == BreakerState::Open {
+            return false;
+        }
+        match max_lag {
+            Some(max) => self.client.replica_lag().await.is_none_or(|lag| lag <= max),
+            None => true,
+        }
     }
 
     fn dialect(&self) -> Dialect {
@@ -107,6 +115,8 @@ pub struct RdbmsRouting {
     next: AtomicUsize,
     /// 副本全不可用时是否降级读主（默认 `true`）。
     fallback_to_primary: bool,
+    /// 副本实测延迟超过它即跳过；`None` = 不探测（默认，保持原行为）。
+    max_replica_lag: Option<Duration>,
 }
 
 impl RdbmsRouting {
@@ -129,6 +139,7 @@ impl RdbmsRouting {
                 .collect(),
             next: AtomicUsize::new(0),
             fallback_to_primary: true,
+            max_replica_lag: None,
         }
     }
 
@@ -139,6 +150,13 @@ impl RdbmsRouting {
         self
     }
 
+    /// 跳过实测延迟超过 `lag` 的副本；延迟由 [`RdbmsClient::replica_lag`]
+    /// 探测，探不出结果时不跳过。默认不探测。
+    pub fn max_replica_lag(mut self, lag: Duration) -> Self {
+        self.max_replica_lag = Some(lag);
+        self
+    }
+
     /// 从 `next` 开始轮询，跳过 `Open` 的副本，返回第一个可用的。
     ///
     /// `None` = 一个可用副本都没有（含「没配副本」）；降级还是报错由调用方决定。
@@ -146,15 +164,19 @@ impl RdbmsRouting {
     /// ⚠️ 已知边界：`Open → HalfOpen` 的冷却转换发生在 `Breaker::call` 里，而这里
     /// **跳过**了 `Open` 的端点 ⇒ 没人再去调它，冷却期过后也不会被重新放行，
     /// 副本恢复后仍被永久排除。修法需要 breaker 侧暴露「冷却期是否已过」。
-    fn pick_replica(&self) -> Option<&Endpoint> {
+    async fn pick_replica(&self) -> Option<&Endpoint> {
         let n = self.replicas.len();
         if n == 0 {
             return None;
         }
         let start = self.next.fetch_add(1, Ordering::Relaxed);
-        (0..n)
-            .map(|i| &self.replicas[(start + i) % n])
-            .find(|ep| ep.is_available())
+        for i in 0..n {
+            let ep = &self.replicas[(start + i) % n];
+            if ep.is_available(self.max_replica_lag).await {
+                return Some(ep);
+            }
+        }
+        None
     }
 }
 
@@ -167,7 +189,7 @@ impl SqlExecutor for RdbmsRouting {
 
     /// 读 → 副本轮询；全不可用时按 [`RdbmsRouting::fallback_to_primary`] 处置。
     async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
-        match self.pick_replica() {
+        match self.pick_replica().await {
             Some(replica) => replica.query(sql).await,
             None if self.fallback_to_primary => self.primary.query(sql).await,
             None => Err(RdbmsError::NoAvailableReplica),
@@ -189,7 +211,7 @@ impl SqlExecutor for RdbmsRouting {
         sql: &str,
         params: &[serde_json::Value],
     ) -> Result<Vec<Row>, RdbmsError> {
-        match self.pick_replica() {
+        match self.pick_replica().await {
             Some(replica) => replica.query_with(sql, params).await,
             None if self.fallback_to_primary => self.primary.query_with(sql, params).await,
             None => Err(RdbmsError::NoAvailableReplica),

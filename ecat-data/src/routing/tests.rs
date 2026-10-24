@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 行为矩阵测试：写落主、读落从轮询、跳过已熔断的副本、全熔断时的两种降级行为。
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 
@@ -44,15 +45,28 @@ struct FakeClient {
     dialect: Dialect,
     log: Log,
     fail: bool,
+    /// `replica_lag()` 的返回值；`None` = 该后端不提供探针。
+    lag: Option<Duration>,
 }
 
 impl FakeClient {
     fn shared(name: &'static str, dialect: Dialect, log: &Log, fail: bool) -> Arc<dyn RdbmsClient> {
+        Self::with_lag(name, dialect, log, fail, None)
+    }
+
+    fn with_lag(
+        name: &'static str,
+        dialect: Dialect,
+        log: &Log,
+        fail: bool,
+        lag: Option<Duration>,
+    ) -> Arc<dyn RdbmsClient> {
         Arc::new(Self {
             name,
             dialect,
             log: log.clone(),
             fail,
+            lag,
         })
     }
 
@@ -114,6 +128,11 @@ impl RdbmsClient for FakeClient {
         self.log.push(self.name, "transaction");
         Ok(Transaction::new())
     }
+
+    /// 探针本身不记日志：日志只记**真正路由到端点**的调用。
+    async fn replica_lag(&self) -> Option<Duration> {
+        self.lag
+    }
 }
 
 /// 造路由：`(名字, 方言, 是否失败)`，**第一个是主库**，其余是副本。
@@ -127,7 +146,21 @@ fn build(spec: &[(&'static str, Dialect, bool)], log: &Log) -> RdbmsRouting {
     RdbmsRouting::new(primary, clients)
 }
 
+/// 同 [`build`]，但每个端点带一个 `replica_lag()` 返回值。
+fn build_with_lag(
+    spec: &[(&'static str, Dialect, bool, Option<Duration>)],
+    log: &Log,
+) -> RdbmsRouting {
+    let mut clients: Vec<Arc<dyn RdbmsClient>> = spec
+        .iter()
+        .map(|(name, dialect, fail, lag)| FakeClient::with_lag(name, *dialect, log, *fail, *lag))
+        .collect();
+    let primary = clients.remove(0);
+    RdbmsRouting::new(primary, clients)
+}
+
 const PG: Dialect = Dialect::Postgres;
+const MY: Dialect = Dialect::MySql;
 const LITE: Dialect = Dialect::Sqlite;
 
 /// 打满某个副本的熔断窗口：**失败率 1.0、窗口满 5 次** → `Open`。
@@ -359,4 +392,69 @@ async fn dialect_comes_from_primary() {
         log.entries().is_empty(),
         "dialect() 是本地判断，不该产生调用"
     );
+}
+
+/// 延迟超过阈值（6s > 5s）的副本一律跳过：8 次读全部落主库。
+#[tokio::test]
+async fn replica_with_lag_above_threshold_is_skipped() {
+    let log = Log::new();
+    let r = build_with_lag(
+        &[
+            ("primary", PG, false, None),
+            ("r1", MY, false, Some(Duration::from_secs(6))),
+        ],
+        &log,
+    )
+    .max_replica_lag(Duration::from_secs(5));
+
+    for _ in 0..8 {
+        r.query("SELECT 1").await.unwrap();
+    }
+
+    assert_eq!(log.hits("r1:"), 0, "延迟超阈值的副本不得被选中");
+    assert_eq!(log.hits("primary:"), 8, "读应全部降级到主库");
+}
+
+/// 延迟在阈值以内（1s <= 5s）的副本照常参与轮询。
+#[tokio::test]
+async fn replica_with_lag_below_threshold_is_used() {
+    let log = Log::new();
+    let r = build_with_lag(
+        &[
+            ("primary", PG, false, None),
+            ("r1", MY, false, Some(Duration::from_secs(1))),
+        ],
+        &log,
+    )
+    .max_replica_lag(Duration::from_secs(5));
+
+    r.query("SELECT 1").await.unwrap();
+
+    assert_eq!(log.hits("r1:query"), 1);
+    assert_eq!(log.hits("primary:"), 0);
+}
+
+/// 探针给不出延迟（非 MySQL / SHOW 无行）⇒ 无从判断，不跳过；
+/// 没配阈值 ⇒ 根本不探测，行为与原来一致。
+#[tokio::test]
+async fn replica_without_lag_probe_keeps_existing_behavior() {
+    let log = Log::new();
+    let r = build_with_lag(
+        &[("primary", PG, false, None), ("r1", PG, false, None)],
+        &log,
+    )
+    .max_replica_lag(Duration::from_secs(5));
+    r.query("SELECT 1").await.unwrap();
+    assert_eq!(log.hits("r1:query"), 1, "探针无数据时不得跳过副本");
+
+    let log = Log::new();
+    let r = build_with_lag(
+        &[
+            ("primary", PG, false, None),
+            ("r1", PG, false, Some(Duration::from_secs(3600))),
+        ],
+        &log,
+    );
+    r.query("SELECT 1").await.unwrap();
+    assert_eq!(log.hits("r1:query"), 1, "未配阈值时探针结果不影响路由");
 }

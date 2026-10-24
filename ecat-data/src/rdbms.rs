@@ -1,4 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::dialect::Dialect;
@@ -270,6 +272,12 @@ pub trait SqlExecutor: Send + Sync {
 #[async_trait]
 pub trait RdbmsClient: SqlExecutor {
     async fn transaction(&self) -> Result<Transaction, RdbmsError>;
+
+    /// 副本延迟探针。`None` = 该后端不提供（默认），或此刻探测不出结果
+    /// （无复制、`Seconds_Behind_*` 为 NULL）；路由按「未知就不跳过」处理。
+    async fn replica_lag(&self) -> Option<Duration> {
+        None
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

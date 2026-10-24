@@ -66,6 +66,39 @@ fn db_err(e: sqlx::Error) -> RdbmsError {
     RdbmsError::Database(e.to_string())
 }
 
+/// 副本状态语句：MySQL ≥ 8.0.22 才有 `SHOW REPLICA STATUS`，更老的只有
+/// `SHOW SLAVE STATUS`；8.4/9 已删掉后者，发了会直接报错。
+pub(crate) fn mysql_replica_status_sql(version: &str) -> &'static str {
+    let mut parts = version.split('.').map(|p| {
+        p.chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse::<u64>()
+            .unwrap_or(0)
+    });
+    let parsed = (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
+    if parsed >= (8, 0, 22) {
+        "SHOW REPLICA STATUS"
+    } else {
+        "SHOW SLAVE STATUS"
+    }
+}
+
+/// 解析副本状态行：8.4/9 的列名是 `Seconds_Behind_Source`，8.0 旧语句是
+/// `Seconds_Behind_Master`。NULL / 非数字 / 无行（未配置复制）→ `None`。
+fn parse_mysql_replica_lag(rows: &[Row]) -> Option<Duration> {
+    let row = rows.first()?;
+    let seconds = row
+        .get("Seconds_Behind_Source")
+        .or_else(|| row.get("Seconds_Behind_Master"))?
+        .as_u64()?;
+    Some(Duration::from_secs(seconds))
+}
+
 pub struct SqlxClient {
     pool: Pool,
     query_timeout: Option<Duration>,
@@ -73,6 +106,8 @@ pub struct SqlxClient {
     /// 慢查询告警阈值；`None` = 不打。只有 `tracing` feature 会读它，
     /// 但字段本身常驻 —— 否则配置项会随 feature 时有时无（见 [`SqlxConfig`]）。
     slow_query: Option<Duration>,
+    /// `SELECT VERSION()` 的结果：版本不会中途变，每 client 只问一次。
+    version: std::sync::Mutex<Option<String>>,
 }
 
 impl SqlxClient {
@@ -88,6 +123,7 @@ impl SqlxClient {
             query_timeout: params.query_timeout,
             min_connections: params.min_connections,
             slow_query: params.slow_query,
+            version: std::sync::Mutex::new(None),
         })
     }
 
@@ -131,6 +167,7 @@ impl SqlxClient {
             query_timeout: None,
             min_connections: 0,
             slow_query: None,
+            version: std::sync::Mutex::new(None),
         }
     }
 
@@ -152,6 +189,17 @@ impl SqlxClient {
             run_with_timeout(BackendKind::Rdbms, self.query_timeout, fut),
         )
         .await
+    }
+
+    /// `SELECT VERSION()` 的结果，每 client 只问一次（版本不会中途变）。
+    async fn mysql_version(&self) -> Option<String> {
+        if let Some(v) = self.version.lock().unwrap().clone() {
+            return Some(v);
+        }
+        let rows = self.query("SELECT VERSION()").await.ok()?;
+        let v = rows.first()?.values().first()?.as_str()?.to_string();
+        *self.version.lock().unwrap() = Some(v.clone());
+        Some(v)
     }
 
     pub fn dialect(&self) -> Dialect {
@@ -434,5 +482,15 @@ impl RdbmsClient for SqlxClient {
             }),
         };
         Ok(Transaction::with_inner(inner))
+    }
+
+    /// 只对 MySQL 探测（其余方言返回 `None`）：版本决定用哪条 `SHOW` 语句。
+    async fn replica_lag(&self) -> Option<Duration> {
+        if self.pool.dialect() != Dialect::MySql {
+            return None;
+        }
+        let version = self.mysql_version().await?;
+        let rows = self.query(mysql_replica_status_sql(&version)).await.ok()?;
+        parse_mysql_replica_lag(&rows)
     }
 }

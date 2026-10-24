@@ -428,6 +428,54 @@ async fn warm_up_does_not_hang_when_min_exceeds_max() {
     );
 }
 
+/// 一行 `SHOW ... STATUS` 结果：`(列名, 值)`。
+fn status_row(column: &str, value: serde_json::Value) -> Row {
+    Row::new(vec![column.to_string()], vec![value])
+}
+
+#[test]
+fn mysql_lag_parser_reads_seconds_behind_source() {
+    let rows = vec![status_row("Seconds_Behind_Source", serde_json::json!(3))];
+    assert_eq!(parse_mysql_replica_lag(&rows), Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn mysql_lag_parser_falls_back_to_seconds_behind_master() {
+    let rows = vec![status_row("Seconds_Behind_Master", serde_json::json!(7))];
+    assert_eq!(parse_mysql_replica_lag(&rows), Some(Duration::from_secs(7)));
+}
+
+#[test]
+fn mysql_lag_parser_returns_none_for_null_or_missing() {
+    assert_eq!(
+        parse_mysql_replica_lag(&[]),
+        None,
+        "无行（主库/未配置复制）"
+    );
+    assert_eq!(
+        parse_mysql_replica_lag(&[status_row("Seconds_Behind_Source", serde_json::Value::Null)]),
+        None,
+        "NULL = 延迟未知"
+    );
+    assert_eq!(
+        parse_mysql_replica_lag(&[status_row("Unexpected", serde_json::json!(1))]),
+        None,
+        "列不存在"
+    );
+}
+
+#[test]
+fn mysql_replica_status_sql_uses_replica_on_84_and_9() {
+    assert_eq!(mysql_replica_status_sql("8.4.0"), "SHOW REPLICA STATUS");
+    assert_eq!(mysql_replica_status_sql("9.0.0"), "SHOW REPLICA STATUS");
+}
+
+#[test]
+fn mysql_replica_status_sql_uses_slave_only_before_8022() {
+    assert_eq!(mysql_replica_status_sql("8.0.21"), "SHOW SLAVE STATUS");
+    assert_eq!(mysql_replica_status_sql("8.0.22"), "SHOW REPLICA STATUS");
+}
+
 // 真库（PG / MySQL）用例在 `live_tests.rs`：本文件已逼近 500 行上限。
 #[tokio::test]
 async fn warm_up_without_min_connections_is_a_noop() {
