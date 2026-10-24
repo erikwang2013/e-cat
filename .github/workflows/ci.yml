@@ -47,6 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # ecat-data-sqlx -> ecat-data -> ecat-errors -> ecat-protos，后者的
+      # build.rs 走 tonic_build，stock runner 没有 protoc 会直接编译失败。
+      - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Start MySQL ${{ matrix.mysql-version }}
         run: |
           docker run -d --name mysql \
@@ -95,13 +98,21 @@ jobs:
             cargo test -p ecat-data-sqlx --lib mysql_unsigned_columns_decode_and_unsupported_type_errors 2>&1)
           echo "$out"
           grep -q "test result: ok. 1 passed" <<< "$out"
+      # 「日志里没有 X」必须配正控：先证明检测器看得见日志，否则日志没记也会
+      # 「通过」。注意现有 live 用例不调用 replica_lag，驱动层真正发哪条语句
+      # 仍无覆盖 —— 那是后续补真库 replica_lag 用例的事，这里不声称。
       - name: Assert no SHOW SLAVE STATUS was executed
         run: |
+          # 正控：日志开启期间用 CLI 发一条 SHOW REPLICA STATUS，证明下面能匹配到。
+          docker exec mysql mysql -uroot -proot -e "SHOW REPLICA STATUS" > /dev/null
+          sleep 1
           docker exec mysql mysql -uroot -proot -e "SET GLOBAL general_log=OFF"
           log=$(docker exec mysql mysql -uroot -proot --batch --skip-column-names -e "SELECT @@general_log_file")
-          count=$(docker exec mysql grep -ci "SHOW SLAVE STATUS" "$log" || true)
-          echo "SHOW SLAVE STATUS in $log: $count"
-          test "$count" = "0"
+          replica=$(docker exec mysql grep -ci "SHOW REPLICA STATUS" "$log" || true)
+          slave=$(docker exec mysql grep -ci "SHOW SLAVE STATUS" "$log" || true)
+          echo "SHOW REPLICA STATUS=$replica, SHOW SLAVE STATUS=$slave in $log"
+          test "$replica" -ge 1
+          test "$slave" = "0"
       # 版本选择器本身也钉住：8.4/9 必须映射到 SHOW REPLICA STATUS。
       - name: Assert version gate picks SHOW REPLICA STATUS
         run: |
