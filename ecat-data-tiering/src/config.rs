@@ -45,6 +45,9 @@ pub struct TieringConfig {
     /// S3 冷数据在 `DROP PARTITION` 前的保留天数。
     #[serde(default = "default_retain_s3_days")]
     pub retain_s3_days: u32,
+    /// 允许运行的 UTC 时间窗 `HH:MM-HH:MM`；`None` = 全天。跨午夜（如 `22:00-02:00`）有效。
+    #[serde(default)]
+    pub window: Option<String>,
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -96,8 +99,44 @@ pub fn validate_ident(s: &str) -> Result<(), TieringError> {
     Ok(())
 }
 
+/// `HH:MM-HH:MM` 解析为 [start, end) 的「当日分钟数」；start > end 表示跨午夜。
+fn parse_window(window: &str) -> Result<(u32, u32), TieringError> {
+    let (start, end) = window.split_once('-').ok_or_else(|| window_error(window))?;
+    let start = parse_hhmm(start, window)?;
+    let end = parse_hhmm(end, window)?;
+    if start == end {
+        return Err(window_error(window));
+    }
+    Ok((start, end))
+}
+
+fn parse_hhmm(part: &str, window: &str) -> Result<u32, TieringError> {
+    let (hour, minute) = part.split_once(':').ok_or_else(|| window_error(window))?;
+    let valid_len = hour.len() == 2 && minute.len() == 2;
+    let (hour, minute) = (
+        hour.parse::<u32>().map_err(|_| window_error(window))?,
+        minute.parse::<u32>().map_err(|_| window_error(window))?,
+    );
+    if !valid_len || hour > 23 || minute > 59 {
+        return Err(window_error(window));
+    }
+    Ok(hour * 60 + minute)
+}
+
+fn window_error(window: &str) -> TieringError {
+    TieringError::Config(format!(
+        "invalid window `{window}`: expected `HH:MM-HH:MM` in UTC"
+    ))
+}
+
 impl TieringConfig {
+    /// 窗口边界（当日 UTC 分钟数）；`None` = 不限。
+    pub(crate) fn window_bounds(&self) -> Result<Option<(u32, u32)>, TieringError> {
+        self.window.as_deref().map(parse_window).transpose()
+    }
+
     pub fn validate(&self) -> Result<(), TieringError> {
+        self.window_bounds()?;
         if self.hot_days == 0 {
             return Err(TieringError::Config("hot_days must be > 0".into()));
         }

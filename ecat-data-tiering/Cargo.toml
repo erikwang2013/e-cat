@@ -15,6 +15,8 @@ ecat-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
+# 分布式锁 trait 在 ecat-lock；本 crate 只依赖抽象，不引入 Redis 客户端。
+ecat-lock = { version = "7.1.1", path = "../ecat-lock" }
 time.workspace = true
 # 错误显示与 source 链（仓库内自定义错误枚举统一用它）。
 thiserror.workspace = true

@@ -1688,6 +1688,7 @@ dependencies = [
  "ecat-data",
  "ecat-data-sqlx",
  "ecat-errors",
+ "ecat-lock",
  "serde",
  "serde_json",
  "thiserror 2.0.19",

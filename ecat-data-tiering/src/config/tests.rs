@@ -26,7 +26,31 @@ fn config_defaults_are_off_and_180_days() {
     assert!(!cfg.dry_run);
     assert!(cfg.tables.is_empty());
     assert!(cfg.max_rows_per_sec.is_none());
+    assert!(cfg.window.is_none());
     cfg.validate().unwrap();
+}
+
+#[test]
+fn config_window_accepts_hh_mm_ranges_and_rejects_bad_ones() {
+    for ok in ["22:00-02:00", "00:00-23:59"] {
+        let cfg: TieringConfig = serde_json::from_value(json!({"window": ok})).unwrap();
+        cfg.validate().unwrap();
+    }
+    for bad in [
+        "22:00",
+        "25:00-26:00",
+        "22:60-23:00",
+        "22:00-22:00",
+        "-",
+        "2:00-3:00",
+        "aa:00-bb:00",
+    ] {
+        let cfg: TieringConfig = serde_json::from_value(json!({"window": bad})).unwrap();
+        assert!(
+            matches!(cfg.validate(), Err(TieringError::Config(_))),
+            "{bad}"
+        );
+    }
 }
 
 #[test]
