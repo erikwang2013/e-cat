@@ -10,6 +10,12 @@ mod clickhouse;
 #[cfg(feature = "clickhouse")]
 pub use clickhouse::{ClickhouseSink, ClickhouseTable};
 
+#[cfg(feature = "s3")]
+mod s3;
+
+#[cfg(feature = "s3")]
+pub use s3::{S3Sink, S3Table};
+
 /// 单个 JSON 值 → SQL 字面量（ClickHouse 语法，MySQL 式转义）。
 ///
 /// 字符串/数组/对象按 MySQL 规则转义 `\` 与 `'`；数组与对象先序列化为 JSON 文本

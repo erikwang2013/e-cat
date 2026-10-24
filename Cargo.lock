@@ -1688,6 +1688,7 @@ dependencies = [
  "axum 0.8.9",
  "ecat-data",
  "ecat-data-clickhouse",
+ "ecat-data-s3",
  "ecat-data-sqlx",
  "ecat-errors",
  "ecat-lock",

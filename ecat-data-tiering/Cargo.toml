@@ -26,11 +26,13 @@ time.workspace = true
 thiserror.workspace = true
 # 冷层 sink 可选后端；默认不把 reqwest/ecat-tls 拖进默认依赖树。
 ecat-data-clickhouse = { version = "7.1.1", path = "../ecat-data-clickhouse", optional = true }
-# 冷 chunk 规范化 NDJSON 的 SHA-256（仅 clickhouse feature 用）。
+ecat-data-s3 = { version = "7.1.1", path = "../ecat-data-s3", optional = true }
+# 冷 chunk NDJSON 的 SHA-256（clickhouse / s3 feature 用）。
 sha2 = { workspace = true, optional = true }
 
 [features]
 clickhouse = ["dep:ecat-data-clickhouse", "dep:sha2", "tokio/sync"]
+s3 = ["dep:ecat-data-s3", "dep:sha2"]
 
 [dev-dependencies]
 # 状态机测试跑在 SQLite 内存库上。

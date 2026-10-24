@@ -10,4 +10,6 @@ pub use config::{ColdTarget, TableTieringConfig, TieringConfig, TieringError, va
 pub use sink::render_sql_value;
 #[cfg(feature = "clickhouse")]
 pub use sink::{ClickhouseSink, ClickhouseTable};
+#[cfg(feature = "s3")]
+pub use sink::{S3Sink, S3Table};
 pub use state::{ArchiveJobState, ArchivePhase, ArchiveStateStore};
