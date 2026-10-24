@@ -36,6 +36,7 @@ pub struct ShardEndpoint {
 
 /// 分片算法。
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ShardAlgorithm {
     /// 取模分片。哈希必须与代理侧配置的算法逐字节一致；代理若用 Java
     /// `hashCode` 等不可移植算法，A 阶段按设计 §4.1 重新分片，不假设天然一致。
@@ -121,6 +122,32 @@ fn write_canonical(value: &Value, out: &mut String) {
     }
 }
 
+/// `validate` 与 `shard_for` 共用，避免两条路径的校验漂移。
+fn check_algorithm(
+    table: &str,
+    algorithm: &ShardAlgorithm,
+    endpoints: usize,
+) -> Result<(), ShardError> {
+    match algorithm {
+        ShardAlgorithm::HashMod { shards } => {
+            if *shards == 0 || *shards as usize != endpoints {
+                return Err(ShardError::ShardCountMismatch);
+            }
+        }
+        ShardAlgorithm::Range { boundaries } => {
+            if boundaries.len() + 1 != endpoints {
+                return Err(ShardError::ShardCountMismatch);
+            }
+            if boundaries.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return Err(ShardError::Config(format!(
+                    "table `{table}` range boundaries must be strictly increasing"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl ShardCatalog {
     /// 校验表名/键/主键、分片数量、端点唯一性与区间边界。
     pub fn validate(&self) -> Result<(), ShardError> {
@@ -156,24 +183,7 @@ impl ShardCatalog {
                     )));
                 }
             }
-            match &table.algorithm {
-                ShardAlgorithm::HashMod { shards } => {
-                    if *shards == 0 || *shards as usize != table.shards.len() {
-                        return Err(ShardError::ShardCountMismatch);
-                    }
-                }
-                ShardAlgorithm::Range { boundaries } => {
-                    if boundaries.len() + 1 != table.shards.len() {
-                        return Err(ShardError::ShardCountMismatch);
-                    }
-                    if boundaries.windows(2).any(|pair| pair[0] >= pair[1]) {
-                        return Err(ShardError::Config(format!(
-                            "table `{}` range boundaries must be strictly increasing",
-                            table.name
-                        )));
-                    }
-                }
-            }
+            check_algorithm(&table.name, &table.algorithm, table.shards.len())?;
         }
         Ok(())
     }
@@ -181,21 +191,20 @@ impl ShardCatalog {
     /// 返回表 `table` 上键 `key` 命中的分片下标；`Null` 键直接报错，不猜。
     pub fn shard_for(&self, table: &str, key: &Value) -> Result<usize, ShardError> {
         let table = self.table(table)?;
+        // 未经 validate 的目录也不能路由到不存在的分片或未排序的区间。
+        check_algorithm(&table.name, &table.algorithm, table.shards.len())?;
         if key.is_null() {
             return Err(ShardError::MissingKey);
         }
         match &table.algorithm {
             ShardAlgorithm::HashMod { shards } => {
-                if *shards == 0 || *shards as usize != table.shards.len() {
-                    return Err(ShardError::ShardCountMismatch);
-                }
                 Ok((stable_hash64(key)? % u64::from(*shards)) as usize)
             }
             ShardAlgorithm::Range { boundaries } => {
-                if boundaries.len() + 1 != table.shards.len() {
-                    return Err(ShardError::ShardCountMismatch);
-                }
                 let Some(id) = key.as_i64() else {
+                    if key.is_u64() {
+                        return Err(ShardError::IdOutOfRange);
+                    }
                     return Err(ShardError::Config(format!(
                         "table `{}` range shard key must be an integer",
                         table.name

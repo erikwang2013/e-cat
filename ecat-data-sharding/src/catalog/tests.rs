@@ -117,10 +117,13 @@ fn catalog_hash_fnv1a_known_vectors() {
 }
 
 #[test]
-fn catalog_hash_is_order_independent_for_object_keys() {
-    let first = json!({"tenant": 1, "user": 2});
-    let second = json!({"user": 2, "tenant": 1});
-    assert_eq!(stable_hash64(&first), stable_hash64(&second));
+fn catalog_hash_object_known_vector_is_key_order_independent() {
+    // FNV-1a 64 of the canonical form `{"a":1,"b":2}`（已用独立实现核对）。
+    let expected = 0xa0eb_c03b_dc71_de7b;
+    assert_eq!(stable_hash64(&json!({"a": 1, "b": 2})).unwrap(), expected);
+    // dev-dependencies 里的 preserve_order 让后者的插入顺序与前者的排序不同；
+    // 删掉 write_canonical 的排序，这条会红。
+    assert_eq!(stable_hash64(&json!({"b": 2, "a": 1})).unwrap(), expected);
 }
 
 #[test]
@@ -159,12 +162,64 @@ fn catalog_rejects_duplicate_endpoint_names() {
 
 #[test]
 fn catalog_rejects_empty_table_fields() {
-    let mut users = hash_table("users");
-    users.key.clear();
+    for field in ["name", "key", "pk"] {
+        let mut users = hash_table("users");
+        match field {
+            "name" => users.name.clear(),
+            "key" => users.key.clear(),
+            _ => users.pk.clear(),
+        }
+        assert!(
+            matches!(catalog(vec![users]).validate(), Err(ShardError::Config(_))),
+            "empty {field} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn range_shard_for_rejects_unsorted_boundaries() {
+    // 跳过 validate 直接路由：未排序的边界必须报错，不能给出错误分片。
+    let catalog = catalog(vec![table(
+        "events",
+        ShardAlgorithm::Range {
+            boundaries: vec![200, 100],
+        },
+        &["a", "b", "c"],
+    )]);
     assert!(matches!(
-        catalog(vec![users]).validate(),
+        catalog.shard_for("events", &json!(150)),
         Err(ShardError::Config(_))
     ));
+}
+
+#[test]
+fn range_shard_for_rejects_integer_above_i64_max() {
+    let catalog = catalog(vec![table(
+        "events",
+        ShardAlgorithm::Range {
+            boundaries: vec![100],
+        },
+        &["a", "b"],
+    )]);
+    assert_eq!(
+        catalog.shard_for("events", &json!(u64::MAX)),
+        Err(ShardError::IdOutOfRange)
+    );
+}
+
+#[test]
+fn range_null_key_is_error() {
+    let catalog = catalog(vec![table(
+        "events",
+        ShardAlgorithm::Range {
+            boundaries: vec![100],
+        },
+        &["a", "b"],
+    )]);
+    assert_eq!(
+        catalog.shard_for("events", &Value::Null),
+        Err(ShardError::MissingKey)
+    );
 }
 
 #[test]
@@ -197,6 +252,53 @@ fn catalog_client_mode_requires_endpoint_urls() {
         catalog: catalog(vec![users]),
     };
     assert_eq!(client.validate(), Ok(()));
+}
+
+#[test]
+fn catalog_config_deserializes_snake_case() {
+    let config: ShardingConfig = serde_json::from_value(json!({
+        "mode": "client",
+        "catalog": {"tables": [
+            {
+                "name": "users",
+                "key": "id",
+                "pk": "id",
+                "algorithm": {"hash_mod": {"shards": 1}},
+                "shards": [{"name": "s0", "url": "mysql://s0/users"}]
+            },
+            {
+                "name": "events",
+                "key": "id",
+                "pk": "id",
+                "algorithm": {"range": {"boundaries": [100]}},
+                "shards": [
+                    {"name": "a", "url": "mysql://a/events"},
+                    {"name": "b", "url": "mysql://b/events"}
+                ]
+            }
+        ]}
+    }))
+    .unwrap();
+    assert!(matches!(config.mode, ShardingMode::Client));
+    assert!(matches!(
+        config.catalog.tables[0].algorithm,
+        ShardAlgorithm::HashMod { shards: 1 }
+    ));
+    assert!(matches!(
+        config.catalog.tables[1].algorithm,
+        ShardAlgorithm::Range { .. }
+    ));
+    assert_eq!(config.validate(), Ok(()));
+}
+
+#[test]
+fn catalog_config_rejects_unknown_keys() {
+    let result: Result<ShardingConfig, _> = serde_json::from_value(json!({
+        "mode": "client",
+        "catalog": {"tables": []},
+        "extra": true
+    }));
+    assert!(result.is_err());
 }
 
 #[test]

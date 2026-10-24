@@ -13,3 +13,8 @@ categories.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# 测试里开启 preserve_order，让对象键的排序规范化成为可证伪的行为
+# （默认 BTreeMap 本身有序，删掉排序测试也不会红）。
+serde_json = { workspace = true, features = ["preserve_order"] }
