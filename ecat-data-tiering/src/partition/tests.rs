@@ -14,11 +14,10 @@ use super::{
 use crate::TieringError;
 
 /// 记录执行的 SQL；`execute`/`execute_with` 都记，便于断言「拒绝时不执行」。
-/// `query_with` 按 SQL 返回三处计数：staging 是否分区、staging 行数、目标分区是否存在。
+/// `query_with` 按 SQL 返回两处计数：staging 行数、目标分区是否存在。
 struct Recorder {
     dialect: Dialect,
     sql: Mutex<Vec<String>>,
-    staging_partitions: i64,
     loaded_rows: i64,
     target_partitions: i64,
 }
@@ -28,7 +27,6 @@ impl Recorder {
         Self {
             dialect,
             sql: Mutex::new(Vec::new()),
-            staging_partitions: 1,
             loaded_rows: 1,
             target_partitions: 1,
         }
@@ -61,9 +59,7 @@ impl SqlExecutor for Recorder {
     }
 
     async fn query_with(&self, sql: &str, _params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
-        let n = if sql.contains("PARTITION_NAME IS NOT NULL") {
-            self.staging_partitions
-        } else if sql.contains("information_schema.PARTITIONS") {
+        let n = if sql.contains("information_schema.PARTITIONS") {
             self.target_partitions
         } else {
             self.loaded_rows
@@ -198,24 +194,35 @@ async fn restore_uses_staging_and_exchange_partition() {
     let db = Recorder::new(Dialect::MySql);
     assert_eq!(restore_partition(&db, &restore_plan()).await.unwrap(), 1);
     let stmts = db.statements();
-    assert_eq!(stmts.len(), 4, "{stmts:?}");
+    assert_eq!(stmts.len(), 5, "{stmts:?}");
+    // 残留 staging 会让 CREATE 失败，必须先删。
+    assert_eq!(stmts[0], "DROP TABLE IF EXISTS `events_restore_p2026_01`");
     assert_eq!(
-        stmts[0],
-        "CREATE TABLE IF NOT EXISTS `events_restore_p2026_01` LIKE `events`"
+        stmts[1],
+        "CREATE TABLE `events_restore_p2026_01` LIKE `events`"
     );
     // CREATE LIKE 会复制分区定义，必须先去掉，EXCHANGE 才能接受 staging。
     assert_eq!(
-        stmts[1],
+        stmts[2],
         "ALTER TABLE `events_restore_p2026_01` REMOVE PARTITIONING"
     );
     assert_eq!(
-        stmts[2],
+        stmts[3],
         "ALTER TABLE `events` EXCHANGE PARTITION `p2026_01` WITH TABLE `events_restore_p2026_01`"
     );
     assert!(
-        stmts[3].starts_with("DELETE FROM tier_archive_jobs"),
+        stmts[4].starts_with("DELETE FROM tier_archive_jobs"),
         "恢复后必须清掉陈旧的归档状态：{stmts:?}"
     );
+    let drop = stmts
+        .iter()
+        .position(|sql| sql.starts_with("DROP TABLE IF EXISTS"))
+        .expect("missing DROP TABLE IF EXISTS");
+    let create = stmts
+        .iter()
+        .position(|sql| sql.starts_with("CREATE TABLE"))
+        .expect("missing CREATE TABLE");
+    assert!(drop < create, "DROP IF EXISTS 必须先于 CREATE：{stmts:?}");
 
     let bad = RestorePlan {
         table: "events; DROP TABLE users".into(),
@@ -224,7 +231,7 @@ async fn restore_uses_staging_and_exchange_partition() {
     };
     let err = restore_partition(&db, &bad).await.unwrap_err();
     assert!(matches!(err, TieringError::Config(_)), "{err}");
-    assert_eq!(db.statements().len(), 4, "拒绝时不得追加 SQL");
+    assert_eq!(db.statements().len(), 5, "拒绝时不得追加 SQL");
 }
 
 #[tokio::test]

@@ -13,8 +13,6 @@ use crate::{TieringError, validate_ident};
 
 const PARTITION_EXISTS_SQL: &str = "SELECT COUNT(*) AS n FROM information_schema.PARTITIONS \
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME = ?";
-const STAGING_IS_PARTITIONED_SQL: &str = "SELECT COUNT(*) AS n FROM information_schema.PARTITIONS \
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL";
 
 /// 一张表的 `RANGE COLUMNS` 分区计划。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,9 +100,10 @@ pub async fn drop_partition(
 
 /// 用 staging 表恢复分区，然后清掉该分区的归档状态。
 ///
-/// 调用方负责把 `plan.source` 的数据装进名为 `<table>_restore_<partition>` 的 staging 表
-/// （可先按同一名字建表再装载）；本函数只做安全检查、EXCHANGE 和状态重置，不访问冷层。
-/// staging 为空或目标分区不存在时报错，绝不交换空表。
+/// staging（`<table>_restore_<partition>`）每次调用都先删后建，残留表不会挡住 CREATE，也避免
+/// 把上次留下的回滚副本当成恢复数据。EXCHANGE 成功后 staging 保留（内含交换前的分区数据），
+/// 可用于回滚。调用方负责在 EXCHANGE 前把 `plan.source` 的数据装进 staging；本函数只做安全
+/// 检查、EXCHANGE 和状态重置，不访问冷层。staging 为空或目标分区不存在时报错，绝不交换空表。
 pub async fn restore_partition(
     db: &dyn SqlExecutor,
     plan: &RestorePlan,
@@ -116,25 +115,13 @@ pub async fn restore_partition(
     // 超长表名需改成短名映射。
     let staging = format!("{}_restore_{}", plan.table, plan.partition);
     validate_ident(&staging)?;
-    // 调用方可以先用同名 staging 建表并装载冷层数据；不存在时这里建空表，
-    // 由下面的空表护栏拦下，不会交换空表。
-    db.execute(&format!(
-        "CREATE TABLE IF NOT EXISTS `{staging}` LIKE `{}`",
-        plan.table
-    ))
-    .await?;
-    // LIKE 复制分区定义，而 EXCHANGE PARTITION 要求交换表非分区；调用方装载的 staging
-    // 可能已经去掉过分区，所以只在仍有分区时执行。
-    let staging_is_partitioned = count_rows(
-        db,
-        STAGING_IS_PARTITIONED_SQL,
-        &[Value::String(staging.clone())],
-    )
-    .await?;
-    if staging_is_partitioned > 0 {
-        db.execute(&format!("ALTER TABLE `{staging}` REMOVE PARTITIONING"))
-            .await?;
-    }
+    db.execute(&format!("DROP TABLE IF EXISTS `{staging}`"))
+        .await?;
+    db.execute(&format!("CREATE TABLE `{staging}` LIKE `{}`", plan.table))
+        .await?;
+    // LIKE 复制分区定义，而 EXCHANGE PARTITION 要求交换表非分区。
+    db.execute(&format!("ALTER TABLE `{staging}` REMOVE PARTITIONING"))
+        .await?;
     let staging_rows =
         count_rows(db, &format!("SELECT COUNT(*) AS n FROM `{staging}`"), &[]).await?;
     if staging_rows == 0 {

@@ -105,30 +105,72 @@ fn load_config(path: &Path) -> Result<TieringConfig, TieringError> {
 
 /// 默认覆盖热窗口 `[now - hot_days, now)`；更细的时间范围请直接调库里的 `plan_range_partitions`。
 fn print_plan(config: &TieringConfig, dry_run: bool) -> Result<(), TieringError> {
+    if dry_run {
+        println!("-- dry-run: statements are printed, not executed");
+    }
+    print!("{}", plan_script(config)?);
+    Ok(())
+}
+
+/// 生成一整段脚本；`SET time_zone` 必须排在 ALTER 之前，否则 `TIMESTAMP` 列的分区边界
+/// 会按执行会话的时区解释，与库里的 UTC 边界不一致。
+fn plan_script(config: &TieringConfig) -> Result<String, TieringError> {
     let now = OffsetDateTime::now_utc();
     let from = now
         .checked_sub(Duration::days(i64::from(config.hot_days)))
         .ok_or_else(|| {
             TieringError::Config(format!("hot_days {} is out of range", config.hot_days))
         })?;
-    if dry_run {
-        println!("-- dry-run: statements are printed, not executed");
-    }
+    let mut script = String::from("SET time_zone = '+00:00';\n");
     for table in &config.tables {
         let spec = PartitionSpec {
             table: table.name.clone(),
             column: table.time_col.clone(),
             months: config.partition_months,
         };
-        println!("{};", plan_range_partitions(&spec, from, now)?);
+        script.push_str(&plan_range_partitions(&spec, from, now)?);
+        script.push_str(";\n");
     }
-    Ok(())
+    Ok(script)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use clap::CommandFactory;
+    use ecat_data_tiering::{ColdTarget, TableTieringConfig};
+
+    fn sample_config() -> TieringConfig {
+        TieringConfig {
+            enabled: true,
+            hot_days: 90,
+            partition_months: 1,
+            tables: vec![TableTieringConfig {
+                name: "events".into(),
+                time_col: "ts".into(),
+                id_col: "id".into(),
+                retention_days: 365,
+                target: ColdTarget::Clickhouse,
+                filter: None,
+            }],
+            batch_size: 1000,
+            max_rows_per_sec: None,
+            verify_sample: None,
+            retain_s3_days: 7,
+            window: None,
+            dry_run: false,
+        }
+    }
+
+    #[test]
+    fn cli_plan_pins_utc_session_before_alter() {
+        let script = plan_script(&sample_config()).unwrap();
+        let set = script
+            .find("SET time_zone = '+00:00';")
+            .expect("plan 必须固定 UTC 会话时区");
+        let alter = script.find("ALTER TABLE `events`").expect("missing ALTER");
+        assert!(set < alter, "SET time_zone 必须先于 ALTER：\n{script}");
+    }
 
     #[test]
     fn cli_plan_parses_config_path() {
