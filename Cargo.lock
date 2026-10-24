@@ -1644,6 +1644,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-data-sharding"
+version = "7.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "ecat-data-sqlx"
 version = "7.1.1"
 dependencies = [
