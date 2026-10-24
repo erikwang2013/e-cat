@@ -64,6 +64,9 @@ pub enum ShardError {
     IdOutOfRange,
     #[error("unsupported database dialect")]
     UnsupportedDialect,
+    /// outbox 等存储路径的数据库错误（`RdbmsError` 不实现 `Clone`/`Eq`，转为文本）。
+    #[error("database error: {0}")]
+    Database(String),
 }
 
 /// 对分片键做 FNV-1a 64 位哈希。

@@ -16,12 +16,16 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-# Snowflake 的 epoch（`OffsetDateTime`）与系统时钟。
+# Snowflake 的 epoch（`OffsetDateTime`）与系统时钟；outbox 时间戳。
 time.workspace = true
+# outbox 的 `Vec<u8>` payload 走 `SqlExecutor` 的字符串参数（`Row` 对 BLOB 也返回 base64）。
+base64 = "0.22"
 # scatter 的 JoinSet / Semaphore / 总超时。tokio 原先只在 dev-dependencies 里。
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
+# outbox 测试跑在 SQLite 内存库上。
+ecat-data-sqlx.workspace = true
 # 测试里开启 preserve_order，让对象键的排序规范化成为可证伪的行为
 # （默认 BTreeMap 本身有序，删掉排序测试也不会红）。
 serde_json = { workspace = true, features = ["preserve_order"] }
