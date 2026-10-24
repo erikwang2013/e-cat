@@ -10,6 +10,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# 键绑定客户端要实现的 `SqlExecutor` / `RdbmsClient` 抽象。
+ecat-data.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -18,3 +21,5 @@ thiserror.workspace = true
 # 测试里开启 preserve_order，让对象键的排序规范化成为可证伪的行为
 # （默认 BTreeMap 本身有序，删掉排序测试也不会红）。
 serde_json = { workspace = true, features = ["preserve_order"] }
+# 异步 trait 测试用 `#[tokio::test]`（单线程 rt 即可）。
+tokio = { workspace = true, features = ["macros", "rt"] }
