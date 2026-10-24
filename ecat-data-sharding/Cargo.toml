@@ -16,6 +16,8 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# Snowflake 的 epoch（`OffsetDateTime`）与系统时钟。
+time.workspace = true
 # scatter 的 JoinSet / Semaphore / 总超时。tokio 原先只在 dev-dependencies 里。
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
