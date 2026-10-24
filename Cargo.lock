@@ -1681,6 +1681,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecat-data-tiering"
+version = "7.1.1"
+dependencies = [
+ "async-trait",
+ "ecat-data",
+ "ecat-errors",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "time",
+]
+
+[[package]]
 name = "ecat-encoding"
 version = "7.1.1"
 dependencies = [

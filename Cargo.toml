@@ -52,6 +52,7 @@ members = [
     "ecat-data-tdengine",
     "ecat-data-mongodb",
     "ecat-data-s3",
+    "ecat-data-tiering",
     "ecat-tls",
     "ecat-scheduler",
     "ecat-orm",

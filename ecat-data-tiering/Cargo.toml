@@ -1,0 +1,20 @@
+[package]
+name = "ecat-data-tiering"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hot/cold data tiering for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ecat-data = { version = "7.1.1", path = "../ecat-data" }
+ecat-errors.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+time.workspace = true
+# 错误显示与 source 链（仓库内自定义错误枚举统一用它）。
+thiserror.workspace = true
