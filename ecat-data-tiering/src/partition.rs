@@ -100,10 +100,15 @@ pub async fn drop_partition(
 
 /// 用 staging 表恢复分区，然后清掉该分区的归档状态。
 ///
-/// staging（`<table>_restore_<partition>`）每次调用都先删后建，残留表不会挡住 CREATE，也避免
-/// 把上次留下的回滚副本当成恢复数据。EXCHANGE 成功后 staging 保留（内含交换前的分区数据），
-/// 可用于回滚。调用方负责在 EXCHANGE 前把 `plan.source` 的数据装进 staging；本函数只做安全
-/// 检查、EXCHANGE 和状态重置，不访问冷层。staging 为空或目标分区不存在时报错，绝不交换空表。
+/// staging（`<table>_restore_<partition>`）每次调用都先 `DROP TABLE IF EXISTS` 再 `CREATE
+/// TABLE ... LIKE`：残留表（包括上次的回滚副本）不可能带着旧数据通过非空守卫，因此不存在
+/// 「陈旧 staging 被换进在线分区」的风险，调用方也无需在调用前清表。EXCHANGE 成功后 staging
+/// 保留（内含交换前的分区数据），可用于回滚。调用方必须在 EXCHANGE 前把 `plan.source` 的数据
+/// 装进 staging；本函数只做安全检查、EXCHANGE 和状态重置，不访问冷层。staging 为空或目标分区
+/// 不存在时报错，绝不交换空表。
+///
+/// shortcut: 先删后建意味着单次调用里没有装载窗口，生产恢复会停在空 staging 守卫（fail
+/// closed）；要真正恢复须改成两阶段 API：先准备并装载 staging，再单独执行交换。
 pub async fn restore_partition(
     db: &dyn SqlExecutor,
     plan: &RestorePlan,
