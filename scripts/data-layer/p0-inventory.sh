@@ -51,7 +51,7 @@ urldecode() { printf '%b' "${1//%/\\x}"; }
 user=$(urldecode "$user")
 if [[ "$userinfo" == *:* ]]; then export MYSQL_PWD="$(urldecode "${userinfo#*:}")"; fi
 
-mysql_args=(--batch --raw --host="$host" --port="$port" --user="$user" --database="$db")
+mysql_args=(--batch --raw --protocol=TCP --host="$host" --port="$port" --user="$user" --database="$db")
 
 section_sql() {
   awk -v name="$1" '
