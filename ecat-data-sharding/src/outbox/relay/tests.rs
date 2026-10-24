@@ -10,7 +10,7 @@ use ecat_data::Shutdown;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::Notify;
 
-use super::{OutboxHandler, OutboxOps, OutboxRelay, RelayReport};
+use super::{MAX_BACKOFF, OutboxHandler, OutboxOps, OutboxRelay, RelayReport, backoff};
 use crate::ShardError;
 use crate::outbox::{OutboxRecord, OutboxStatus};
 
@@ -144,7 +144,7 @@ impl OutboxHandler for DedupHandler {
 }
 
 #[tokio::test]
-async fn relay_rejects_zero_batch_lease_and_interval() {
+async fn relay_rejects_zero_batch_and_lease() {
     let store = Arc::new(FakeStore::default());
     store.push(record("a", 0));
 
@@ -160,15 +160,33 @@ async fn relay_rejects_zero_batch_lease_and_interval() {
         zero_lease.run_once().await,
         Err(ShardError::Config(_))
     ));
+
+    assert_eq!(store.claim_count(), 0, "无效配置不得领取记录");
+    assert!(store.done().is_empty());
+}
+
+#[tokio::test]
+async fn relay_rejects_zero_interval() {
+    let store = Arc::new(FakeStore::default());
+    store.push(record("a", 0));
     let (_handle, mut shutdown) = Shutdown::new();
     let zero_interval = relay(&store, Arc::new(OkHandler)).with_interval(StdDuration::ZERO);
+
+    // 不先校验的话 tokio::time::interval(0) 会 panic。
     assert!(matches!(
         zero_interval.run_until(&mut shutdown).await,
         Err(ShardError::Config(_))
     ));
-
     assert_eq!(store.claim_count(), 0, "无效配置不得领取记录");
-    assert!(store.done().is_empty());
+}
+
+#[test]
+fn relay_backoff_saturates_at_max() {
+    // 1s 起翻倍；2^12s = 4096s 已超过 1h 上限，故 attempts >= 12 恒定 1h。
+    assert_eq!(backoff(11), Duration::seconds(2048));
+    assert_eq!(backoff(12), MAX_BACKOFF);
+    assert_eq!(backoff(13), MAX_BACKOFF);
+    assert_eq!(backoff(u32::MAX), MAX_BACKOFF);
 }
 
 #[tokio::test]
