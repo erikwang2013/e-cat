@@ -74,7 +74,7 @@ parse_dsn() {
 run_side() {
   parse_dsn "$1"
   if [[ -n "$DSN_PASS" ]]; then export MYSQL_PWD="$DSN_PASS"; else unset MYSQL_PWD; fi
-  mysql --batch --raw --skip-column-names --protocol=TCP \
+  mysql --batch --raw --skip-column-names --protocol=TCP --connect-timeout=10 \
     --host="$DSN_HOST" --port="$DSN_PORT" --user="$DSN_USER" --database="$DSN_DB"
 }
 

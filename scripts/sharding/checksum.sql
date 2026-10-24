@@ -36,11 +36,12 @@ ORDER BY bucket;
 
 -- SECTION: CHECKSUMS
 -- Per bucket: COUNT(*) and SUM(CRC32(CONCAT_WS('|', <all columns>))) over the rows in
--- that bucket. NULL is encoded as CHAR(0) (CONCAT_WS would skip it) and every field is
--- length-prefixed, so a value containing '|' cannot alias a different field split.
+-- that bucket. Each field is tagged N (NULL) or V (value), length-prefixed and joined
+-- with '|', so NULL vs CHAR(0), or a value containing '|', cannot alias another row.
 SET @cols = (
   SELECT GROUP_CONCAT(CONCAT(
-           'CONCAT(LENGTH(COALESCE(CAST(`', REPLACE(COLUMN_NAME, '`', '``'), '` AS CHAR), CHAR(0))), ',
+           'CONCAT(IF(`', REPLACE(COLUMN_NAME, '`', '``'), '` IS NULL, ''N'', ''V''), ',
+           'LENGTH(COALESCE(CAST(`', REPLACE(COLUMN_NAME, '`', '``'), '` AS CHAR), CHAR(0))), ',
            'CHAR(58), COALESCE(CAST(`', REPLACE(COLUMN_NAME, '`', '``'), '` AS CHAR), CHAR(0)))')
          ORDER BY ORDINAL_POSITION SEPARATOR ', ')
   FROM information_schema.COLUMNS
@@ -61,21 +62,17 @@ DEALLOCATE PREPARE checksum_stmt;
 -- SECTION: ORPHANS
 -- Foreign-key orphans: rows of {{TABLE}} where every FK column is non-NULL (MySQL only
 -- enforces the constraint then) but no parent row matches in the same schema.
--- Cross-schema and differently-sharded parents are out of scope: only same-schema FKs
--- are checked, so run this per shard.
-SET @orphan_sql = (
-  SELECT CONCAT(
-           'SELECT * FROM (',
-           GROUP_CONCAT(CONCAT(
-             'SELECT ''ORPHANS'' AS section, ''', REPLACE(fk.constraint_name, '''', ''''''),
-             ''' AS constraint_name, ''', REPLACE(fk.ref_table, '''', ''''''),
-             ''' AS parent_table, COUNT(*) AS orphan_rows ',
-             'FROM `{{TABLE}}` AS c LEFT JOIN `', REPLACE(fk.ref_table, '`', '``'),
-             '` AS p ON ', fk.on_clause,
-             ' WHERE ', fk.nn_clause, ' AND p.`', fk.first_ref_col, '` IS NULL'
-           ) ORDER BY fk.constraint_name SEPARATOR ' UNION ALL '),
-           ') AS o ORDER BY 2, 3'
-         )
+-- Cross-schema and differently-sharded parents are out of scope; each skipped FK still
+-- emits a visible "(skipped: cross-schema)" row, so run this per shard knowing that.
+SET @orphans_same = (
+  SELECT GROUP_CONCAT(CONCAT(
+           'SELECT ''ORPHANS'' AS section, ''', REPLACE(fk.constraint_name, '''', ''''''),
+           ''' AS constraint_name, ''', REPLACE(fk.ref_table, '''', ''''''),
+           ''' AS parent_table, COUNT(*) AS orphan_rows ',
+           'FROM `{{TABLE}}` AS c LEFT JOIN `', REPLACE(fk.ref_table, '`', '``'),
+           '` AS p ON ', fk.on_clause,
+           ' WHERE ', fk.nn_clause, ' AND p.`', fk.first_ref_col, '` IS NULL')
+         ORDER BY fk.constraint_name SEPARATOR ' UNION ALL ')
   FROM (
     SELECT k.CONSTRAINT_NAME AS constraint_name,
            k.REFERENCED_TABLE_NAME AS ref_table,
@@ -94,8 +91,28 @@ SET @orphan_sql = (
     GROUP BY k.CONSTRAINT_NAME, k.REFERENCED_TABLE_NAME
   ) AS fk
 );
-SET @orphan_sql = IFNULL(@orphan_sql,
-  'SELECT ''ORPHANS'' AS section, ''(none)'' AS constraint_name, ''(none)'' AS parent_table, 0 AS orphan_rows');
+-- Same counting contract for skipped FKs would require reading another schema, so emit a
+-- constant row instead: the skip is visible in both sides' output and in any diff.
+SET @orphans_skipped = (
+  SELECT GROUP_CONCAT(CONCAT(
+           'SELECT ''ORPHANS'' AS section, ''', REPLACE(k.CONSTRAINT_NAME, '''', ''''''),
+           ''' AS constraint_name, ''',
+           REPLACE(CONCAT(k.REFERENCED_TABLE_SCHEMA, '.', k.REFERENCED_TABLE_NAME), '''', ''''''),
+           ''' AS parent_table, ''(skipped: cross-schema)'' AS orphan_rows')
+         ORDER BY k.CONSTRAINT_NAME SEPARATOR ' UNION ALL ')
+  FROM (
+    SELECT DISTINCT CONSTRAINT_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME
+    FROM information_schema.KEY_COLUMN_USAGE
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = '{{TABLE}}'
+      AND REFERENCED_TABLE_NAME IS NOT NULL
+      AND (REFERENCED_TABLE_SCHEMA IS NULL OR REFERENCED_TABLE_SCHEMA <> DATABASE())
+  ) AS k
+);
+SET @orphan_sql = CONCAT_WS(' UNION ALL ', NULLIF(@orphans_same, ''), NULLIF(@orphans_skipped, ''));
+SET @orphan_sql = IF(@orphan_sql IS NULL OR @orphan_sql = '',
+  'SELECT ''ORPHANS'' AS section, ''(none)'' AS constraint_name, ''(none)'' AS parent_table, 0 AS orphan_rows',
+  CONCAT('SELECT * FROM (', @orphan_sql, ') AS o ORDER BY 2, 3'));
 PREPARE orphan_stmt FROM @orphan_sql;
 EXECUTE orphan_stmt;
 DEALLOCATE PREPARE orphan_stmt;
