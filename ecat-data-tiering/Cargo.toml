@@ -37,10 +37,13 @@ ecat-data-clickhouse = { version = "7.1.1", path = "../ecat-data-clickhouse", op
 ecat-data-s3 = { version = "7.1.1", path = "../ecat-data-s3", optional = true }
 # 冷 chunk NDJSON 的 SHA-256（clickhouse / s3 feature 用）。
 sha2 = { workspace = true, optional = true }
+# 可选：`health` feature 的 readyz 探针；默认不进依赖树。
+ecat-health = { workspace = true, optional = true }
 
 [features]
 clickhouse = ["dep:ecat-data-clickhouse", "dep:sha2", "tokio/sync"]
 s3 = ["dep:ecat-data-s3", "dep:sha2"]
+health = ["dep:ecat-health"]
 
 [dev-dependencies]
 # 状态机测试跑在 SQLite 内存库上。

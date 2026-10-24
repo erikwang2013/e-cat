@@ -3,6 +3,8 @@
 mod catalog;
 mod client;
 mod config;
+#[cfg(feature = "health")]
+mod health;
 mod id;
 mod outbox;
 mod proxy;
@@ -14,6 +16,8 @@ pub use catalog::{
 };
 pub use client::KeyedClient;
 pub use config::{ShardingConfig, ShardingMode};
+#[cfg(feature = "health")]
+pub use health::{OutboxHealthCheck, ShardHealthCheck};
 pub use id::Snowflake;
 pub use outbox::{OutboxRecord, OutboxStatus, OutboxStore};
 pub use proxy::validate_proxy;

@@ -22,6 +22,11 @@ time.workspace = true
 base64 = "0.22"
 # scatter 的 JoinSet / Semaphore / 总超时。tokio 原先只在 dev-dependencies 里。
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
+# 可选：`health` feature 的 readyz 探针；默认不进依赖树。
+ecat-health = { workspace = true, optional = true }
+
+[features]
+health = ["dep:ecat-health"]
 
 [dev-dependencies]
 # outbox 测试跑在 SQLite 内存库上。

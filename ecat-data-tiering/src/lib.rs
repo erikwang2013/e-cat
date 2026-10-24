@@ -2,6 +2,8 @@
 //! 冷热分层：配置与校验、归档任务状态机、归档主循环、冷层 sink 抽象与跨边界查询。
 mod archive;
 mod config;
+#[cfg(feature = "health")]
+mod health;
 mod partition;
 mod query;
 mod sink;
@@ -9,6 +11,8 @@ mod state;
 
 pub use archive::{ArchiveJob, ArchiveReport, ColdSink, Pacer};
 pub use config::{ColdTarget, TableTieringConfig, TieringConfig, TieringError, validate_ident};
+#[cfg(feature = "health")]
+pub use health::TieringHealthCheck;
 pub use partition::{
     PartitionSpec, RestorePlan, RestoreSource, drop_partition, plan_range_partitions,
     prepare_staging, restore_partition,
