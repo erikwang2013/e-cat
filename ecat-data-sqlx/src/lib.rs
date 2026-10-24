@@ -8,6 +8,7 @@ mod live_tests;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod pool;
+mod rdbms;
 mod routing;
 #[cfg(test)]
 mod tests;
@@ -18,12 +19,8 @@ mod transaction;
 
 use async_trait::async_trait;
 use cell::{mysql_rows_to_result, pg_rows_to_result, sqlite_rows_to_result};
-use ecat_data::{
-    BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, TransactionInner,
-    run_with_timeout,
-};
+use ecat_data::{BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, run_with_timeout};
 use std::time::Duration;
-use transaction::{MyTx, PgTx, SqTx};
 
 pub use config::{PoolParams, SqlxConfig};
 #[cfg(feature = "health")]
@@ -456,43 +453,5 @@ impl SqlExecutor for SqlxClient {
     fn dialect(&self) -> Dialect {
         // 注意是 `self.pool.dialect()`，写成 `self.dialect()` 会无限递归。
         self.pool.dialect()
-    }
-}
-
-#[async_trait]
-impl RdbmsClient for SqlxClient {
-    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
-        let dialect = self.pool.dialect();
-        // 超时值随事务一起带走：`transaction()` 之后调用方手里只有 `Transaction`，
-        // 事务 wrapper 是唯一知道该用什么超时的地方。
-        let query_timeout = self.query_timeout;
-        let inner: Box<dyn TransactionInner> = match &self.pool {
-            Pool::Pg(p) => Box::new(PgTx {
-                inner: Some(p.begin().await.map_err(db_err)?),
-                dialect,
-                query_timeout,
-            }),
-            Pool::My(p) => Box::new(MyTx {
-                inner: Some(p.begin().await.map_err(db_err)?),
-                dialect,
-                query_timeout,
-            }),
-            Pool::Sq(p) => Box::new(SqTx {
-                inner: Some(p.begin().await.map_err(db_err)?),
-                dialect,
-                query_timeout,
-            }),
-        };
-        Ok(Transaction::with_inner(inner))
-    }
-
-    /// 只对 MySQL 探测（其余方言返回 `None`）：版本决定用哪条 `SHOW` 语句。
-    async fn replica_lag(&self) -> Option<Duration> {
-        if self.pool.dialect() != Dialect::MySql {
-            return None;
-        }
-        let version = self.mysql_version().await?;
-        let rows = self.query(mysql_replica_status_sql(&version)).await.ok()?;
-        parse_mysql_replica_lag(&rows)
     }
 }

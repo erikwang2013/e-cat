@@ -229,6 +229,13 @@ impl SqlExecutor for RawOnlyClient {
     }
 }
 
+#[async_trait]
+impl RdbmsClient for RawOnlyClient {
+    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+        Ok(Transaction::new())
+    }
+}
+
 #[tokio::test]
 async fn parameterized_ops_default_to_not_supported_error() {
     let client = RawOnlyClient;
@@ -308,4 +315,11 @@ fn timeout_error_renders_message() {
     let err = RdbmsError::Timeout("query exceeded 30s".into());
     assert!(err.to_string().contains("timeout"));
     assert!(err.to_string().contains("30s"));
+}
+
+/// 默认 `pool_size` 是 `None`：不覆写的后端按「池大小未知」处理，
+/// 预算校验不会把它当成 0 连接。
+#[test]
+fn pool_size_default_is_none() {
+    assert_eq!(RawOnlyClient.pool_size(), None);
 }
