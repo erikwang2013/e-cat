@@ -24,6 +24,11 @@ const TS_FORMAT: &[time::format_description::FormatItem<'static>] =
 const B64: base64::engine::general_purpose::GeneralPurpose =
     base64::engine::general_purpose::STANDARD;
 
+/// 陈旧 `Processing` 回收后的退避。handler 崩溃/被杀时没机会调用 `mark_failed`，
+/// 没有 `retry_after` 可传，故由存储层固定退避；`attempts` 仍每次回收都累加，
+/// 毒消息会逐步逼近 relay 的重试上限，而不是以 `attempts = 0` 无限 crash-loop。
+const STALE_BACKOFF: Duration = Duration::seconds(30);
+
 impl From<RdbmsError> for ShardError {
     fn from(e: RdbmsError) -> Self {
         Self::Database(e.to_string())
@@ -158,9 +163,10 @@ impl OutboxStore {
 
     /// 领取最多 `limit` 条到期记录并写入租约，返回的记录状态为 `Processing`。
     ///
-    /// 先在事务里回收超过 `lease` 的 `Processing`（置回 `Pending`），再选取
-    /// `next_attempt_at <= now` 的 `Pending`/`Failed` 行，最后按主键集合更新为
-    /// `Processing`。SQLite 不支持 `UPDATE ... LIMIT`，故用主键集合更新。
+    /// 先在事务里回收超过 `lease` 的 `Processing`：`attempts + 1`、置回 `Pending`
+    /// 并按 `STALE_BACKOFF` 退避。再选取 `next_attempt_at <= now` 的
+    /// `Pending`/`Failed` 行，最后按主键集合更新为 `Processing`。
+    /// SQLite 不支持 `UPDATE ... LIMIT`，故用主键集合更新。
     ///
     /// PG/MySQL 的选取带 `FOR UPDATE SKIP LOCKED`，并发 claim 不会双领；
     /// SQLite 由事务的写锁（回收 UPDATE 先行）与单写者串行化。
@@ -179,13 +185,23 @@ impl OutboxStore {
             .ok_or_else(|| ShardError::Config("outbox lease out of range".into()))?;
         let tx = self.db.transaction().await?;
 
+        let stale_next = now
+            .checked_add(STALE_BACKOFF)
+            .ok_or_else(|| ShardError::Config("outbox stale backoff out of range".into()))?;
         let reclaim = format!(
-            "UPDATE {TABLE} SET status = 'pending', claimed_at = NULL \
-             WHERE status = 'processing' AND claimed_at < {}",
+            "UPDATE {TABLE} SET status = 'pending', claimed_at = NULL, attempts = attempts + 1, \
+             next_attempt_at = {} WHERE status = 'processing' AND claimed_at < {}",
             placeholder(dialect, 1),
+            placeholder(dialect, 2),
         );
-        tx.execute_with(&reclaim, &[Value::String(fmt_ts(cutoff)?)])
-            .await?;
+        tx.execute_with(
+            &reclaim,
+            &[
+                Value::String(fmt_ts(stale_next)?),
+                Value::String(fmt_ts(cutoff)?),
+            ],
+        )
+        .await?;
 
         let locks = match dialect {
             Dialect::Postgres | Dialect::MySql => " FOR UPDATE SKIP LOCKED",
@@ -258,7 +274,8 @@ impl OutboxStore {
     }
 
     /// 记录一次失败：`attempts + 1`，`next_attempt_at = now + retry_after`。
-    /// 到点后 `claim` 会重新领取 `Failed` 行（退避重试）。
+    /// 只从 `Processing` 迁移——迟到的 `mark_failed`（如租约已过期、行已被回收或
+    /// 已完成）是 no-op，不能把 `Done` 翻回 `Failed` 重新入队。
     pub async fn mark_failed(&self, id: &str, retry_after: Duration) -> Result<(), ShardError> {
         let dialect = self.dialect()?;
         let next = OffsetDateTime::now_utc()
@@ -266,7 +283,8 @@ impl OutboxStore {
             .ok_or_else(|| ShardError::Config("outbox retry_after out of range".into()))?;
         let sql = format!(
             "UPDATE {TABLE} SET status = 'failed', attempts = attempts + 1, \
-             next_attempt_at = {}, claimed_at = NULL WHERE id = {}",
+             next_attempt_at = {}, claimed_at = NULL \
+             WHERE id = {} AND status = 'processing'",
             placeholder(dialect, 1),
             placeholder(dialect, 2),
         );

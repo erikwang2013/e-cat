@@ -153,7 +153,8 @@ async fn outbox_stale_processing_is_reclaimed() {
             .is_empty()
     );
 
-    // 把 claimed_at 拨老两小时（不 sleep），超过租约后可以再次领取。
+    // 把 claimed_at 拨老两小时（不 sleep），超过租约后回收。handler 崩溃时走不到
+    // mark_failed，回收必须自己累加 attempts 并退避，不能立刻原样重投。
     let old = OffsetDateTime::now_utc() - Duration::hours(2);
     store
         .db
@@ -166,9 +167,53 @@ async fn outbox_stale_processing_is_reclaimed() {
         )
         .await
         .unwrap();
+    assert!(
+        store
+            .claim(10, Duration::hours(1))
+            .await
+            .unwrap()
+            .is_empty(),
+        "回收后应在退避窗口内，不能立刻重投"
+    );
     assert_eq!(
-        ids(&store.claim(10, Duration::hours(1)).await.unwrap()),
-        ["a"]
+        status_and_attempts(&store, "a").await,
+        ("pending".to_owned(), 1)
+    );
+
+    // 退避到期后可再次领取，且 attempts 保留。
+    set_next_attempt(
+        &store,
+        "a",
+        OffsetDateTime::now_utc() - Duration::seconds(1),
+    )
+    .await;
+    let reclaimed = store.claim(10, Duration::hours(1)).await.unwrap();
+    assert_eq!(ids(&reclaimed), ["a"]);
+    assert_eq!(reclaimed[0].attempts, 1);
+
+    // 第二次崩溃：attempts 随每次回收继续增长（毒消息不会停在 0）。
+    let old = OffsetDateTime::now_utc() - Duration::hours(2);
+    store
+        .db
+        .execute_with(
+            "UPDATE ecat_outbox SET claimed_at = ? WHERE id = ?",
+            &[
+                serde_json::json!(fmt_ts(old).unwrap()),
+                serde_json::json!("a"),
+            ],
+        )
+        .await
+        .unwrap();
+    assert!(
+        store
+            .claim(10, Duration::hours(1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        status_and_attempts(&store, "a").await,
+        ("pending".to_owned(), 2)
     );
 }
 
@@ -223,9 +268,24 @@ async fn outbox_mark_failed_increments_attempts_and_sets_next_attempt() {
             .is_empty()
     );
 
-    // 再失败一次 attempts 继续累加，且退避时间可被拨到过去以验证重试可领取。
+    // mark_failed 只对 Processing 生效：先重新领取，再失败一次才能累加 attempts。
+    set_next_attempt(
+        &store,
+        "a",
+        OffsetDateTime::now_utc() - Duration::seconds(1),
+    )
+    .await;
+    let retried = store.claim(10, Duration::minutes(1)).await.unwrap();
+    assert_eq!(ids(&retried), ["a"]);
+    assert_eq!(retried[0].attempts, 1);
+
     store.mark_failed("a", Duration::minutes(5)).await.unwrap();
-    assert_eq!(status_and_attempts(&store, "a").await.1, 2);
+    assert_eq!(
+        status_and_attempts(&store, "a").await,
+        ("failed".to_owned(), 2)
+    );
+
+    // 再到期后可领取，attempts 保留。
     set_next_attempt(
         &store,
         "a",
@@ -236,4 +296,27 @@ async fn outbox_mark_failed_increments_attempts_and_sets_next_attempt() {
     assert_eq!(ids(&retried), ["a"]);
     assert_eq!(retried[0].attempts, 2);
     assert_eq!(retried[0].status, OutboxStatus::Processing);
+}
+
+#[tokio::test]
+async fn outbox_mark_failed_does_not_revive_done() {
+    let store = fresh_store().await;
+    store.append(&record("a")).await.unwrap();
+    store.claim(10, Duration::minutes(1)).await.unwrap();
+    store.mark_done("a").await.unwrap();
+
+    // 迟到的失败上报（租约过期后才回来）不能把已完成的工作翻回 Failed 重新入队。
+    store.mark_failed("a", Duration::ZERO).await.unwrap();
+    assert_eq!(
+        status_and_attempts(&store, "a").await,
+        ("done".to_owned(), 0)
+    );
+    assert!(
+        store
+            .claim(10, Duration::minutes(1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(store.pending_count().await.unwrap(), 0);
 }
