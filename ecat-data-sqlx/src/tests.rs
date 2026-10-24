@@ -409,6 +409,21 @@ async fn warm_up_creates_min_connections() {
     );
 }
 
+/// 预算校验走 trait 方法：必须报告**配置上限**（7），而不是已建立连接数
+/// （`connect()` 后只有 1 条）。用 `&dyn` 调用绕开同名的固有方法
+/// [`SqlxClient::pool_size`]（那是当前已建立数，供 metrics/测试用）。
+#[tokio::test]
+async fn trait_pool_size_reports_configured_max() {
+    let params = PoolParams {
+        max_connections: 7,
+        ..PoolParams::default()
+    };
+    let db = SqlxClient::connect_with_params("sqlite::memory:", &params)
+        .await
+        .unwrap();
+    assert_eq!((&db as &dyn RdbmsClient).pool_size(), Some(7));
+}
+
 /// `min > max` 时 `warm_up()` 不能卡到 acquire_timeout：配置层把 min 夹到 max
 /// （夹取本身在 config.rs 的用例里钉住，这里钉端到端行为；`acquire_timeout` 特意
 /// 调到 1 秒，回归时会**快速失败**而不是默默等满 30 秒）。

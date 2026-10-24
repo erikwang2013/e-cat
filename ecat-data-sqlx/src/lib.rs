@@ -19,7 +19,9 @@ mod transaction;
 
 use async_trait::async_trait;
 use cell::{mysql_rows_to_result, pg_rows_to_result, sqlite_rows_to_result};
-use ecat_data::{BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, run_with_timeout};
+use ecat_data::{
+    BackendKind, Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, run_with_timeout,
+};
 use std::time::Duration;
 
 pub use config::{PoolParams, SqlxConfig};
@@ -206,6 +208,9 @@ impl SqlxClient {
     }
 
     /// 池内已建立的连接总数（供 metrics 与测试）。
+    ///
+    /// 与 trait 方法 [`RdbmsClient::pool_size`]（配置的最大连接数）同名：
+    /// 具体类型上固有方法优先，预算校验请经由 `&dyn RdbmsClient` 调用。
     pub fn pool_size(&self) -> u32 {
         self.pool.size()
     }

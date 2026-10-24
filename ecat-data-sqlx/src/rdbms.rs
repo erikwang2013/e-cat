@@ -48,8 +48,9 @@ impl RdbmsClient for SqlxClient {
         parse_mysql_replica_lag(&rows)
     }
 
-    /// 池内当前已建立的连接数（sqlx 的 `Pool::size()`）。
+    /// 配置的最大连接数，不是当前已建立数：预算校验要在建池后立即拿到上限
+    /// （新建池的已建立连接数接近 0，用它校验等于永远通过）。
     fn pool_size(&self) -> Option<u32> {
-        Some(self.pool.size())
+        Some(self.pool.max_connections())
     }
 }

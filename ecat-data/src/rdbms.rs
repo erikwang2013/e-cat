@@ -279,9 +279,9 @@ pub trait RdbmsClient: SqlExecutor {
         None
     }
 
-    /// 该客户端占用的连接池大小；`None` = 后端不报告（默认）。
-    /// 预算校验（`ecat-data-sharding` 的 `validate_pool_budget`）对
-    /// `None` 按「未知」跳过，不会当成 0 连接。
+    /// 该客户端**配置的最大**连接数（预算校验用）；`None` = 后端不报告
+    /// （默认）。预算校验（`ecat-data-sharding` 的 `validate_pool_budget`）
+    /// 对 `None` 按「未知」跳过，不会当成 0 连接。
     fn pool_size(&self) -> Option<u32> {
         None
     }

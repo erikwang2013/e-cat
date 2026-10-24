@@ -70,6 +70,16 @@ impl Pool {
         }
     }
 
+    /// 池配置的最大连接数（预算校验用）。注意 [`Pool::size`] 是当前已建立数，
+    /// 空闲池的 `size()` 不是上限。
+    pub fn max_connections(&self) -> u32 {
+        match self {
+            Self::Pg(p) => p.options().get_max_connections(),
+            Self::My(p) => p.options().get_max_connections(),
+            Self::Sq(p) => p.options().get_max_connections(),
+        }
+    }
+
     /// 池内空闲连接数。
     pub fn idle(&self) -> u32 {
         match self {
