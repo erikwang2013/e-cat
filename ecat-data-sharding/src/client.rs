@@ -24,6 +24,7 @@ impl KeyedClient {
     }
 
     /// 底层客户端；双写用它判断两侧是否同一物理目标。
+    #[cfg(feature = "migrate")]
     pub(crate) fn client(&self) -> &Arc<dyn RdbmsClient> {
         &self.client
     }
