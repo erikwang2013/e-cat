@@ -3,11 +3,13 @@
 //!
 //! # 能力边界
 //!
-//! 本 client 用 `MultiplexedConnection`（一条 TCP 服务所有并发），**不是连接池** ——
-//! 对缓存负载这比池更优：连接数与往返都更低。代价是**有状态命令序列不能用它**：
-//! `MULTI`/`EXEC` 事务、`WATCH`、`SUBSCRIBE`、`BLOCKING` 命令需要独占连接，
-//! 多路复用下会与其它命令交错。需要时用 `redis::Client::get_async_connection()`
-//! 另开一条专用连接。
+//! 旧构造器（`connect` / `from_config` / `from_connection`）仍用单条
+//! `MultiplexedConnection`。需要 cache 与 lock 共享连接时用 [`RedisPool`]
+//! （deadpool，`from_pool`）；池只在首次取连接时建连。
+//!
+//! 多路复用连接的代价是**有状态命令序列不能用它**：`MULTI`/`EXEC` 事务、`WATCH`、
+//! `SUBSCRIBE`、`BLOCKING` 命令需要独占连接，多路复用下会与其它命令交错。
+//! 需要时用 `redis::Client::get_async_connection()` 另开一条专用连接。
 //!
 //! `Cache` 六个方法的**出站调用**都经过 `guarded`（熔断在外、超时在内，见批次 5a「出入 4」）；
 //! 纯本地分支不走外壳 —— `multi_get` 空 keys 的提前返回就是如此，理由见
@@ -32,6 +34,9 @@ use uuid::Uuid;
 mod metrics;
 #[cfg(feature = "metrics")]
 pub use metrics::register_outbound_metrics;
+mod redis_pool;
+use redis_pool::{RedisBackend, RedisConnGuard};
+pub use redis_pool::{RedisPool, RedisPoolConfig};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisConfig {
@@ -73,7 +78,7 @@ fn build_url(cfg: &RedisConfig) -> String {
 }
 
 pub struct RedisCache {
-    conn: MultiplexedConnection,
+    backend: RedisBackend,
     query_timeout: Option<Duration>,
     /// 逐 client 一个 —— 熔断器要挂在**后端实例**上，不是进程上。
     breaker: Arc<Breaker>,
@@ -88,7 +93,7 @@ impl RedisCache {
             .await
             .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
         Ok(Self {
-            conn,
+            backend: RedisBackend::Single(conn),
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
         })
@@ -107,7 +112,7 @@ impl RedisCache {
             .await
             .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis connect: {e}")))?;
         Ok(Self {
-            conn,
+            backend: RedisBackend::Single(conn),
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
         })
@@ -131,7 +136,7 @@ impl RedisCache {
         #[cfg(feature = "metrics")]
         crate::register_outbound_metrics(Arc::clone(&breaker));
         Ok(Self {
-            conn: client.conn,
+            backend: client.backend,
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker,
         })
@@ -139,9 +144,36 @@ impl RedisCache {
 
     pub fn from_connection(conn: MultiplexedConnection) -> Self {
         Self {
-            conn,
+            backend: RedisBackend::Single(conn),
             query_timeout: query_timeout(None),
             breaker: Arc::new(Breaker::new(BreakerConfig::default())),
+        }
+    }
+
+    /// 共享池：与同一 `RedisPool` 派生的 lock 复用连接。
+    pub fn from_pool(pool: RedisPool) -> Self {
+        let breaker = Arc::new(Breaker::new(BreakerConfig::default()));
+        #[cfg(feature = "metrics")]
+        crate::register_outbound_metrics(Arc::clone(&breaker));
+        Self {
+            query_timeout: pool.query_timeout(),
+            backend: RedisBackend::Pooled(pool),
+            breaker,
+        }
+    }
+
+    async fn conn(&self) -> Result<RedisConnGuard, Error> {
+        self.backend
+            .conn()
+            .await
+            .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis acquire: {e}")))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pool_for_test(&self) -> Option<&RedisPool> {
+        match &self.backend {
+            RedisBackend::Pooled(pool) => Some(pool),
+            RedisBackend::Single(_) => None,
         }
     }
 
@@ -177,7 +209,7 @@ impl RedisCache {
 impl Cache for RedisCache {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             conn.get(key)
                 .await
                 .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis get: {e}")))
@@ -187,7 +219,7 @@ impl Cache for RedisCache {
 
     async fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), Error> {
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             let millis = ttl.as_millis();
             if millis > 0 {
                 let ms = if millis > u64::MAX as u128 {
@@ -210,7 +242,7 @@ impl Cache for RedisCache {
 
     async fn delete(&self, key: &str) -> Result<(), Error> {
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             conn.del(key)
                 .await
                 .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis del: {e}")))
@@ -220,7 +252,7 @@ impl Cache for RedisCache {
 
     async fn increment(&self, key: &str, delta: i64) -> Result<i64, Error> {
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             conn.incr(key, delta)
                 .await
                 .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis incr: {e}")))
@@ -230,7 +262,7 @@ impl Cache for RedisCache {
 
     async fn ttl(&self, key: &str) -> Result<Option<Duration>, Error> {
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             let ttl: i64 = conn
                 .ttl(key)
                 .await
@@ -248,7 +280,7 @@ impl Cache for RedisCache {
             return Ok(Vec::new());
         }
         self.guarded(async {
-            let mut conn = self.conn.clone();
+            let mut conn = self.conn().await?;
             conn.mget(keys)
                 .await
                 .map_err(|e| Error::new(ErrorCode::Internal, "redis", format!("redis mget: {e}")))
@@ -303,7 +335,7 @@ fn ttl_millis(ttl: Duration) -> u64 {
 
 /// Distributed lock backed by Redis `SET NX PX`.
 pub struct RedisLock {
-    conn: MultiplexedConnection,
+    backend: RedisBackend,
     /// 单次命令超时；`None` = 禁用（配置 `query_timeout_secs: 0`）。
     query_timeout: Option<Duration>,
 }
@@ -317,7 +349,7 @@ impl RedisLock {
             .await
             .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
         Ok(Self {
-            conn,
+            backend: RedisBackend::Single(conn),
             query_timeout: query_timeout(None),
         })
     }
@@ -337,7 +369,7 @@ impl RedisLock {
                 .await
                 .map_err(|e| LockError::Other(format!("redis connect: {e}")))?;
             Self {
-                conn,
+                backend: RedisBackend::Single(conn),
                 query_timeout: query_timeout(None),
             }
         } else {
@@ -349,8 +381,31 @@ impl RedisLock {
 
     pub fn from_connection(conn: MultiplexedConnection) -> Self {
         Self {
-            conn,
+            backend: RedisBackend::Single(conn),
             query_timeout: query_timeout(None),
+        }
+    }
+
+    /// 共享池：与同一 `RedisPool` 派生的 cache 复用连接。
+    pub fn from_pool(pool: RedisPool) -> Self {
+        Self {
+            query_timeout: pool.query_timeout(),
+            backend: RedisBackend::Pooled(pool),
+        }
+    }
+
+    async fn conn(&self) -> Result<RedisConnGuard, LockError> {
+        self.backend
+            .conn()
+            .await
+            .map_err(|e| LockError::Other(format!("redis acquire: {e}")))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pool_for_test(&self) -> Option<&RedisPool> {
+        match &self.backend {
+            RedisBackend::Pooled(pool) => Some(pool),
+            RedisBackend::Single(_) => None,
         }
     }
 
@@ -375,7 +430,7 @@ impl FencedLock for RedisLock {
         key: &str,
         ttl: Duration,
     ) -> Result<Option<FenceGuard>, LockError> {
-        let mut conn = self.conn.clone();
+        let mut conn = self.conn().await?;
         let token = Uuid::new_v4().to_string();
         let px = ttl_millis(ttl);
         let lock_key = key.to_owned();
@@ -386,7 +441,7 @@ impl FencedLock for RedisLock {
                 .key(&fkey)
                 .arg(&token)
                 .arg(px)
-                .invoke_async(&mut conn)
+                .invoke_async(&mut *conn)
                 .await
                 .map_err(|e| LockError::Other(format!("redis acquire_fenced: {e}")))?;
             if fence == 0 {
@@ -399,7 +454,7 @@ impl FencedLock for RedisLock {
     }
 
     async fn validate_fence(&self, key: &str, fence: u64) -> Result<bool, LockError> {
-        let mut conn = self.conn.clone();
+        let mut conn = self.conn().await?;
         let fkey = fence_key(key);
         self.with_timeout("validate_fence", async move {
             let current: Option<u64> = conn
@@ -415,7 +470,7 @@ impl FencedLock for RedisLock {
 #[async_trait]
 impl DistributedLock for RedisLock {
     async fn acquire(&self, key: &str, ttl: Duration) -> Result<Option<String>, LockError> {
-        let mut conn = self.conn.clone();
+        let mut conn = self.conn().await?;
         let token = Uuid::new_v4().to_string();
         // 与 Cache::set 保持一致：ttl 溢出时钳制为 u64::MAX
         let px = ttl_millis(ttl);
@@ -440,7 +495,7 @@ impl DistributedLock for RedisLock {
     }
 
     async fn release(&self, key: &str, token: &str) -> Result<(), LockError> {
-        let mut conn = self.conn.clone();
+        let mut conn = self.conn().await?;
         // Compare-and-delete: only release when the token still matches the holder.
         let script = r#"
             if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -453,7 +508,7 @@ impl DistributedLock for RedisLock {
             let (): () = redis::Script::new(script)
                 .key(key)
                 .arg(token)
-                .invoke_async(&mut conn)
+                .invoke_async(&mut *conn)
                 .await
                 .map_err(|e| LockError::Other(format!("redis release: {e}")))?;
             Ok(())
@@ -462,7 +517,7 @@ impl DistributedLock for RedisLock {
     }
 
     async fn renew(&self, key: &str, token: &str, ttl: Duration) -> Result<(), LockError> {
-        let mut conn = self.conn.clone();
+        let mut conn = self.conn().await?;
         let millis = ttl.as_millis();
         // 与 acquire 一致：ttl 溢出时钳制为 u64::MAX
         let px = if millis > u64::MAX as u128 {
@@ -476,7 +531,7 @@ impl DistributedLock for RedisLock {
                 .key(key)
                 .arg(token)
                 .arg(px)
-                .invoke_async(&mut conn)
+                .invoke_async(&mut *conn)
                 .await
                 .map_err(|e| LockError::Other(format!("redis renew: {e}")))?;
             if renewed == 0 {

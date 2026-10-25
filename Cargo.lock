@@ -1631,6 +1631,7 @@ name = "ecat-data-redis"
 version = "7.1.1"
 dependencies = [
  "async-trait",
+ "deadpool",
  "ecat-circuit-breaker",
  "ecat-data",
  "ecat-errors",

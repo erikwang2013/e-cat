@@ -14,6 +14,7 @@ ecat-data = { version = "7.1.1", path = "../ecat-data" }
 ecat-errors.workspace = true
 ecat-lock = { version = "7.1.1", path = "../ecat-lock" }
 async-trait.workspace = true
+deadpool = { workspace = true, features = ["rt_tokio_1"] }
 serde.workspace = true
 serde_json.workspace = true
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
