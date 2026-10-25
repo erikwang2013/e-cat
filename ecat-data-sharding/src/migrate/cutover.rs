@@ -10,6 +10,8 @@ impl ShardMigrator {
         router: &ShardRouter,
         new_catalog: ShardCatalog,
     ) -> Result<(), ShardError> {
+        // 二进制列无法安全搬移，切流前再挡一次（防止绕过 backfill/verify 的旧状态）。
+        self.preflight_schema().await?;
         for mv in &self.plan.moves {
             let job = self.load_job(&move_id(mv)).await?.ok_or_else(|| {
                 ShardError::Config(format!(

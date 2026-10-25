@@ -8,6 +8,8 @@ use super::*;
 impl ShardMigrator {
     /// 校验所有搬移；任一组不一致即报错且不把该组标为 `verified`。
     pub async fn verify(&self) -> Result<(), ShardError> {
+        // 旧版本可能已按 base64 文本回填过；先拒绝有二进制列的源表。
+        self.preflight_schema().await?;
         let mut groups: BTreeMap<(String, String), Vec<&ShardMove>> = BTreeMap::new();
         for mv in &self.plan.moves {
             groups

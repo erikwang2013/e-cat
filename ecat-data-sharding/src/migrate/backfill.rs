@@ -5,6 +5,8 @@ use super::*;
 impl ShardMigrator {
     /// 回填全部 move；每批落库游标与累计行数/checksum，可断点续跑。
     pub async fn backfill(&self) -> Result<MigrationReport, ShardError> {
+        // 先于任何复制：BLOB/BYTEA 经 Row 会变成 base64 文本。
+        self.preflight_schema().await?;
         self.ensure_schema().await?;
         let guard = self.acquire_fence().await?;
         let mut report = MigrationReport {

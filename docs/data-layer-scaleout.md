@@ -84,9 +84,23 @@ migrator.verify().await?;     // 源/目标行数 + XOR checksum；不一致不�
 migrator.cutover(&router, new_catalog.clone()).await?;
 // 出问题时：
 migrator.rollback(&router).await?; // 只切回旧拓扑，旧分片保留
+
+// hash 重分片期间由调用方双写（切流前：旧为主、新为镜像）：
+let dual = DualWrite::before_cutover(&old_router, &new_router);
+dual.for_key("orders", &json!(id))?
+    .execute_with(
+        "UPDATE orders SET status = ? WHERE id = ?",
+        &[json!("paid"), json!(id)],
+    )
+    .await?;
 ```
 
 - hash 变更按全表复制并逐行按新拓扑路由；range 变更按区间搬移。
+- 回填/校验/切流前会检查源表结构（MySQL/PostgreSQL 用 `information_schema`，SQLite 用
+  `pragma_table_info`）；BLOB/BYTEA 等二进制列直接报错，绝不把 base64 文本写进目标表。
+- hash 重分片期间用 `DualWrite`：切流前 `before_cutover(&old_router, &new_router)`（旧为主、
+  新为镜像），切流后 `after_cutover(&new_router, &old_router)`（新为主、旧为镜像，便于
+  `rollback`）。两侧同名的分片只写一次；镜像写失败返回 `dual-write mirror failed` 错误。
 - 状态表 `shard_migration_jobs` 记录 phase/cursor/rows/checksum；迁移可用 `FencedLock` 保证单执行。
 - 回滚后再次迁移会重新进入回填/校验流程。
 - B 阶段直接使用 ShardingSphere-Scaling；本执行器覆盖 A 阶段。
@@ -235,8 +249,10 @@ App::builder()
 
 ## 5. 已知限制
 
-- 迁移执行器只搬移标量列；BLOB/BYTEA 会按 base64 文本复制而损坏。
-- hash 变更是“回填 + 调用方双写”的组合，执行器本身不提供双写钩子。
+- 迁移执行器只搬移标量列：回填/校验/切流前发现 BLOB/BYTEA 等二进制列即拒绝。SQLite
+  只能按声明类型判断，声明为非 BLOB affinity 的列里若实际存了 blob 值仍可能漏检。
+- `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内（镜像失败会报错，调用方需重试），
+  `transaction()` 只在主拓扑执行，跨库事务内的双写需调用方自行拆分。
 - `rollback` 只恢复路由并保留旧分片，不做反向数据搬移。
 - 2PC 协调器数据库单点；恢复未用 participant `xa_recover` 交叉核对。
 - `ecat-tier` 冷后端通过环境变量配置；当前没有 ClickHouse 认证环境变量。

@@ -87,10 +87,26 @@ migrator.verify().await?;     // source/target rows + XOR checksum; mismatch blo
 migrator.cutover(&router, new_catalog.clone()).await?;
 // if needed:
 migrator.rollback(&router).await?; // switch routing back; old shards are retained
+
+// caller-side dual write during hash re-sharding (before cutover: old primary, new mirror):
+let dual = DualWrite::before_cutover(&old_router, &new_router);
+dual.for_key("orders", &json!(id))?
+    .execute_with(
+        "UPDATE orders SET status = ? WHERE id = ?",
+        &[json!("paid"), json!(id)],
+    )
+    .await?;
 ```
 
 - Hash changes copy the whole table and route each row through the new topology; range
   changes move key intervals.
+- Before backfill/verify/cutover the executor inspects source columns (`information_schema`
+  on MySQL/PostgreSQL, `pragma_table_info` on SQLite). A BLOB/BYTEA column fails the run
+  instead of writing base64 text into the target.
+- For hash re-sharding use `DualWrite`: `before_cutover(&old_router, &new_router)` (old
+  primary, new mirror) before cutover, `after_cutover(&new_router, &old_router)` afterwards
+  (new primary, old mirror, so `rollback` stays usable). A shard name present in both
+  topologies is written once; mirror failures return a `dual-write mirror failed` error.
 - `shard_migration_jobs` stores phase/cursor/rows/checksum; `FencedLock` protects a single
   executor.
 - Re-running after rollback re-enters backfill/verify instead of getting stuck.
@@ -252,9 +268,13 @@ owns its own run budget.
 
 ## 5. Known limitations
 
-- The migration executor moves scalar columns only; BLOB/BYTEA would be copied as base64 text
-  and corrupted.
-- Hash re-sharding is “backfill + caller-side dual write”; the executor has no dual-write hook.
+- The migration executor moves scalar columns only: backfill/verify/cutover reject BLOB/BYTEA
+  sources. SQLite is checked by declared type, so a blob value stored in a column with
+  non-BLOB affinity can still slip through.
+- `DualWrite` mirrors single write statements only; primary and mirror writes are not in the
+  same transaction (mirror failures are reported and must be retried), and `transaction()`
+  runs on the primary topology alone, so callers needing transactional dual writes must
+  split them.
 - `rollback` only restores routing and keeps old shards; it does not copy data back.
 - The 2PC coordinator DB is a single point; recovery does not cross-check participant
   `xa_recover`.

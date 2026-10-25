@@ -71,16 +71,27 @@ impl ShardRouter {
 
     /// 返回绑定到 `table` 上 `key` 命中分片的客户端。
     pub fn for_key(&self, table: &str, key: &Value) -> Result<KeyedClient, ShardError> {
-        let shard_name = {
+        self.for_key_with_shard(table, key)
+            .map(|(_, client)| client)
+    }
+
+    /// 同 [`ShardRouter::for_key`]，并返回命中的分片名（双写时比较两侧拓扑）。
+    pub(crate) fn for_key_with_shard(
+        &self,
+        table: &str,
+        key: &Value,
+    ) -> Result<(String, KeyedClient), ShardError> {
+        let (shard_name, client) = {
             let catalog = self.read_catalog();
             // `shard_for` 已按 `shards.len()` 校验过算法，下标必在界内。
             let index = catalog.shard_for(table, key)?;
-            catalog.table(table)?.shards[index].name.clone()
+            let shard_name = catalog.table(table)?.shards[index].name.clone();
+            let client = self.clients.get(&shard_name).ok_or_else(|| {
+                // 构造/热更新时已保证端点有客户端；这里只防目录与客户端表被拆开改坏。
+                ShardError::Config(format!("shard `{shard_name}` has no client"))
+            })?;
+            (shard_name, Arc::clone(client))
         };
-        let client = self.clients.get(&shard_name).ok_or_else(|| {
-            // 构造/热更新时已保证端点有客户端；这里只防目录与客户端表被拆开改坏。
-            ShardError::Config(format!("shard `{shard_name}` has no client"))
-        })?;
-        Ok(KeyedClient::new(Arc::clone(client), table.to_owned()))
+        Ok((shard_name, KeyedClient::new(client, table.to_owned())))
     }
 }

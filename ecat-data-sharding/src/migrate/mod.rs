@@ -18,12 +18,15 @@ use crate::catalog::{ShardCatalog, ShardError, ShardTable};
 
 mod backfill;
 mod cutover;
+mod dual_write;
 mod plan;
+mod schema;
 mod verify;
 
 #[cfg(test)]
 mod tests;
 
+pub use dual_write::{DualWrite, DualWriteClient};
 pub use plan::{KeyRange, ShardMove, ShardPlan};
 
 const JOB_TABLE: &str = "shard_migration_jobs";

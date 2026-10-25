@@ -25,7 +25,9 @@ pub use config::{ShardingConfig, ShardingMode};
 pub use health::{OutboxHealthCheck, ShardHealthCheck};
 pub use id::Snowflake;
 #[cfg(feature = "migrate")]
-pub use migrate::{KeyRange, MigrationReport, ShardMigrator, ShardMove, ShardPlan};
+pub use migrate::{
+    DualWrite, DualWriteClient, KeyRange, MigrationReport, ShardMigrator, ShardMove, ShardPlan,
+};
 pub use outbox::{
     OutboxHandler, OutboxRecord, OutboxRelay, OutboxStatus, OutboxStore, RelayReport,
 };
