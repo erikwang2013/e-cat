@@ -57,6 +57,7 @@ members = [
     "ecat-tls",
     "ecat-scheduler",
     "ecat-saga",
+    "ecat-data-2pc",
     "ecat-orm",
     "ecat-orm-derive",
     "examples/helloworld",

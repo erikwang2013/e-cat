@@ -1,0 +1,33 @@
+[package]
+name = "ecat-data-2pc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Opt-in XA two-phase commit coordinator for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = ["sqlx"]
+# 固定连接的 sqlx XA 参与者（MySQL/PostgreSQL）。
+sqlx = ["dep:ecat-data-sqlx", "dep:sqlx"]
+
+[dependencies]
+async-trait.workspace = true
+ecat-data.workspace = true
+ecat-lock = { version = "7.1.1", path = "../ecat-lock" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+ecat-data-sqlx = { workspace = true, optional = true }
+sqlx = { version = "0.8", optional = true, default-features = false, features = ["runtime-tokio"] }
+
+[dev-dependencies]
+ecat-data-sqlx.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

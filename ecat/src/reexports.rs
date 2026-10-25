@@ -52,6 +52,9 @@ pub use ecat_data_sharding as sharding;
 #[cfg(feature = "saga")]
 pub use ecat_saga as saga;
 
+#[cfg(feature = "2pc")]
+pub use ecat_data_2pc as data_2pc;
+
 #[cfg(any(feature = "redis", feature = "mssql"))]
 pub mod data {
     #[cfg(feature = "redis")]

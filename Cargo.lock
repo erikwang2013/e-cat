@@ -1281,6 +1281,7 @@ dependencies = [
  "ecat-circuit-breaker",
  "ecat-client",
  "ecat-config-remote",
+ "ecat-data-2pc",
  "ecat-data-mssql",
  "ecat-data-redis",
  "ecat-data-sharding",
@@ -1402,6 +1403,24 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ecat-data-2pc"
+version = "7.1.1"
+dependencies = [
+ "async-trait",
+ "ecat-data",
+ "ecat-data-sqlx",
+ "ecat-lock",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.19",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
