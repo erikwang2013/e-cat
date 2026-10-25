@@ -151,6 +151,7 @@ impl XaParticipant for SqlxXaParticipant {
     }
 
     async fn xa_recover(&self) -> Result<Vec<String>, XaError> {
+        // 走池连接：pool 必须固定到持有该分支的单台服务器（见 XaParticipant::xa_recover）。
         let mut guard = self.acquire().await?;
         match &mut guard {
             PoolGuard::My(conn) => {

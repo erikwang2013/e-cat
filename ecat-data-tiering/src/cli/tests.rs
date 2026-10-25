@@ -175,6 +175,27 @@ fn clickhouse_auth_requires_username_and_password_together() {
             .contains("ECAT_CLICKHOUSE_USERNAME"),
         "lone password must name the missing username: {missing_username}"
     );
+
+    // 空字符串视为未设置。
+    assert_eq!(
+        clickhouse_auth(Some(String::new()), Some(String::new())).unwrap(),
+        None,
+        "both empty must mean no auth"
+    );
+    let empty_username = clickhouse_auth(Some(String::new()), Some("secret".into())).unwrap_err();
+    assert!(
+        empty_username
+            .to_string()
+            .contains("ECAT_CLICKHOUSE_USERNAME"),
+        "empty username must name the missing username: {empty_username}"
+    );
+    let empty_password = clickhouse_auth(Some("user".into()), Some(String::new())).unwrap_err();
+    assert!(
+        empty_password
+            .to_string()
+            .contains("ECAT_CLICKHOUSE_PASSWORD"),
+        "empty password must name the missing password: {empty_password}"
+    );
 }
 
 #[test]

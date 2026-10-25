@@ -20,6 +20,9 @@ struct FakeState {
     fail_prepare: bool,
     fail_commit: bool,
     fail_recover: bool,
+    /// START 后、PREPARE 前的分支（`XA RECOVER` 不可见）。
+    active: Vec<String>,
+    /// 已 PREPARE 的 in-doubt 分支（`XA RECOVER` 返回的集合）。
     in_doubt: Vec<String>,
 }
 
@@ -35,27 +38,31 @@ impl XaParticipant for FakeXa {
         if state.fail_start {
             return Err(XaError::State("start failed".into()));
         }
-        state.in_doubt.push(xid.to_owned());
+        state.active.push(xid.to_owned());
         Ok(())
     }
 
     async fn xa_end(&self, _xid: &str) -> Result<(), XaError> {
+        // END 只结束关联，分支仍是 active，直到 PREPARE 才进入 in-doubt。
         self.state.lock().await.log.push("end".into());
         Ok(())
     }
 
-    async fn xa_prepare(&self, _xid: &str) -> Result<(), XaError> {
+    async fn xa_prepare(&self, xid: &str) -> Result<(), XaError> {
         let mut state = self.state.lock().await;
         state.log.push("prepare".into());
         if state.fail_prepare {
             return Err(XaError::State("prepare failed".into()));
         }
+        state.active.retain(|known| known != xid);
+        state.in_doubt.push(xid.to_owned());
         Ok(())
     }
 
     async fn xa_commit(&self, xid: &str) -> Result<(), XaError> {
         let mut state = self.state.lock().await;
         state.log.push("commit".into());
+        state.active.retain(|known| known != xid);
         state.in_doubt.retain(|known| known != xid);
         if state.fail_commit {
             return Err(XaError::State("commit failed".into()));
@@ -66,6 +73,7 @@ impl XaParticipant for FakeXa {
     async fn xa_rollback(&self, xid: &str) -> Result<(), XaError> {
         let mut state = self.state.lock().await;
         state.log.push("rollback".into());
+        state.active.retain(|known| known != xid);
         state.in_doubt.retain(|known| known != xid);
         Ok(())
     }
@@ -346,14 +354,14 @@ async fn recovery_skips_participants_without_the_in_doubt_xid() {
 }
 
 #[tokio::test]
-async fn recovery_skips_rollback_participants_without_the_in_doubt_xid() {
+async fn recovery_skips_prepared_rollback_participants_without_the_in_doubt_xid() {
     let (p1, log1) = fake_with_in_doubt(&["tx-absent-rollback"]);
     let (p2, log2) = fake_with_in_doubt(&[]);
     let coordinator = TwoPhaseCoordinator::new(db().await, registry(p1, p2));
     seed_log(
         &coordinator,
         "tx-absent-rollback",
-        "rolling_back",
+        "prepared",
         Some("rollback"),
     )
     .await;
@@ -381,6 +389,51 @@ async fn recovery_skips_rollback_participants_without_the_in_doubt_xid() {
     );
     let row = coordinator
         .load_log("tx-absent-rollback")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.status, "rolled_back");
+}
+
+#[tokio::test]
+async fn rolling_back_replays_active_branch_not_listed_by_xa_recover() {
+    // END 但未 PREPARE 的分支仍是 active，XA RECOVER 看不到；不能因空列表而跳过。
+    let (p1, state1) = fake_with(FakeState {
+        active: vec!["tx-rolling-active".into()],
+        ..FakeState::default()
+    });
+    let coordinator = TwoPhaseCoordinator::new(db().await, registry_of(&[("p1", p1)]));
+    coordinator.ensure_schema().await.unwrap();
+    coordinator
+        .insert_log(
+            "tx-rolling-active",
+            "rolling_back",
+            &["p1"],
+            Some("rollback"),
+        )
+        .await
+        .unwrap();
+
+    let report = coordinator.recover().await.unwrap();
+    assert_eq!(
+        report,
+        RecoveryReport {
+            recovered: 1,
+            failed: 0
+        }
+    );
+    let entries = log(&state1).await;
+    assert!(entries.contains(&"end".to_owned()), "must END: {entries:?}");
+    assert!(
+        entries.contains(&"rollback".to_owned()),
+        "must ROLLBACK the active branch: {entries:?}"
+    );
+    assert!(
+        state1.lock().await.active.is_empty(),
+        "recovery must resolve the active branch"
+    );
+    let row = coordinator
+        .load_log("tx-rolling-active")
         .await
         .unwrap()
         .unwrap();

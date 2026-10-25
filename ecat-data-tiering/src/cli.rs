@@ -255,13 +255,15 @@ impl LiveDeps {
     }
 }
 
-/// 用户名与密码必须同时设置才启用 ClickHouse Basic Auth。
+/// 用户名与密码必须同时设置才启用 ClickHouse Basic Auth；空字符串视为未设置。
 /// 只设置一个直接报配置错误，避免静默退化成匿名连接后在服务端才失败。
 #[cfg(feature = "clickhouse")]
 fn clickhouse_auth(
     username: Option<String>,
     password: Option<String>,
 ) -> Result<Option<(String, String)>, TieringError> {
+    let username = username.filter(|value| !value.is_empty());
+    let password = password.filter(|value| !value.is_empty());
     match (username, password) {
         (None, None) => Ok(None),
         (Some(username), Some(password)) => Ok(Some((username, password))),
