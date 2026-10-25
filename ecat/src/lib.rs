@@ -3,6 +3,10 @@ mod deployment;
 mod hook;
 mod reexports;
 mod signal;
+#[cfg(feature = "worker")]
+mod worker;
+#[cfg(feature = "worker")]
+pub use worker::WorkerHandle;
 
 pub use deployment::{CacheMode, DeploymentConfig, DeploymentError, DeploymentMode};
 pub use hook::LifecycleHook;

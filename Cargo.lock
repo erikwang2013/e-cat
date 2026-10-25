@@ -1281,6 +1281,7 @@ dependencies = [
  "ecat-circuit-breaker",
  "ecat-client",
  "ecat-config-remote",
+ "ecat-data",
  "ecat-data-2pc",
  "ecat-data-mssql",
  "ecat-data-redis",

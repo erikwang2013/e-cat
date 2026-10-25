@@ -45,6 +45,7 @@ mssql = ["dep:ecat-data-mssql"]
 tiering = ["dep:ecat-data-tiering"]
 sharding = ["dep:ecat-data-sharding"]
 saga = ["dep:ecat-saga"]
+worker = ["dep:ecat-data"]
 "2pc" = ["dep:ecat-data-2pc"]
 
 [dependencies]
@@ -74,6 +75,8 @@ ecat-data-sharding = { version = "7.1.1", path = "../ecat-data-sharding", option
 ecat-saga = { version = "7.1.1", path = "../ecat-saga", optional = true }
 # ecat-data-2pc 不在 workspace.dependencies 表里，直写 path 依赖。
 ecat-data-2pc = { version = "7.1.1", path = "../ecat-data-2pc", optional = true }
+# worker hook 的 Shutdown 类型来自 ecat-data；默认不引入。
+ecat-data = { version = "7.1.1", path = "../ecat-data", optional = true }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true
