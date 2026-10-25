@@ -1,6 +1,9 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 复制前源表结构预检：`Row` 把 BLOB/BYTEA 表示为 base64 文本，经 `SqlExecutor`
 //! 写回目标就会损坏；发现二进制列必须在任何复制前失败。
+//!
+//! 表名只支持不带引号的单段名或两段 `schema.table` / `db.table`；三段
+//! `db.schema.table` 与含点的引号标识符无法安全拆分，直接 fail closed，不做拆名。
 use super::*;
 
 impl ShardMigrator {
@@ -30,13 +33,13 @@ impl ShardMigrator {
 }
 
 /// 源表列清单 `(列名, 声明类型)`；拿不到结构时也 fail closed。
-/// `schema.table` 会拆成两个元数据参数；未限定则沿用各数据库的默认 schema。
+/// 两段 `schema.table` 会拆成两个元数据参数；未限定则沿用各数据库的默认 schema。
 async fn source_columns(
     client: &Arc<dyn RdbmsClient>,
     table: &str,
 ) -> Result<Vec<(String, String)>, ShardError> {
     let dialect = client.dialect();
-    let (schema, table_name) = split_table(table);
+    let (schema, table_name) = split_table(table)?;
     let (sql, params) = match dialect {
         Dialect::MySql => match schema {
             Some(schema) => (
@@ -119,12 +122,22 @@ async fn source_columns(
         .collect()
 }
 
-/// `schema.table` → `(Some("schema"), "table")`；不处理引号（配置约定不写引号）。
-fn split_table(table: &str) -> (Option<&str>, &str) {
-    match table.rsplit_once('.') {
+/// 仅支持不带引号的单段名或两段 `schema.table` / `db.table`；其余无法安全拆分。
+fn split_table(table: &str) -> Result<(Option<&str>, &str), ShardError> {
+    let quoted =
+        table.contains('"') || table.contains('`') || table.contains('[') || table.contains(']');
+    if table.matches('.').count() > 1 || (quoted && table.contains('.')) {
+        return Err(ShardError::Config(format!(
+            "migration preflight: table name `{table}` is not supported; only unquoted `table` \
+             or two-part `schema.table` / `db.table` names can be inspected. Three-part \
+             `db.schema.table` names and quoted identifiers containing dots are not supported; \
+             refusing to copy."
+        )));
+    }
+    Ok(match table.rsplit_once('.') {
         Some((schema, name)) => (Some(schema), name),
         None => (None, table),
-    }
+    })
 }
 
 /// 会以二进制形式取回的列类型；MySQL 的几何类型同样经 `Vec<u8>` 解码。
@@ -169,14 +182,20 @@ mod tests {
     use ecat_data::Dialect;
 
     #[test]
-    fn table_names_split_on_last_dot() {
-        assert_eq!(split_table("orders"), (None, "orders"));
-        assert_eq!(split_table("main.orders"), (Some("main"), "orders"));
-        assert_eq!(split_table("db.orders"), (Some("db"), "orders"));
+    fn table_names_split_only_two_part_unquoted_names() {
+        assert_eq!(split_table("orders").unwrap(), (None, "orders"));
         assert_eq!(
-            split_table("catalog.main.orders"),
-            (Some("catalog.main"), "orders")
+            split_table("main.orders").unwrap(),
+            (Some("main"), "orders")
         );
+        assert_eq!(split_table("db.orders").unwrap(), (Some("db"), "orders"));
+        for unsupported in [
+            "catalog.main.orders",
+            "\"catalog.main\".orders",
+            "main.\"order.items\"",
+        ] {
+            assert!(split_table(unsupported).is_err(), "{unsupported}");
+        }
     }
 
     #[test]

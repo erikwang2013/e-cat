@@ -107,44 +107,6 @@ fn router_for(catalog: &ShardCatalog, shard: &str, db: &Arc<dyn RdbmsClient>) ->
     ShardRouter::new(catalog.clone(), client_map(&[(shard, db)])).unwrap()
 }
 
-/// 两个单分片拓扑，分片名和客户端都可不同。
-struct OneShardFixture {
-    old_db: Arc<dyn RdbmsClient>,
-    new_db: Arc<dyn RdbmsClient>,
-    old_router: ShardRouter,
-    new_router: ShardRouter,
-}
-
-async fn one_shard_fixture(
-    old_shard: &str,
-    new_shard: &str,
-    shared_client: bool,
-) -> OneShardFixture {
-    let old_db = db().await;
-    create_orders(&old_db).await;
-    let new_db = if shared_client {
-        Arc::clone(&old_db)
-    } else {
-        let db = db().await;
-        create_orders(&db).await;
-        db
-    };
-    insert_amount(&old_db, 1, 10).await;
-    if !shared_client {
-        insert_amount(&new_db, 1, 100).await;
-    }
-    let old_catalog = one_shard_catalog(old_shard);
-    let new_catalog = one_shard_catalog(new_shard);
-    let old_router = router_for(&old_catalog, old_shard, &old_db);
-    let new_router = router_for(&new_catalog, new_shard, &new_db);
-    OneShardFixture {
-        old_db,
-        new_db,
-        old_router,
-        new_router,
-    }
-}
-
 /// 第一次 `execute_with` 失败的镜像；用于验证 `mirror_client()` 重放路径。
 struct FailOnce {
     inner: Arc<dyn RdbmsClient>,
@@ -262,7 +224,7 @@ async fn dual_write_before_cutover_reaches_old_and_new() {
     insert_amount(&f.s1, key, 10).await;
     insert_amount(&f.s2, key, 100).await;
 
-    let guard = DualWrite::before_cutover(&f.old_router, &f.new_router);
+    let guard = DualWrite::before_cutover(&f.old_router, &f.new_router).assume_distinct();
     let client = guard.for_key("orders", &json!(key)).unwrap();
     client.execute_with(INCREMENT, &[json!(key)]).await.unwrap();
 
@@ -278,83 +240,13 @@ async fn dual_write_before_cutover_reaches_old_and_new() {
 }
 
 #[tokio::test]
-async fn dual_write_same_name_distinct_clients_requires_policy() {
-    let f = one_shard_fixture("s0", "s0", false).await;
-
-    let err = DualWrite::before_cutover(&f.old_router, &f.new_router)
-        .for_key("orders", &json!(1))
-        .err()
-        .expect("unproven same-name shards must error")
-        .to_string();
-
-    assert!(
-        err.contains("assume_distinct()") && err.contains("assume_same()"),
-        "{err}"
-    );
-    assert_eq!(amount(&f.old_db, 1).await, 10, "no primary write");
-    assert_eq!(amount(&f.new_db, 1).await, 100, "no mirror write");
-}
-
-#[tokio::test]
-async fn dual_write_assume_distinct_writes_both() {
-    let f = one_shard_fixture("s0", "s0", false).await;
-
-    DualWrite::before_cutover(&f.old_router, &f.new_router)
-        .assume_distinct()
-        .for_key("orders", &json!(1))
-        .unwrap()
-        .execute_with(INCREMENT, &[json!(1)])
-        .await
-        .unwrap();
-
-    assert_eq!(amount(&f.old_db, 1).await, 11, "old topology primary write");
-    assert_eq!(
-        amount(&f.new_db, 1).await,
-        101,
-        "assume_distinct writes mirror"
-    );
-}
-
-#[tokio::test]
-async fn dual_write_assume_same_writes_primary_only() {
-    let f = one_shard_fixture("s0", "s0", false).await;
-
-    let client = DualWrite::before_cutover(&f.old_router, &f.new_router)
-        .assume_same()
-        .for_key("orders", &json!(1))
-        .unwrap();
-    client.execute_with(INCREMENT, &[json!(1)]).await.unwrap();
-
-    assert_eq!(amount(&f.old_db, 1).await, 11, "primary write");
-    assert_eq!(amount(&f.new_db, 1).await, 100, "assume_same skips mirror");
-    assert!(client.mirror_client().is_none());
-}
-
-#[tokio::test]
-async fn dual_write_same_client_arc_writes_once_even_with_different_names() {
-    let f = one_shard_fixture("old0", "new0", true).await;
-
-    DualWrite::before_cutover(&f.old_router, &f.new_router)
-        .for_key("orders", &json!(1))
-        .unwrap()
-        .execute_with(INCREMENT, &[json!(1)])
-        .await
-        .unwrap();
-
-    assert_eq!(
-        amount(&f.old_db, 1).await,
-        11,
-        "one client Arc is one physical target and must be written once"
-    );
-}
-
-#[tokio::test]
 async fn dual_write_writes_unchanged_shard_once() {
     let f = dual_fixture().await;
     let key = key_for(&f.old, &f.new, 0, 0);
     insert_amount(&f.s0, key, 5).await;
 
     let client = DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_distinct()
         .for_key("orders", &json!(key))
         .unwrap();
     client.execute_with(INCREMENT, &[json!(key)]).await.unwrap();
@@ -374,13 +266,14 @@ async fn dual_write_after_cutover_keeps_rollback_topology_current() {
     insert_amount(&f.s2, key, 100).await;
 
     DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_distinct()
         .for_key("orders", &json!(key))
         .unwrap()
         .execute_with(INCREMENT, &[json!(key)])
         .await
         .unwrap();
 
-    let after = DualWrite::after_cutover(&f.new_router, &f.old_router);
+    let after = DualWrite::after_cutover(&f.new_router, &f.old_router).assume_distinct();
     let client = after.for_key("orders", &json!(key)).unwrap();
     client.execute_with(INCREMENT, &[json!(key)]).await.unwrap();
 
@@ -397,7 +290,7 @@ async fn dual_write_after_cutover_keeps_rollback_topology_current() {
     assert_eq!(rows[0].get("amount"), Some(&json!(102)));
 
     // rollback 后由旧拓扑服务：切流后的写已经镜像过来。
-    let rolled_back = DualWrite::before_cutover(&f.old_router, &f.new_router);
+    let rolled_back = DualWrite::before_cutover(&f.old_router, &f.new_router).assume_distinct();
     let rows = rolled_back
         .for_key("orders", &json!(key))
         .unwrap()
@@ -419,6 +312,7 @@ async fn dual_write_mirror_failure_retry_via_mirror_client() {
     let old_router = router_for(&one_shard_catalog("old0"), "old0", &old_db);
     let new_router = router_for(&one_shard_catalog("new0"), "new0", &flaky);
     let client = DualWrite::before_cutover(&old_router, &new_router)
+        .assume_distinct()
         .for_key("orders", &json!(1))
         .unwrap();
 
@@ -459,6 +353,7 @@ async fn dual_write_reports_mirror_failure_and_keeps_primary_write() {
     f.s2.execute("DROP TABLE orders").await.unwrap();
 
     let client = DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_distinct()
         .for_key("orders", &json!(key))
         .unwrap();
     let err = client
@@ -480,6 +375,7 @@ async fn dual_write_primary_failure_skips_mirror() {
     f.s1.execute("DROP TABLE orders").await.unwrap();
 
     let client = DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_distinct()
         .for_key("orders", &json!(key))
         .unwrap();
     let err = client

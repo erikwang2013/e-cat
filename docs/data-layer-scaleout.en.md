@@ -90,6 +90,7 @@ migrator.rollback(&router).await?; // switch routing back; old shards are retain
 
 // caller-side dual write during hash re-sharding (before cutover: old primary, new mirror).
 // The new topology uses distinct clients: assume_distinct() explicitly; SQL must be idempotent/replay-safe.
+// This assumes every same-name pair was genuinely re-provisioned; unchanged shards must share their client Arc or use assume_same().
 let dual = DualWrite::before_cutover(&old_router, &new_router).assume_distinct();
 dual.for_key("orders", &json!(id))?
     .execute_with(
@@ -102,20 +103,25 @@ dual.for_key("orders", &json!(id))?
 - Hash changes copy the whole table and route each row through the new topology; range
   changes move key intervals.
 - Before backfill/verify/cutover the executor inspects source columns (`information_schema`
-  on MySQL/PostgreSQL, `pragma_table_info` on SQLite). Qualified `schema.table` names are
-  split into schema + table for the metadata query. A BLOB/BYTEA column fails the run instead
-  of writing base64 text into the target.
+  on MySQL/PostgreSQL, `pragma_table_info` on SQLite). Only two-part `schema.table` /
+  `db.table` names are split; three-part `db.schema.table` and quoted identifiers containing
+  dots are unsupported and fail closed without splitting. A BLOB/BYTEA column fails the run
+  instead of writing base64 text into the target.
 - For hash re-sharding use `DualWrite`: `before_cutover(&old_router, &new_router)` (old
   primary, new mirror) before cutover, `after_cutover(&new_router, &old_router)` afterwards
   (new primary, old mirror, so `rollback` stays usable). Physical identity is proven only by
-  the same underlying client `Arc`; URLs and shard names are not proof. Same-named shards
-  with different clients fail by default; choose explicitly: `assume_distinct()` writes both
-  (requires idempotent/replay-safe SQL), `assume_same()` writes the primary only (an explicit
-  assertion that both names are the same physical shard). Reuse the same client `Arc` for
-  physically identical shards. Mirror failures return `dual-write mirror failed` after the
-  primary committed: do not retry through `DualWriteClient` (it re-applies the primary);
-  replay the same statement via `mirror_client()`, and run `verify()` before cutover. The
-  crash window between primary and mirror writes remains.
+  the same underlying client `Arc`; URLs and shard names are not proof, and names appear only
+  in errors. Different clients are never proof of distinct targets; an explicit policy is
+  always required, whether or not names match. `assume_distinct()` writes both (requires
+  idempotent/replay-safe SQL; it assumes every same-name pair was genuinely re-provisioned,
+  and unchanged shards must share their client `Arc` or use `assume_same()`);
+  `assume_same()` writes the primary only (an explicit assertion that both clients target the
+  same physical shard). Mirror failures return `dual-write mirror failed` after the primary
+  committed: do not retry through `DualWriteClient` (it re-applies the primary); replay the
+  same statement via `mirror_client()`, and run `verify()` before cutover. The crash window
+  between primary and mirror writes remains; after `after_cutover`, a crash between the
+  primary and mirror writes can leave the old (rollback) topology stale, so reconcile both
+  sides before relying on rollback.
 - `shard_migration_jobs` stores phase/cursor/rows/checksum; `FencedLock` protects a single
   executor.
 - Re-running after rollback re-enters backfill/verify instead of getting stuck.
@@ -299,6 +305,9 @@ idempotent and the handle is cheap to clone.
 - The migration executor moves scalar columns only: backfill/verify/cutover reject BLOB/BYTEA
   sources. SQLite is checked by declared type, so a blob value stored in a column with
   non-BLOB affinity can still slip through.
+- Preflight supports only unquoted one-part table names and two-part `schema.table` /
+  `db.table`; three-part `db.schema.table` and quoted identifiers containing dots fail closed
+  without splitting.
 - `DualWrite` mirrors single write statements only; primary and mirror writes are not in the
   same transaction. When a mirror write fails the primary is already committed: replay via
   `mirror_client()`, never by retrying `DualWriteClient`. `transaction()` runs on the primary
