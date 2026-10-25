@@ -185,6 +185,35 @@ async fn archive_lag_state_query_error_propagates() {
     assert!(err.contains("archive state"), "{err}");
 }
 
+struct SlowState;
+
+#[async_trait]
+impl ecat_data::SqlExecutor for SlowState {
+    async fn execute(&self, _sql: &str) -> Result<u64, ecat_data::RdbmsError> {
+        Err(ecat_data::RdbmsError::Database("not used".into()))
+    }
+
+    async fn query(&self, _sql: &str) -> Result<Vec<Row>, ecat_data::RdbmsError> {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        Ok(Vec::new())
+    }
+
+    fn dialect(&self) -> ecat_data::Dialect {
+        ecat_data::Dialect::Sqlite
+    }
+}
+
+#[tokio::test]
+async fn archive_lag_state_query_timeout_is_bounded() {
+    let store = Arc::new(crate::ArchiveStateStore::new(Arc::new(SlowState)));
+    let check = TieringHealthCheck::new(Arc::new(FakeSink::ok()), Duration::from_millis(20))
+        .with_archive_lag(store, time::Duration::hours(1));
+
+    let err = check.check().await.unwrap_err();
+    assert!(err.contains("archive lag"), "{err}");
+    assert!(err.contains("did not answer"), "{err}");
+}
+
 #[tokio::test]
 async fn tiering_health_without_archive_lag_keeps_reachability_only() {
     let store = Arc::new(crate::ArchiveStateStore::new(Arc::new(FailingState)));

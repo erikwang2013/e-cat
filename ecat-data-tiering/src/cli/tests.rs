@@ -149,6 +149,20 @@ fn cli_config_parses_database_and_tiering() {
     assert!(config.tiering.tables.is_empty());
 }
 
+#[cfg(feature = "clickhouse")]
+#[test]
+fn clickhouse_auth_requires_username_and_password_together() {
+    use super::clickhouse_auth;
+
+    assert_eq!(clickhouse_auth(None, None), None);
+    assert_eq!(clickhouse_auth(Some("user".into()), None), None);
+    assert_eq!(clickhouse_auth(None, Some("secret".into())), None);
+    assert_eq!(
+        clickhouse_auth(Some("user".into()), Some("secret".into())),
+        Some(("user".into(), "secret".into()))
+    );
+}
+
 #[test]
 fn cli_rejects_unknown_key() {
     let result: Result<CliConfig, _> = serde_json::from_value(json!({

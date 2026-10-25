@@ -185,8 +185,17 @@ impl LiveDeps {
         let url = env_required("ECAT_CLICKHOUSE_URL")?;
         let database =
             std::env::var("ECAT_CLICKHOUSE_DATABASE").unwrap_or_else(|_| "default".into());
+        let client = match clickhouse_auth(
+            std::env::var("ECAT_CLICKHOUSE_USERNAME").ok(),
+            std::env::var("ECAT_CLICKHOUSE_PASSWORD").ok(),
+        ) {
+            Some((username, password)) => {
+                ClickhouseClient::with_auth(url, database, username, password)
+            }
+            None => ClickhouseClient::new(url, database),
+        };
         let sink = ClickhouseSink::new(
-            ClickhouseClient::new(url, database),
+            client,
             vec![ClickhouseTable {
                 name: table.name.clone(),
                 id_col: table.id_col.clone(),
@@ -244,6 +253,12 @@ impl LiveDeps {
             "S3 target requires the `s3` feature".into(),
         ))
     }
+}
+
+/// 用户名与密码必须同时设置才启用 ClickHouse Basic Auth；只设置一个视为未配置。
+#[cfg(feature = "clickhouse")]
+fn clickhouse_auth(username: Option<String>, password: Option<String>) -> Option<(String, String)> {
+    username.zip(password)
 }
 
 #[cfg_attr(not(any(feature = "clickhouse", feature = "s3")), allow(dead_code))]

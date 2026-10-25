@@ -19,13 +19,43 @@ async fn background_worker_starts_and_stops() {
             flag.store(true, Ordering::SeqCst);
         }
     };
-    let (start, stop) = worker_hooks(make);
+    let (start, stop, _handle) = worker_hooks(make);
     start.on_start().await.unwrap();
     stop.on_stop().await.unwrap();
     assert!(
         stopped.load(Ordering::SeqCst),
         "worker must observe shutdown and exit"
     );
+}
+
+#[tokio::test]
+async fn background_worker_with_handle_can_shutdown_and_wait() {
+    let stopped = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&stopped);
+    let (builder, handle) =
+        App::builder().background_worker_with_handle(move |mut shutdown: Shutdown| {
+            let flag = Arc::clone(&flag);
+            async move {
+                shutdown.cancelled().await;
+                flag.store(true, Ordering::SeqCst);
+            }
+        });
+    let app = builder.build().unwrap();
+    for hook in &app.start_hooks {
+        hook.on_start().await.unwrap();
+    }
+
+    handle.clone().shutdown();
+    handle.wait().await.unwrap();
+    assert!(
+        stopped.load(Ordering::SeqCst),
+        "worker must observe shutdown from the returned handle"
+    );
+
+    // 句柄取走任务后，app 的 stop hook 仍可幂等停机。
+    for hook in &app.stop_hooks {
+        hook.on_stop().await.unwrap();
+    }
 }
 
 #[test]

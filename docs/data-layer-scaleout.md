@@ -166,11 +166,13 @@ ecat-tier restore --config app.yaml
 
 `run` 与 `verify` 需要 `cli` feature；冷后端连接通过环境变量提供：
 `ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`，
+`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`（两者都设置时启用 Basic Auth），
 `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`。
 
 `TieringHealthCheck::with_archive_lag(store, max_lag)` 在冷层可达性之外检查状态表最新
-`updated_at`；没有状态行视为尚无归档历史。`probe_timeout` 只约束冷层探针。
+`updated_at`；没有状态行视为尚无归档历史。`probe_timeout` 分别约束冷层探针与归档滞后
+状态查询，任一段超预算即不健康，避免 `/ready` 被挂起的协调库拖住。
 
 ## 3. 分布式原语
 
@@ -210,6 +212,8 @@ tx.commit().await?;                      // END -> PREPARE all -> decision -> CO
 
 - 协调日志 `distributed_tx(id, status, participants, decision, created_at)`。
 - 任一 prepare 失败全部回滚；恢复扫描 `prepared` / `committing` / `rolling_back`。
+- 恢复先按 participant `xa_recover` 的 in-doubt 列表交叉核对：XID 不在列表视为已解决
+  （不重发 COMMIT/ROLLBACK）；`xa_recover` 本身失败则回退到日志重放，保留重试。
 - XA 生命周期固定在一条物理连接上；协调器数据库是单点，生产需外部 HA。
 - 不把 2PC 接进 `KeyedClient` / `scatter`，只作为显式 API。
 
@@ -241,6 +245,8 @@ App::builder()
 ```
 
 `on_start` 启动任务，`on_stop` 先发停机信号再等待退出；worker future 自己负责单次运行预算。
+需要提前停机时可改用 `background_worker_with_handle`，它返回 `(Self, WorkerHandle)`，
+调用方可用 `handle.shutdown()` / `handle.wait().await` 主动触发并等待退出（幂等）。
 
 ## 4. MySQL 8.4 / 9 与兼容性
 
@@ -256,9 +262,9 @@ App::builder()
 - `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内（镜像失败会报错，调用方需重试），
   `transaction()` 只在主拓扑执行，跨库事务内的双写需调用方自行拆分。
 - `rollback` 只恢复路由并保留旧分片，不做反向数据搬移。
-- 2PC 协调器数据库单点；恢复未用 participant `xa_recover` 交叉核对。
-- `ecat-tier` 冷后端通过环境变量配置；当前没有 ClickHouse 认证环境变量。
-- readiness 的归档滞后状态查询不受 `probe_timeout` 约束。
+- 2PC 协调器数据库单点；`xa_recover` 交叉核对只覆盖 prepare 之后的阶段，`started`
+  的 active 事务仍按日志直接回滚（连接断开时数据库自行回滚）。
+- `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth 环境变量对；没有其他认证方式。
 
 ## 相关文档
 

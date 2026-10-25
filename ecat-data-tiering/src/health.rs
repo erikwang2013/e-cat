@@ -25,8 +25,8 @@ struct ArchiveLag {
 }
 
 impl TieringHealthCheck {
-    /// `probe_timeout` 是冷层探针的应答预算，超过即视为不可达。
-    /// 归档滞后检测不在本探针内：`ColdSink` 没有滞后信号，需要状态存储。
+    /// `probe_timeout` 是每段就绪探针的应答预算：冷层 `health_check` 与归档
+    /// 滞后状态查询各自必须在此预算内应答，超过即视为不可达（避免 `/ready` 挂起）。
     pub fn new(cold: Arc<dyn ColdSink>, probe_timeout: Duration) -> Self {
         Self {
             cold,
@@ -65,7 +65,15 @@ impl HealthCheck for TieringHealthCheck {
             }
         }
         if let Some(lag) = &self.archive_lag {
-            check_archive_lag(lag).await?;
+            match tokio::time::timeout(self.probe_timeout, check_archive_lag(lag)).await {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(format!(
+                        "archive lag state did not answer within {:?}",
+                        self.probe_timeout
+                    ));
+                }
+            }
         }
         Ok(())
     }

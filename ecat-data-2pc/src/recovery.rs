@@ -42,10 +42,15 @@ impl TwoPhaseCoordinator {
                 }
             };
             let commit = should_commit(&row);
+            // `started` 的 XID 仍是同进程里的 active 事务，`xa_recover` 看不到；
+            // 只有已 prepare 的阶段才用 in-doubt 列表判断是否已解决。
+            let cross_check = row.status != "started";
             let outcome = if commit {
-                self.recover_commit(&row.id, &participants).await
+                self.recover_commit(&row.id, &participants, cross_check)
+                    .await
             } else {
-                self.recover_rollback(&row.id, &participants).await
+                self.recover_rollback(&row.id, &participants, cross_check)
+                    .await
             };
             match outcome {
                 Ok(()) => report.recovered += 1,
@@ -69,8 +74,12 @@ impl TwoPhaseCoordinator {
         &self,
         id: &str,
         participants: &[Arc<dyn XaParticipant>],
+        cross_check: bool,
     ) -> Result<(), XaError> {
         for participant in participants {
+            if cross_check && already_resolved(participant.as_ref(), id).await {
+                continue;
+            }
             participant.xa_commit(id).await?;
         }
         self.set_log(id, "committed", Some("commit")).await
@@ -80,12 +89,28 @@ impl TwoPhaseCoordinator {
         &self,
         id: &str,
         participants: &[Arc<dyn XaParticipant>],
+        cross_check: bool,
     ) -> Result<(), XaError> {
         for participant in participants.iter().rev() {
+            if cross_check && already_resolved(participant.as_ref(), id).await {
+                continue;
+            }
             let _ = participant.xa_end(id).await;
             participant.xa_rollback(id).await?;
         }
         self.set_log(id, "rolled_back", Some("rollback")).await
+    }
+}
+
+/// 参与者报告没有该 XID 的 in-doubt 事务 ⇒ 已解决，跳过重放。
+/// `xa_recover` 失败时返回 `false`，维持原有「按日志重放、失败下次重试」的兜底。
+async fn already_resolved(participant: &dyn XaParticipant, id: &str) -> bool {
+    match participant.xa_recover().await {
+        Ok(in_doubt) => !in_doubt.iter().any(|xid| xid.as_str() == id),
+        Err(error) => {
+            tracing::debug!(tx = id, %error, "XA RECOVER failed; replaying log decision");
+            false
+        }
     }
 }
 

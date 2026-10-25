@@ -11,19 +11,21 @@ use crate::{AppBuilder, LifecycleHook};
 type HookResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 /// 单个后台任务的停机柄；`shutdown` 幂等，`wait` 可重复调用。
+/// clone 出的句柄共享同一停机信号与任务槽。
+#[derive(Clone)]
 pub struct WorkerHandle {
-    shutdown: ShutdownHandle,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    shutdown: Arc<ShutdownHandle>,
+    task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl WorkerHandle {
-    fn new() -> (Arc<Self>, Shutdown) {
+    fn new() -> (Self, Shutdown) {
         let (shutdown, receiver) = Shutdown::new();
         (
-            Arc::new(Self {
-                shutdown,
-                task: Mutex::new(None),
-            }),
+            Self {
+                shutdown: Arc::new(shutdown),
+                task: Arc::new(Mutex::new(None)),
+            },
             receiver,
         )
     }
@@ -63,7 +65,7 @@ impl WorkerHandle {
 struct WorkerInner<F> {
     make: Mutex<Option<F>>,
     shutdown_rx: Mutex<Option<Shutdown>>,
-    handle: Arc<WorkerHandle>,
+    handle: WorkerHandle,
 }
 
 struct WorkerHook<F> {
@@ -109,7 +111,7 @@ where
     }
 }
 
-fn worker_hooks<F, Fut>(make: F) -> (WorkerHook<F>, WorkerHook<F>)
+fn worker_hooks<F, Fut>(make: F) -> (WorkerHook<F>, WorkerHook<F>, WorkerHandle)
 where
     F: FnOnce(Shutdown) -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
@@ -118,13 +120,14 @@ where
     let inner = Arc::new(WorkerInner {
         make: Mutex::new(Some(make)),
         shutdown_rx: Mutex::new(Some(shutdown)),
-        handle,
+        handle: handle.clone(),
     });
     (
         WorkerHook {
             inner: Arc::clone(&inner),
         },
         WorkerHook { inner },
+        handle,
     )
 }
 
@@ -135,15 +138,25 @@ fn hook_error(message: &str) -> Box<dyn std::error::Error + Send + Sync> {
 impl AppBuilder {
     /// 注册一个后台任务：app 启动时 spawn `make(shutdown)`，停机时先发信号再等待退出。
     /// worker future 自己负责停机时限；这里不另加超时。
-    pub fn background_worker<F, Fut>(mut self, make: F) -> Self
+    pub fn background_worker<F, Fut>(self, make: F) -> Self
     where
         F: FnOnce(Shutdown) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        let (start, stop) = worker_hooks(make);
+        self.background_worker_with_handle(make).0
+    }
+
+    /// `background_worker` 的可观测变体：额外返回句柄，调用方可主动
+    /// `shutdown()` / `wait()`，不必等整个 app 停机。
+    pub fn background_worker_with_handle<F, Fut>(mut self, make: F) -> (Self, WorkerHandle)
+    where
+        F: FnOnce(Shutdown) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let (start, stop, handle) = worker_hooks(make);
         self.start_hooks.push(Box::new(start));
         self.stop_hooks.push(Box::new(stop));
-        self
+        (self, handle)
     }
 }
 

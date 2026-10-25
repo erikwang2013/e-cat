@@ -549,8 +549,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **Batch `update_many` optimistic-lock conflicts cannot be traced to a row (ecat-orm)**: you can only detect them via "rows returned < rows passed"; use per-row `update` when you need to locate the row.
 - **`join` table names and ON conditions are not whitelist-validated (ecat-orm)**: `join(table, on)` takes strings, and strings carry no type information; same trust boundary as `filter_raw`.
 - **Shard migration (ecat-data-sharding)**: scalar columns only; BLOB/BYTEA would be copied as base64 text and corrupted. Hash re-sharding is "backfill + caller-side dual write"; the executor has no dual-write hook. `rollback` restores routing only and does not copy data back.
-- **opt-in 2PC (ecat-data-2pc)**: MySQL/PostgreSQL only. The coordinator DB is a single point; production needs external HA. Recovery does not cross-check participant `xa_recover`.
-- **Cold-tier CLI (ecat-data-tiering)**: cold backends are configured by environment variables; there is no ClickHouse auth environment pair yet. Archive-lag state queries are not bounded by `probe_timeout`.
+- **opt-in 2PC (ecat-data-2pc)**: MySQL/PostgreSQL only. The coordinator DB is a single point; production needs external HA. Recovery cross-checks each participant's `xa_recover` in-doubt list for the post-prepare phases and falls back to log replay when `xa_recover` fails.
+- **Cold-tier CLI (ecat-data-tiering)**: cold backends are configured by environment variables; ClickHouse supports a Basic Auth environment pair. Archive-lag state queries share the `probe_timeout` budget with the cold probe.
 
 ## Design Goals
 

@@ -175,13 +175,15 @@ ecat-tier restore --config app.yaml
 ```
 
 `run` and `verify` require the `cli` feature. Cold-backend endpoints come from
-`ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE` and
-`ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
+`ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`,
+`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD` (Basic Auth only when both are set),
+plus `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`.
 
 `TieringHealthCheck::with_archive_lag(store, max_lag)` checks the newest `updated_at` in the
 state table in addition to cold reachability; no state rows means no archive history.
-`probe_timeout` still bounds only the cold probe.
+`probe_timeout` bounds both the cold probe and the archive-lag state query, so a hung
+coordinator DB cannot stall `/ready`.
 
 ## 3. Distributed primitives
 
@@ -224,6 +226,9 @@ tx.commit().await?;                      // END -> PREPARE all -> decision -> CO
 - Coordination log: `distributed_tx(id, status, participants, decision, created_at)`.
 - Any prepare failure rolls every participant back; recovery scans
   `prepared` / `committing` / `rolling_back`.
+- Recovery first cross-checks each participant's `xa_recover` in-doubt list: an absent XID
+  is treated as already resolved (no COMMIT/ROLLBACK replay); if `xa_recover` itself fails,
+  recovery falls back to replaying the log decision and retrying later.
 - The XA lifecycle is pinned to one physical connection. The coordinator DB is a single
   point; production needs external HA.
 - 2PC is not wired into `KeyedClient` / `scatter`; it is an explicit API.
@@ -256,7 +261,9 @@ App::builder()
 ```
 
 `on_start` spawns the task; `on_stop` signals shutdown and waits for exit. The worker future
-owns its own run budget.
+owns its own run budget. `background_worker_with_handle` returns `(Self, WorkerHandle)` for
+callers that need to trigger `handle.shutdown()` / `handle.wait().await` early; both are
+idempotent and the handle is cheap to clone.
 
 ## 4. MySQL 8.4 / 9 and compatibility
 
@@ -279,11 +286,11 @@ owns its own run budget.
   runs on the primary topology alone, so callers needing transactional dual writes must
   split them.
 - `rollback` only restores routing and keeps old shards; it does not copy data back.
-- The 2PC coordinator DB is a single point; recovery does not cross-check participant
-  `xa_recover`.
-- `ecat-tier` cold backends are configured by environment variables; there is no ClickHouse
-  auth environment pair yet.
-- Archive-lag state queries are not bounded by `probe_timeout`.
+- The 2PC coordinator DB is a single point. `xa_recover` cross-checking covers only the
+  post-prepare phases; `started` active transactions are still rolled back from the log
+  (the database rolls them back itself when the connection drops).
+- `ecat-tier` ClickHouse auth supports only the Basic Auth environment pair; no other auth
+  mechanism is wired.
 
 ## Related
 

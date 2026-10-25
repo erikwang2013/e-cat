@@ -564,8 +564,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **批量 `update_many` 的乐观锁冲突无法定位到行（ecat-orm）**：只能靠「返回行数 < 传入行数」察觉，需要定位时用逐行 `update`。
 - **`join` 的表名与 ON 条件不做白名单校验（ecat-orm）**：`join(table, on)` 收的是字符串，字符串里没有类型信息；与 `filter_raw` 同一信任边界。
 - **分片迁移（ecat-data-sharding）**：只搬移标量列，BLOB/BYTEA 会按 base64 文本复制而损坏；hash 变更是“回填 + 调用方双写”的组合，执行器不提供双写钩子；`rollback` 只恢复路由，不反向搬数据。
-- **opt-in 2PC（ecat-data-2pc）**：仅 MySQL/PostgreSQL；协调器数据库是单点，生产需外部 HA；恢复未用 participant `xa_recover` 交叉核对。
-- **冷层 CLI（ecat-data-tiering）**：冷后端连接通过环境变量配置，当前没有 ClickHouse 认证环境变量；readiness 的归档滞后状态查询不受 `probe_timeout` 约束。
+- **opt-in 2PC（ecat-data-2pc）**：仅 MySQL/PostgreSQL；协调器数据库是单点，生产需外部 HA；恢复先按 participant `xa_recover` 的 in-doubt 列表交叉核对（仅 prepare 之后的阶段，`xa_recover` 失败时回退日志重放）。
+- **冷层 CLI（ecat-data-tiering）**：冷后端连接通过环境变量配置，ClickHouse 支持 Basic Auth 环境变量对；readiness 的归档滞后状态查询与冷层探针共用 `probe_timeout` 预算。
 
 ## 设计目标
 
