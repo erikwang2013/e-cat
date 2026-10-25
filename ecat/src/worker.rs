@@ -15,7 +15,7 @@ type HookResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 #[derive(Clone)]
 pub struct WorkerHandle {
     shutdown: Arc<ShutdownHandle>,
-    task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl WorkerHandle {
@@ -24,7 +24,7 @@ impl WorkerHandle {
         (
             Self {
                 shutdown: Arc::new(shutdown),
-                task: Arc::new(Mutex::new(None)),
+                task: Arc::new(tokio::sync::Mutex::new(None)),
             },
             receiver,
         )
@@ -34,26 +34,22 @@ impl WorkerHandle {
         self.shutdown.shutdown();
     }
 
-    /// 等待 worker 退出；任务已完成/已取走时直接返回 Ok。
+    /// 等待 worker 退出；任务已完成/未启动时直接返回 Ok。
+    /// 持有锁跨越等待，后到的 waiter 会等前一个完成后再看到空槽，不会提前报完成。
     pub async fn wait(&self) -> HookResult {
-        let task = self
-            .task
-            .lock()
-            .map_err(|_| hook_error("worker task lock poisoned"))?
-            .take();
-        match task {
-            Some(task) => task
-                .await
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-            None => Ok(()),
-        }
+        let mut slot = self.task.lock().await;
+        let Some(task) = slot.as_mut() else {
+            return Ok(());
+        };
+        let result = task
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>);
+        *slot = None;
+        result
     }
 
-    fn set_task(&self, task: tokio::task::JoinHandle<()>) -> HookResult {
-        let mut slot = self
-            .task
-            .lock()
-            .map_err(|_| hook_error("worker task lock poisoned"))?;
+    async fn set_task(&self, task: tokio::task::JoinHandle<()>) -> HookResult {
+        let mut slot = self.task.lock().await;
         if slot.is_some() {
             return Err(hook_error("worker already started"));
         }
@@ -102,7 +98,7 @@ where
             .take()
             .ok_or_else(|| hook_error("worker already started"))?;
         let task = tokio::spawn(make(shutdown));
-        self.inner.handle.set_task(task)
+        self.inner.handle.set_task(task).await
     }
 
     async fn on_stop(&self) -> HookResult {

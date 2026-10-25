@@ -154,12 +154,26 @@ fn cli_config_parses_database_and_tiering() {
 fn clickhouse_auth_requires_username_and_password_together() {
     use super::clickhouse_auth;
 
-    assert_eq!(clickhouse_auth(None, None), None);
-    assert_eq!(clickhouse_auth(Some("user".into()), None), None);
-    assert_eq!(clickhouse_auth(None, Some("secret".into())), None);
+    assert_eq!(clickhouse_auth(None, None).unwrap(), None);
     assert_eq!(
-        clickhouse_auth(Some("user".into()), Some("secret".into())),
+        clickhouse_auth(Some("user".into()), Some("secret".into())).unwrap(),
         Some(("user".into(), "secret".into()))
+    );
+
+    let missing_password = clickhouse_auth(Some("user".into()), None).unwrap_err();
+    assert!(
+        missing_password
+            .to_string()
+            .contains("ECAT_CLICKHOUSE_PASSWORD"),
+        "lone username must name the missing password: {missing_password}"
+    );
+
+    let missing_username = clickhouse_auth(None, Some("secret".into())).unwrap_err();
+    assert!(
+        missing_username
+            .to_string()
+            .contains("ECAT_CLICKHOUSE_USERNAME"),
+        "lone password must name the missing username: {missing_username}"
     );
 }
 

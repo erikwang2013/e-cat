@@ -166,7 +166,8 @@ ecat-tier restore --config app.yaml
 
 `run` 与 `verify` 需要 `cli` feature；冷后端连接通过环境变量提供：
 `ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`，
-`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`（两者都设置时启用 Basic Auth），
+`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`（必须同时设置才启用 Basic Auth；
+只设置一个会报配置错误，不会退化为匿名连接），
 `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`。
 
@@ -264,7 +265,8 @@ App::builder()
 - `rollback` 只恢复路由并保留旧分片，不做反向数据搬移。
 - 2PC 协调器数据库单点；`xa_recover` 交叉核对只覆盖 prepare 之后的阶段，`started`
   的 active 事务仍按日志直接回滚（连接断开时数据库自行回滚）。
-- `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth 环境变量对；没有其他认证方式。
+- `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth；用户名/密码必须成对设置，
+  只设置一个会直接报配置错误。
 
 ## 相关文档
 

@@ -176,7 +176,8 @@ ecat-tier restore --config app.yaml
 
 `run` and `verify` require the `cli` feature. Cold-backend endpoints come from
 `ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`,
-`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD` (Basic Auth only when both are set),
+`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD` (Basic Auth requires both; setting only
+one is a config error, not an anonymous connection),
 plus `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`.
 
@@ -289,8 +290,8 @@ idempotent and the handle is cheap to clone.
 - The 2PC coordinator DB is a single point. `xa_recover` cross-checking covers only the
   post-prepare phases; `started` active transactions are still rolled back from the log
   (the database rolls them back itself when the connection drops).
-- `ecat-tier` ClickHouse auth supports only the Basic Auth environment pair; no other auth
-  mechanism is wired.
+- `ecat-tier` ClickHouse auth supports only Basic Auth; the username/password pair is
+  all-or-nothing (a lone variable is rejected).
 
 ## Related
 

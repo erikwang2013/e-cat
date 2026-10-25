@@ -78,9 +78,9 @@ ecat-data-2pc = { version = "7.2.0", path = "../ecat-data-2pc", optional = true 
 # worker hook 的 Shutdown 类型来自 ecat-data；默认不引入。
 ecat-data = { version = "7.2.0", path = "../ecat-data", optional = true }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros", "signal"] }
+tokio = { workspace = true, features = ["rt", "macros", "signal", "sync"] }
 tracing.workspace = true
 async-trait.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

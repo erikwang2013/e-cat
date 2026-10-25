@@ -188,7 +188,7 @@ impl LiveDeps {
         let client = match clickhouse_auth(
             std::env::var("ECAT_CLICKHOUSE_USERNAME").ok(),
             std::env::var("ECAT_CLICKHOUSE_PASSWORD").ok(),
-        ) {
+        )? {
             Some((username, password)) => {
                 ClickhouseClient::with_auth(url, database, username, password)
             }
@@ -255,10 +255,27 @@ impl LiveDeps {
     }
 }
 
-/// 用户名与密码必须同时设置才启用 ClickHouse Basic Auth；只设置一个视为未配置。
+/// 用户名与密码必须同时设置才启用 ClickHouse Basic Auth。
+/// 只设置一个直接报配置错误，避免静默退化成匿名连接后在服务端才失败。
 #[cfg(feature = "clickhouse")]
-fn clickhouse_auth(username: Option<String>, password: Option<String>) -> Option<(String, String)> {
-    username.zip(password)
+fn clickhouse_auth(
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<Option<(String, String)>, TieringError> {
+    match (username, password) {
+        (None, None) => Ok(None),
+        (Some(username), Some(password)) => Ok(Some((username, password))),
+        (Some(_), None) => Err(TieringError::Config(
+            "`ECAT_CLICKHOUSE_USERNAME` is set but `ECAT_CLICKHOUSE_PASSWORD` is missing; \
+             set both or neither"
+                .into(),
+        )),
+        (None, Some(_)) => Err(TieringError::Config(
+            "`ECAT_CLICKHOUSE_PASSWORD` is set but `ECAT_CLICKHOUSE_USERNAME` is missing; \
+             set both or neither"
+                .into(),
+        )),
+    }
 }
 
 #[cfg_attr(not(any(feature = "clickhouse", feature = "s3")), allow(dead_code))]

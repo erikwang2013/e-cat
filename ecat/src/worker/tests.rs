@@ -75,9 +75,52 @@ async fn worker_handle_shutdown_is_idempotent() {
     let task = tokio::spawn(async move {
         shutdown.cancelled().await;
     });
-    handle.set_task(task).unwrap();
+    handle.set_task(task).await.unwrap();
     handle.shutdown();
     handle.shutdown();
     handle.wait().await.unwrap();
     handle.wait().await.unwrap();
+}
+
+#[test]
+fn worker_handle_is_send_sync_clone() {
+    fn assert_traits<T: Send + Sync + Clone>() {}
+    assert_traits::<WorkerHandle>();
+}
+
+#[tokio::test]
+async fn concurrent_waits_both_observe_worker_completion() {
+    let finished = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&finished);
+    let (handle, mut shutdown) = WorkerHandle::new();
+    let task = tokio::spawn(async move {
+        shutdown.cancelled().await;
+        // 停机后仍有收尾工作：早退的 waiter 会在这个窗口里观察到未完成。
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        flag.store(true, Ordering::SeqCst);
+    });
+    handle.set_task(task).await.unwrap();
+
+    // 三个参与者（两个 waiter + 主任务）同时放行，确保两个 wait 并发进入。
+    let barrier = Arc::new(tokio::sync::Barrier::new(3));
+    let spawn_waiter = |handle: WorkerHandle| {
+        let barrier = Arc::clone(&barrier);
+        let finished = Arc::clone(&finished);
+        tokio::spawn(async move {
+            barrier.wait().await;
+            handle.wait().await.unwrap();
+            finished.load(Ordering::SeqCst)
+        })
+    };
+    let first = spawn_waiter(handle.clone());
+    let second = spawn_waiter(handle.clone());
+
+    barrier.wait().await;
+    handle.shutdown();
+
+    let (first, second) = tokio::join!(first, second);
+    assert!(
+        first.unwrap() && second.unwrap(),
+        "both waiters must return only after the worker finished"
+    );
 }
