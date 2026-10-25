@@ -9,6 +9,10 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# etcd v3 HTTP (`/v3/kv/range`) 配置源；默认不编译。
+etcd = []
+
 [dependencies]
 ecat-config = { version = "7.1.1", path = "../ecat-config" }
 tokio = { workspace = true, features = ["sync", "rt", "time", "macros"] }

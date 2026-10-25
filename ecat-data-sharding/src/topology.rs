@@ -1,9 +1,16 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 拓扑源：把一份 [`ShardCatalog`] 交给 [`ShardRouter::reload`]。
-//! 静态源是本期唯一实现；远程源（Consul/etcd）在 Task 33 接入。
+//! 静态源从内存返回；远程源（Consul/etcd）按 feature 编译。
 use async_trait::async_trait;
 
 use crate::catalog::{ShardCatalog, ShardError};
+
+#[cfg(any(feature = "consul", feature = "etcd"))]
+mod remote;
+#[cfg(feature = "consul")]
+pub use remote::ConsulTopologySource;
+#[cfg(feature = "etcd")]
+pub use remote::EtcdTopologySource;
 
 /// 拓扑加载源。调用方负责在加载后校验并 `reload`。
 #[async_trait]

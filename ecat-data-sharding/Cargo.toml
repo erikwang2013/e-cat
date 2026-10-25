@@ -26,9 +26,14 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
 # 可选：`health` feature 的 readyz 探针；默认不进依赖树。
 ecat-health = { workspace = true, optional = true }
+# 可选：远程拓扑源复用 ConsulConfigSource / EtcdConfigSource。
+ecat-config-remote = { version = "7.1.1", path = "../ecat-config-remote", optional = true }
 
 [features]
 health = ["dep:ecat-health"]
+# Consul 阻塞查询 watch；etcd 首版轮询（`/v3/kv/range`）。
+consul = ["dep:ecat-config-remote"]
+etcd = ["dep:ecat-config-remote", "ecat-config-remote/etcd"]
 
 [dev-dependencies]
 # outbox 测试跑在 SQLite 内存库上。
@@ -38,3 +43,5 @@ ecat-data-sqlx.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 # 异步 trait 测试用 `#[tokio::test]`（单线程 rt 即可）。
 tokio = { workspace = true, features = ["macros", "rt"] }
+# 远程拓扑测试的 mock Consul/etcd HTTP 服务。
+axum.workspace = true

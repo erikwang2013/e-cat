@@ -28,4 +28,8 @@ pub use outbox::{
 pub use proxy::validate_proxy;
 pub use router::ShardRouter;
 pub use scatter::ScatterRequest;
+#[cfg(feature = "consul")]
+pub use topology::ConsulTopologySource;
+#[cfg(feature = "etcd")]
+pub use topology::EtcdTopologySource;
 pub use topology::{StaticTopology, TopologySource};

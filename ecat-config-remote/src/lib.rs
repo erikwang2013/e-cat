@@ -1,9 +1,16 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use async_trait::async_trait;
 use base64::Engine as _;
-use ecat_config::{ConfigError, ConfigSource};
+use ecat_config::ConfigError;
+/// 重新导出，便于只依赖本 crate 的调用方（如分片拓扑源）调用 `load`。
+pub use ecat_config::ConfigSource;
 use std::collections::HashMap;
 use std::time::Duration;
+
+#[cfg(feature = "etcd")]
+mod etcd;
+#[cfg(feature = "etcd")]
+pub use etcd::EtcdConfigSource;
 
 /// 阻塞查询 wait 参数：服务端最长持有连接等待变更的时长。
 const CONSUL_BLOCK_WAIT: &str = "5m";
