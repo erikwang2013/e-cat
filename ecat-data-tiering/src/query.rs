@@ -220,5 +220,10 @@ fn fmt_time(ts: OffsetDateTime) -> Result<String, TieringError> {
         .map_err(|e| TieringError::State(format!("failed to format boundary: {e}")))
 }
 
+#[cfg(feature = "clickhouse")]
+pub mod clickhouse;
+#[cfg(feature = "clickhouse")]
+pub use clickhouse::{ClickhouseColdQuery, build_range_sql};
+
 #[cfg(test)]
 mod tests;

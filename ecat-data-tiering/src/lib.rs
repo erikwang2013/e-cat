@@ -17,6 +17,8 @@ pub use partition::{
     PartitionSpec, RestorePlan, RestoreSource, drop_partition, plan_range_partitions,
     prepare_staging, restore_partition,
 };
+#[cfg(feature = "clickhouse")]
+pub use query::{ClickhouseColdQuery, build_range_sql};
 pub use query::{ColdQuery, TieredQuery, TieredTable};
 pub use sink::render_sql_value;
 #[cfg(feature = "clickhouse")]

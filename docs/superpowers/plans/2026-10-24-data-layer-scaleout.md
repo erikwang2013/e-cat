@@ -2082,6 +2082,147 @@ git commit --only ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer
 
 ---
 
+### Task 40: `App` 后台 worker 接线（执行期补充）
+
+> Discovered during Task 26 review: `ArchiveJob::run_until` has no production caller; the Task 26 brief's Files list excluded `ecat/`. This task adds a generic `AppBuilder` background-worker hook so the shutdown path is usable in a real app.
+
+**Files:**
+- Create: `ecat/src/worker.rs`
+- Create: `ecat/src/worker/tests.rs`
+- Modify: `ecat/src/lib.rs`
+- Modify: `ecat/Cargo.toml`（optional `ecat-data` dependency, feature `worker`）
+
+**Interfaces:**
+- Produces:
+  ```rust
+  #[cfg(feature = "worker")]
+  pub struct WorkerHandle { /* ShutdownHandle + JoinHandle */ }
+  #[cfg(feature = "worker")]
+  impl ecat::AppBuilder {
+      pub fn background_worker<F, Fut>(self, make: F) -> Self
+      where
+          F: FnOnce(ecat_data::Shutdown) -> Fut + Send + 'static,
+          Fut: std::future::Future<Output = ()> + Send + 'static;
+  }
+  ```
+  `background_worker` registers an `on_start` hook that spawns `make(shutdown)`, and an `on_stop` hook that calls `shutdown()` then awaits the task (bounded by the worker's own run deadline). It is generic over the future, so `ArchiveJob::run_until` can be passed without `ecat` depending on `ecat-data-tiering` by default. The feature is default-off; `worker = ["dep:ecat-data"]`.
+
+- [ ] **Step 1: 写失败测试**
+
+`background_worker_starts_and_stops`（fake future waits on shutdown; `App` start/stop hooks or the helper's `stop` path; assert it exits）；`background_worker_is_additive_default_off`（default build unchanged）；`worker_handle_shutdown_is_idempotent`。
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `cargo test -p ecat --features worker worker_`
+Expected: FAIL。
+
+- [ ] **Step 3: 实现**
+
+Use `ecat_data::{Shutdown, ShutdownHandle}`; `on_start` spawns; `on_stop` calls `shutdown()` and awaits. Do not add a new scheduler; the worker future owns its loop. No production unwrap.
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `cargo test -p ecat --features worker worker_ && cargo check -p ecat`
+Expected: PASS。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add ecat docs/superpowers/plans/2026-10-24-data-layer-scaleout.md
+git commit --only ecat docs/superpowers/plans/2026-10-24-data-layer-scaleout.md -m "feat(ecat): add background worker lifecycle hook"
+```
+
+---
+
+### Task 41: 归档延迟健康检查（执行期补充）
+
+> Discovered during Task 27 review: `TieringHealthCheck` could only probe the cold sink; the design requires archive-lag detection. This task adds a real lag query to the state store and wires it into the health check. Depends on Task 9 and Task 27.
+
+**Files:**
+- Modify: `ecat-data-tiering/src/state.rs`
+- Modify: `ecat-data-tiering/src/state/tests.rs`
+- Modify: `ecat-data-tiering/src/health.rs`
+- Modify: `ecat-data-tiering/src/health/tests.rs`
+
+**Interfaces:**
+- Produces:
+  ```rust
+  impl ArchiveStateStore {
+      /// Latest `updated_at` for a table (any partition/chunk), or None if no state rows.
+      pub async fn latest_updated_at(&self, table: &str) -> Result<Option<time::OffsetDateTime>, TieringError>;
+  }
+  #[cfg(feature = "health")]
+  impl TieringHealthCheck {
+      pub fn with_archive_lag(self, store: std::sync::Arc<ArchiveStateStore>, max_lag: time::Duration) -> Self;
+  }
+  ```
+  `TieringHealthCheck::check` still probes the cold sink; when an archive-lag store is configured, it also fails if `now - latest_updated_at(table) > max_lag` for any configured table. No state rows -> Ok (no archive history yet). Keep `probe_timeout` separate from `max_archive_lag`.
+
+- [ ] **Step 1: 写失败测试**
+
+`archive_lag_recent_state_is_ok`；`archive_lag_old_state_is_error`；`archive_lag_no_state_rows_is_ok`；`archive_lag_state_query_error_propagates`；`tiering_health_without_archive_lag_keeps_reachability_only`.
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `cargo test -p ecat-data-tiering --features health health_`
+Expected: FAIL。
+
+- [ ] **Step 3: 实现**
+
+`latest_updated_at` uses a parameterized `SELECT MAX(updated_at) FROM <state table> WHERE table_name = ?` (or the state table's constant); parse RFC3339. `TieringHealthCheck` holds `Option<(Arc<ArchiveStateStore>, Duration, Vec<String>)>`; check cold first, then lag. No new dependencies.
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `cargo test -p ecat-data-tiering --features health health_ && cargo test -p ecat-data-tiering state_`
+Expected: PASS。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md
+git commit --only ecat-data-tiering docs/superpowers/plans/2026-10-24-data-layer-scaleout.md -m "feat(tiering): add archive-lag health check"
+```
+
+---
+
+### Task 42: 分片备份/恢复演练脚本（执行期补充）
+
+> Discovered during Task 30 review: the distributed acceptance item "per-shard backup + binlog position + restore drill" had no artifact. Depends on Task 23/30.
+
+**Files:**
+- Create: `scripts/deploy/sharded-backup-drill.sh`
+- Test: `scripts/deploy/sharded-backup-drill.sh --check`
+
+**Interfaces:**
+- `--check` validates the script contains: per-shard `mysqldump`/snapshot step, binlog position capture (`SHOW BINARY LOG STATUS` for 8.4/9; `SHOW MASTER STATUS` only for 8.0), restore into a scratch schema, and checksum verification. Prints `sharded-backup-drill: ok`.
+- `--run` is env-gated by `SHARD_DSNS` (comma-separated) and `RESTORE_DSN`; no live run in CI. Secrets stay out of argv (use a defaults file or `MYSQL_PWD` with a documented /proc caveat).
+- No `SHOW SLAVE STATUS`, no `mysql_native_password`; table/shard identifiers validated.
+
+- [ ] **Step 1: 写失败检查**
+
+Run: `bash scripts/deploy/sharded-backup-drill.sh --check`
+Expected: FAIL，`No such file or directory`。
+
+- [ ] **Step 2: 实现**
+
+Script contains a `--check` marker list, read-only backup commands, binlog position capture, restore/verify steps, and a clear failure if `--run` lacks env. Do not execute destructive DDL during `--check`.
+
+- [ ] **Step 3: 验证**
+
+Run: `bash scripts/deploy/sharded-backup-drill.sh --check`
+Expected: `sharded-backup-drill: ok`。
+Run: `grep -c 'SHOW SLAVE STATUS' scripts/deploy/sharded-backup-drill.sh`
+Expected: `0`。
+
+- [ ] **Step 4: 提交**
+
+```bash
+git add scripts/deploy/sharded-backup-drill.sh docs/superpowers/plans/2026-10-24-data-layer-scaleout.md
+git commit --only scripts/deploy/sharded-backup-drill.sh docs/superpowers/plans/2026-10-24-data-layer-scaleout.md -m "chore(deploy): add sharded backup/restore drill"
+```
+
+---
+
 ## 验收清单
 
 - [ ] `cargo test --workspace` 全绿；`cargo check --workspace --no-default-features` 通过。
