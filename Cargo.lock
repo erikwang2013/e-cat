@@ -1292,6 +1292,7 @@ dependencies = [
  "ecat-middleware",
  "ecat-orm",
  "ecat-registry-consul",
+ "ecat-saga",
  "ecat-tracing",
  "ecat-transport",
  "ecat-transport-grpc",
@@ -1997,6 +1998,21 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "ecat-saga"
+version = "7.1.1"
+dependencies = [
+ "async-trait",
+ "ecat-data",
+ "ecat-data-sqlx",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

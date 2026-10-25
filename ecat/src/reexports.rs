@@ -49,6 +49,9 @@ pub use ecat_data_tiering as tiering;
 #[cfg(feature = "sharding")]
 pub use ecat_data_sharding as sharding;
 
+#[cfg(feature = "saga")]
+pub use ecat_saga as saga;
+
 #[cfg(any(feature = "redis", feature = "mssql"))]
 pub mod data {
     #[cfg(feature = "redis")]
