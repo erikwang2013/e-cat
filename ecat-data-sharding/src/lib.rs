@@ -11,6 +11,7 @@ mod outbox;
 mod proxy;
 mod router;
 mod scatter;
+mod topology;
 
 pub use budget::{PoolBudget, validate_pool_budget};
 pub use catalog::{
@@ -27,3 +28,4 @@ pub use outbox::{
 pub use proxy::validate_proxy;
 pub use router::ShardRouter;
 pub use scatter::ScatterRequest;
+pub use topology::{StaticTopology, TopologySource};

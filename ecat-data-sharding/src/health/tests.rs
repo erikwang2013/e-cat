@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! health 测试：拓扑、分片连通性、超时与 outbox 积压；全部用假客户端，不连真库。
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -145,7 +145,7 @@ async fn shard_health_fails_on_invalid_topology() {
     let mut bad = catalog(&["s0", "s1"]);
     bad.tables[0].algorithm = ShardAlgorithm::HashMod { shards: 3 };
     let router = Arc::new(ShardRouter {
-        catalog: bad,
+        catalog: Arc::new(RwLock::new(bad)),
         clients: HashMap::new(),
     });
     let check = ShardHealthCheck::new(router, Duration::from_secs(1));
@@ -170,7 +170,7 @@ async fn shard_health_fails_when_probe_times_out() {
 #[tokio::test]
 async fn shard_health_fails_when_shard_has_no_client() {
     let router = Arc::new(ShardRouter {
-        catalog: catalog(&["s0"]),
+        catalog: Arc::new(RwLock::new(catalog(&["s0"]))),
         clients: HashMap::new(),
     });
     let check = ShardHealthCheck::new(router, Duration::from_secs(1));

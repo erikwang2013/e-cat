@@ -20,21 +20,28 @@ impl ShardRouter {
     /// 拓扑校验 + 每个分片 `SELECT 1`；整次探针共享一个总超时，
     /// 超时错误指出当时正在探的分片。
     pub async fn check_health(&self, timeout: Duration) -> Result<(), ShardError> {
-        self.catalog.validate()?;
+        // 先取 owned 快照；read guard 不能跨 await。
+        let catalog = self.catalog();
+        catalog.validate()?;
+        let mut targets = Vec::new();
+        for table in &catalog.tables {
+            for shard in &table.shards {
+                let client = self.clients.get(&shard.name).ok_or_else(|| {
+                    ShardError::Config(format!("shard `{}` has no client", shard.name))
+                })?;
+                targets.push((shard.name.clone(), Arc::clone(client)));
+            }
+        }
         let current = Arc::new(Mutex::new(None::<String>));
         let probe = {
             let current = Arc::clone(&current);
             async move {
-                for table in &self.catalog.tables {
-                    for shard in &table.shards {
-                        *current.lock().await = Some(shard.name.clone());
-                        let client = self.clients.get(&shard.name).ok_or_else(|| {
-                            ShardError::Config(format!("shard `{}` has no client", shard.name))
-                        })?;
-                        client.query(PROBE_SQL).await.map_err(|e| {
-                            ShardError::Database(format!("shard `{}`: {e}", shard.name))
-                        })?;
-                    }
+                for (name, client) in targets {
+                    *current.lock().await = Some(name.clone());
+                    client
+                        .query(PROBE_SQL)
+                        .await
+                        .map_err(|e| ShardError::Database(format!("shard `{name}`: {e}")))?;
                 }
                 Ok(())
             }

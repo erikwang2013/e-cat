@@ -43,7 +43,8 @@ impl ShardRouter {
                 "scatter max_concurrency must be at least 1".to_owned(),
             ));
         }
-        let table = self.catalog.table(&req.table)?;
+        // 取一份 owned 快照，读锁不能跨 `.await`；热更新不影响本次 scatter。
+        let table = self.catalog().table(&req.table)?.clone();
         let mut results: Vec<Option<Vec<Row>>> = table.shards.iter().map(|_| None).collect();
         let mut failed: Vec<String> = Vec::new();
         let permits = Arc::new(Semaphore::new(req.max_concurrency));
