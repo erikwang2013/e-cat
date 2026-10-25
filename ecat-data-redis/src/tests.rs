@@ -169,6 +169,32 @@ fn renew_script_compares_token_and_pexpires() {
     }
 }
 
+#[test]
+fn fence_script_increments_before_set_and_uses_nx_px() {
+    let incr = FENCE_SCRIPT
+        .find(r#"redis.call("incr""#)
+        .expect("fence script must INCR the fence key");
+    let set = FENCE_SCRIPT
+        .find(r#"redis.call("set""#)
+        .expect("fence script must SET the lock key");
+    assert!(incr < set, "fence must increment before SET");
+    for needle in ["KEYS[2]", "ARGV[1]", "ARGV[2]", "\"NX\"", "\"PX\""] {
+        assert!(FENCE_SCRIPT.contains(needle), "missing {needle}");
+    }
+}
+
+#[test]
+fn fence_key_is_separate_from_lock_key() {
+    assert_eq!(fence_key("job:1"), "ecat:fence:job:1");
+    assert_ne!(fence_key("job:1"), "job:1");
+}
+
+#[test]
+fn ttl_millis_clamps_overflow() {
+    assert_eq!(ttl_millis(Duration::from_millis(1500)), 1500);
+    assert_eq!(ttl_millis(Duration::MAX), u64::MAX);
+}
+
 #[tokio::test]
 async fn redis_lock_from_config_reads_query_timeout() {
     let url = spawn_silent_redis().await;
@@ -211,6 +237,16 @@ async fn lock_commands_time_out_when_the_backend_stalls() {
     .await;
     assert_lock_times_out("release", lock.release("k", "tok")).await;
     assert_lock_times_out("renew", lock.renew("k", "tok", Duration::from_secs(30))).await;
+    assert_lock_times_out("acquire_fenced", async {
+        lock.acquire_fenced("k", Duration::from_secs(30))
+            .await
+            .map(|_| ())
+    })
+    .await;
+    assert_lock_times_out("validate_fence", async {
+        lock.validate_fence("k", 1).await.map(|_| ())
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -250,6 +286,180 @@ async fn renew_extends_ttl() {
     assert!(err.to_string().contains("token mismatch"), "got: {err}");
 
     lock.release(&key, &token).await.expect("cleanup release");
+}
+
+/// Fencing 用例都打真 Redis：Lua 的原子语义无法用假服务端验证。
+async fn fence_test_env() -> Option<(RedisLock, RedisCache)> {
+    let Ok(url) = std::env::var("ECAT_TEST_REDIS_URL") else {
+        eprintln!("skip fence test: ECAT_TEST_REDIS_URL not set");
+        return None;
+    };
+    let lock = RedisLock::connect(&url).await.expect("connect lock");
+    let cache = RedisCache::connect(&url).await.expect("connect cache");
+    Some((lock, cache))
+}
+
+fn fence_test_key() -> String {
+    format!("ecat:test:fence:{}", Uuid::new_v4())
+}
+
+#[tokio::test]
+async fn fence_increases_across_acquire_release_reacquire() {
+    let Some((lock, cache)) = fence_test_env().await else {
+        return;
+    };
+    let key = fence_test_key();
+    let first = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("acquire")
+        .expect("fresh key must be acquirable");
+    lock.release(&key, &first.token).await.expect("release");
+    let second = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("reacquire")
+        .expect("released key must be acquirable");
+    assert!(
+        second.fence > first.fence,
+        "fence must increase: {} -> {}",
+        first.fence,
+        second.fence
+    );
+    lock.release(&key, &second.token).await.expect("cleanup");
+    cache.delete(&fence_key(&key)).await.expect("cleanup fence");
+}
+
+#[tokio::test]
+async fn only_one_concurrent_acquire_wins() {
+    let Some((lock, cache)) = fence_test_env().await else {
+        return;
+    };
+    let key = fence_test_key();
+    let (a, b) = tokio::join!(
+        lock.acquire_fenced(&key, Duration::from_secs(30)),
+        lock.acquire_fenced(&key, Duration::from_secs(30))
+    );
+    let guards: Vec<FenceGuard> = [a.expect("a"), b.expect("b")]
+        .into_iter()
+        .flatten()
+        .collect();
+    assert_eq!(guards.len(), 1, "exactly one concurrent acquirer must win");
+    let guard = guards.into_iter().next().unwrap();
+    lock.release(&key, &guard.token).await.expect("release");
+    let next = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("reacquire")
+        .expect("released key must be acquirable");
+    // 输掉的那次获取也 INCR：两次竞争 + 一次重取 = +2
+    assert_eq!(
+        next.fence,
+        guard.fence + 2,
+        "failed acquire must still bump the fence"
+    );
+    lock.release(&key, &next.token).await.expect("cleanup");
+    cache.delete(&fence_key(&key)).await.expect("cleanup fence");
+}
+
+#[tokio::test]
+async fn stale_fence_is_rejected() {
+    let Some((lock, cache)) = fence_test_env().await else {
+        return;
+    };
+    let key = fence_test_key();
+    let first = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("acquire")
+        .expect("fresh key must be acquirable");
+    lock.release(&key, &first.token).await.expect("release");
+    let second = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("reacquire")
+        .expect("released key must be acquirable");
+    assert!(
+        !lock
+            .validate_fence(&key, first.fence)
+            .await
+            .expect("validate stale"),
+        "stale fence must be rejected after reacquire"
+    );
+    assert!(
+        lock.validate_fence(&key, second.fence)
+            .await
+            .expect("validate current"),
+        "current fence must validate"
+    );
+    assert!(
+        !lock
+            .validate_fence(&key, second.fence + 1)
+            .await
+            .expect("validate future"),
+        "unknown fence must not validate"
+    );
+    lock.release(&key, &second.token).await.expect("cleanup");
+    cache.delete(&fence_key(&key)).await.expect("cleanup fence");
+}
+
+#[tokio::test]
+async fn renew_does_not_change_fence() {
+    let Some((lock, cache)) = fence_test_env().await else {
+        return;
+    };
+    let key = fence_test_key();
+    let guard = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("acquire")
+        .expect("fresh key must be acquirable");
+    lock.renew(&key, &guard.token, Duration::from_secs(60))
+        .await
+        .expect("renew");
+    assert!(
+        lock.validate_fence(&key, guard.fence)
+            .await
+            .expect("validate"),
+        "renew must not change the fence"
+    );
+    lock.release(&key, &guard.token).await.expect("cleanup");
+    cache.delete(&fence_key(&key)).await.expect("cleanup fence");
+}
+
+#[tokio::test]
+async fn release_does_not_decrease_fence() {
+    let Some((lock, cache)) = fence_test_env().await else {
+        return;
+    };
+    let key = fence_test_key();
+    let first = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("acquire")
+        .expect("fresh key must be acquirable");
+    lock.release(&key, &first.token).await.expect("release");
+    assert!(
+        lock.validate_fence(&key, first.fence)
+            .await
+            .expect("validate after release"),
+        "release must not delete or decrease the fence"
+    );
+    let second = lock
+        .acquire_fenced(&key, Duration::from_secs(30))
+        .await
+        .expect("reacquire")
+        .expect("released key must be acquirable");
+    assert!(second.fence > first.fence, "fence must keep increasing");
+    assert!(
+        !lock
+            .validate_fence(&key, first.fence)
+            .await
+            .expect("validate stale"),
+        "old fence must be rejected after reacquire"
+    );
+    lock.release(&key, &second.token).await.expect("cleanup");
+    cache.delete(&fence_key(&key)).await.expect("cleanup fence");
 }
 
 /// 假 Redis 服务端：**应答握手、对数据命令装死**。

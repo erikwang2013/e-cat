@@ -18,7 +18,7 @@ use ecat_data::Cache;
 use ecat_data::breaker_error_to_backend_error;
 use ecat_data::{BackendKind, run_with_timeout};
 use ecat_errors::{Error, ErrorCode};
-use ecat_lock::{DistributedLock, LockError};
+use ecat_lock::{DistributedLock, FenceGuard, FencedLock, LockError};
 use ecat_tls::TlsClientConfig;
 use redis::AsyncCommands;
 use redis::ConnectionInfo;
@@ -276,6 +276,31 @@ const RENEW_SCRIPT: &str = r#"
     end
 "#;
 
+/// Fencing 获取脚本：先 `INCR` fence（锁被占也递增，保持单调），再 `SET NX PX`。
+/// 返回 fence；SET 失败返回 0。fence key 与 lock key 分开，release 不删 fence。
+const FENCE_SCRIPT: &str = r#"
+    local fence = redis.call("incr", KEYS[2])
+    local ok = redis.call("set", KEYS[1], ARGV[1], "NX", "PX", ARGV[2])
+    if ok then
+        return fence
+    else
+        return 0
+    end
+"#;
+
+fn fence_key(key: &str) -> String {
+    format!("ecat:fence:{key}")
+}
+
+fn ttl_millis(ttl: Duration) -> u64 {
+    let millis = ttl.as_millis();
+    if millis > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        millis as u64
+    }
+}
+
 /// Distributed lock backed by Redis `SET NX PX`.
 pub struct RedisLock {
     conn: MultiplexedConnection,
@@ -344,17 +369,56 @@ impl RedisLock {
 }
 
 #[async_trait]
+impl FencedLock for RedisLock {
+    async fn acquire_fenced(
+        &self,
+        key: &str,
+        ttl: Duration,
+    ) -> Result<Option<FenceGuard>, LockError> {
+        let mut conn = self.conn.clone();
+        let token = Uuid::new_v4().to_string();
+        let px = ttl_millis(ttl);
+        let lock_key = key.to_owned();
+        let fkey = fence_key(key);
+        self.with_timeout("acquire_fenced", async move {
+            let fence: u64 = redis::Script::new(FENCE_SCRIPT)
+                .key(&lock_key)
+                .key(&fkey)
+                .arg(&token)
+                .arg(px)
+                .invoke_async(&mut conn)
+                .await
+                .map_err(|e| LockError::Other(format!("redis acquire_fenced: {e}")))?;
+            if fence == 0 {
+                Ok(None)
+            } else {
+                Ok(Some(FenceGuard { token, fence }))
+            }
+        })
+        .await
+    }
+
+    async fn validate_fence(&self, key: &str, fence: u64) -> Result<bool, LockError> {
+        let mut conn = self.conn.clone();
+        let fkey = fence_key(key);
+        self.with_timeout("validate_fence", async move {
+            let current: Option<u64> = conn
+                .get(&fkey)
+                .await
+                .map_err(|e| LockError::Other(format!("redis validate_fence: {e}")))?;
+            Ok(current == Some(fence))
+        })
+        .await
+    }
+}
+
+#[async_trait]
 impl DistributedLock for RedisLock {
     async fn acquire(&self, key: &str, ttl: Duration) -> Result<Option<String>, LockError> {
         let mut conn = self.conn.clone();
         let token = Uuid::new_v4().to_string();
-        let millis = ttl.as_millis();
         // 与 Cache::set 保持一致：ttl 溢出时钳制为 u64::MAX
-        let px = if millis > u64::MAX as u128 {
-            u64::MAX
-        } else {
-            millis as u64
-        };
+        let px = ttl_millis(ttl);
         self.with_timeout("acquire", async move {
             let acquired: Option<()> = conn
                 .set_options(
