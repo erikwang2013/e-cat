@@ -2,14 +2,14 @@
 # Deployment parity gate: the same CRUD/ORM SQL must produce identical output on
 # standalone (single MySQL) and distributed (MySQL behind ShardingSphere-Proxy).
 # --check is static: it validates the two compose profiles and the Helm values and
-# needs neither Docker nor Helm. --run needs ECAT_STANDALONE_DSN/ECAT_DISTRIBUTED_DSN
-# and is skipped when they are unset; ECAT_REQUIRE_LIVE_DB=1 turns that skip into a
+# needs neither Docker nor Helm. --run needs ECAT_STANDALONE_DSN and ECAT_PROXY_DSN
+# and is skipped when both are unset; ECAT_REQUIRE_LIVE_DB=1 turns that skip into a
 # failure so CI can demand a live run.
 #
 # The distributed side must be the ShardingSphere-Proxy endpoint: a direct MySQL DSN
-# is not a distributed parity run. Set ECAT_PROXY_DSN to that proxy endpoint and the
-# run first executes scripts/sharding/proxy-auth-check.sh against it; with
-# ECAT_REQUIRE_PROXY=1 an unset ECAT_PROXY_DSN is a failure instead of a warning.
+# is not a distributed parity run. ECAT_PROXY_DSN (or PROXY_DSN) is required, is the
+# only compare endpoint, and is validated with scripts/sharding/proxy-auth-check.sh
+# before the parity SQL; ECAT_DISTRIBUTED_DSN alone is rejected.
 #
 # Usage:
 #   scripts/deploy/parity.sh --check
@@ -28,11 +28,10 @@ usage: parity.sh --check
 
   --check   static check of docker-compose profiles and Helm values (no DB needed)
   --run     run one CRUD/ORM SQL script on both topologies and diff the output;
-            needs ECAT_STANDALONE_DSN and ECAT_DISTRIBUTED_DSN (mysql://...)
-            ECAT_PROXY_DSN (recommended) must be the ShardingSphere-Proxy endpoint;
-            it is verified with scripts/sharding/proxy-auth-check.sh.
-            ECAT_MYSQL_VERSION=8.4|9 (default 8.4) is the backend line claimed by the
-            proxy check. ECAT_REQUIRE_PROXY=1 makes ECAT_PROXY_DSN mandatory.
+            needs ECAT_STANDALONE_DSN and ECAT_PROXY_DSN (or PROXY_DSN). The proxy
+            endpoint is verified with scripts/sharding/proxy-auth-check.sh before the
+            comparison; ECAT_MYSQL_VERSION=8.4|9 (default 8.4) is the backend line it
+            claims. A direct MySQL DSN on the distributed side is rejected.
 EOF
 }
 
@@ -80,17 +79,19 @@ compose_services() {
   '
 }
 
-# One service's YAML block (header + body) on stdout; empty when absent.
-compose_service_block() {
+# The environment: section of one service on stdout; empty when absent.
+compose_service_env() {
   awk -v want="$1" '
     /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
       name = $1
       sub(/:$/, "", name)
       on = (name == want)
-      if (on) print
+      inenv = 0
       next
     }
-    on { print }
+    on && /^    environment:[[:space:]]*$/ { inenv = 1; next }
+    on && inenv && /^    [A-Za-z0-9_.-]+:/ { inenv = 0 }
+    on && inenv { print }
   ' "$COMPOSE"
 }
 
@@ -113,15 +114,15 @@ check_compose() {
   unprofiled=$(compose_service_profiles | awk -F'\t' '$2 == "" { printf "%s ", $1 }')
   [[ -z "$unprofiled" ]] \
     || fail "compose services without a profile co-start with every profile: $unprofiled"
-  # Scope the env assertions to each app's own block: a file-wide grep would let a
-  # comment (or the other app) satisfy the check.
-  local node block
+  # Scope the env assertions to each app's environment: block: a file-wide grep would
+  # let a comment, a label, or the other app satisfy the check.
+  local node env
   for node in app-1 app-2; do
-    block=$(compose_service_block "$node")
-    [[ -n "$block" ]] || fail "compose service '$node' not found"
-    grep -qxF -- '      ECAT_DEPLOYMENT_MODE: distributed' <<<"$block" \
+    env=$(compose_service_env "$node")
+    [[ -n "$env" ]] || fail "compose service '$node' has no environment: block"
+    grep -qxF -- '      ECAT_DEPLOYMENT_MODE: distributed' <<<"$env" \
       || fail "compose service '$node' has no ECAT_DEPLOYMENT_MODE: distributed env"
-    grep -qxF -- "      ECAT_NODE_ID: $node" <<<"$block" \
+    grep -qxF -- "      ECAT_NODE_ID: $node" <<<"$env" \
       || fail "compose service '$node' has no ECAT_NODE_ID: $node env"
   done
 }
@@ -144,12 +145,13 @@ check_helm_values() {
   check_no_secret_literals
 }
 
-# Any key ending in password/passwd must carry a Secret reference or a placeholder,
-# never a literal. Catches mysql_root_password/rootPassword, which a prefix regex misses.
+# Any key ending in password/passwd/secret must carry a Secret reference or a
+# placeholder, never a literal. existingSecret is the reference itself, so it is exempt.
 check_no_secret_literals() {
   local key value leaks=()
   while IFS=$'\t' read -r key value; do
     [[ -n "$key" ]] || continue
+    [[ "${key,,}" == existingsecret ]] && continue
     value=$(printf '%s\n' "$value" | sed 's/[[:space:]]#.*//')
     value=${value//[[:space:]]/}
     value=${value//\"/}
@@ -164,7 +166,7 @@ check_no_secret_literals() {
   done < <(awk '
     BEGIN { IGNORECASE = 1 }
     /^[[:space:]]*#/ { next }
-    /^[[:space:]]*[A-Za-z0-9_.-]*(password|passwd)[[:space:]]*:/ {
+    /^[[:space:]]*[A-Za-z0-9_.-]*(password|passwd|secret)[[:space:]]*:/ {
       line = $0
       key = line
       sub(/^[[:space:]]*/, "", key)
@@ -273,29 +275,28 @@ if [[ "$mode" == check ]]; then
 fi
 
 standalone_dsn=${ECAT_STANDALONE_DSN:-}
-proxy_dsn=${ECAT_PROXY_DSN:-}
-# When ECAT_PROXY_DSN is given it is both the verified and the compared endpoint.
-distributed_dsn=${proxy_dsn:-${ECAT_DISTRIBUTED_DSN:-}}
-if [[ -z "$standalone_dsn" || -z "$distributed_dsn" ]]; then
+proxy_dsn=${ECAT_PROXY_DSN:-${PROXY_DSN:-}}
+distributed_dsn=$proxy_dsn
+# Nothing configured at all: a static-only environment, so skipping is legitimate.
+if [[ -z "$standalone_dsn" && -z "$proxy_dsn" && -z "${ECAT_DISTRIBUTED_DSN:-}" ]]; then
   if [[ "${ECAT_REQUIRE_LIVE_DB:-0}" == 1 ]]; then
-    fail "ECAT_STANDALONE_DSN and ECAT_DISTRIBUTED_DSN/ECAT_PROXY_DSN are required when ECAT_REQUIRE_LIVE_DB=1"
+    fail "ECAT_STANDALONE_DSN and ECAT_PROXY_DSN are required when ECAT_REQUIRE_LIVE_DB=1"
   fi
-  echo "deploy-parity: skipped live comparison (set ECAT_STANDALONE_DSN and ECAT_DISTRIBUTED_DSN/ECAT_PROXY_DSN)"
+  echo "deploy-parity: skipped live comparison (set ECAT_STANDALONE_DSN and ECAT_PROXY_DSN)"
   exit 0
+fi
+[[ -n "$standalone_dsn" ]] || fail "ECAT_STANDALONE_DSN is required for --run"
+# A direct MySQL DSN on the distributed side would turn the comparison into a
+# tautology, so the distributed side is accepted only through the proxy variable.
+if [[ -z "$proxy_dsn" ]]; then
+  fail "ECAT_PROXY_DSN (or PROXY_DSN) is required: the distributed side must be ShardingSphere-Proxy; direct MySQL or ECAT_DISTRIBUTED_DSN alone is not a distributed parity run"
 fi
 command -v mysql >/dev/null || fail "mysql client not found"
 
-# A direct MySQL DSN on the distributed side would turn this into a tautology.
-if [[ -n "$proxy_dsn" ]]; then
-  proxy_check=$ROOT/scripts/sharding/proxy-auth-check.sh
-  [[ -x "$proxy_check" ]] || fail "missing executable $proxy_check"
-  MYSQL_VERSION=${ECAT_MYSQL_VERSION:-8.4} PROXY_DSN="$proxy_dsn" "$proxy_check" \
-    || fail "proxy-auth-check failed for ECAT_PROXY_DSN (distributed side is not a usable proxy endpoint)"
-elif [[ "${ECAT_REQUIRE_PROXY:-0}" == 1 ]]; then
-  fail "ECAT_REQUIRE_PROXY=1 requires ECAT_PROXY_DSN"
-else
-  echo "deploy-parity: WARN ECAT_PROXY_DSN unset: assuming ECAT_DISTRIBUTED_DSN is ShardingSphere-Proxy; direct MySQL is not a distributed parity run" >&2
-fi
+proxy_check=$ROOT/scripts/sharding/proxy-auth-check.sh
+[[ -x "$proxy_check" ]] || fail "missing executable $proxy_check"
+MYSQL_VERSION=${ECAT_MYSQL_VERSION:-8.4} PROXY_DSN="$proxy_dsn" "$proxy_check" \
+  || fail "proxy-auth-check failed for the proxy endpoint (distributed side is not a usable proxy)"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
