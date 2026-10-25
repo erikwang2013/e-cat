@@ -22,6 +22,11 @@ impl KeyedClient {
     pub fn table(&self) -> &str {
         &self.table
     }
+
+    /// 底层客户端；双写用它判断两侧是否同一物理目标。
+    pub(crate) fn client(&self) -> &Arc<dyn RdbmsClient> {
+        &self.client
+    }
 }
 
 #[async_trait]

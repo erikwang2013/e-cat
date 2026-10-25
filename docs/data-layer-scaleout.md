@@ -100,7 +100,9 @@ dual.for_key("orders", &json!(id))?
   `pragma_table_info`）；BLOB/BYTEA 等二进制列直接报错，绝不把 base64 文本写进目标表。
 - hash 重分片期间用 `DualWrite`：切流前 `before_cutover(&old_router, &new_router)`（旧为主、
   新为镜像），切流后 `after_cutover(&new_router, &old_router)`（新为主、旧为镜像，便于
-  `rollback`）。两侧同名的分片只写一次；镜像写失败返回 `dual-write mirror failed` 错误。
+  `rollback`）。仅当两侧端点都有非空 URL 且相等，或底层客户端是同一 `Arc` 时才去重；
+  分片名相同不算同一物理目标。proxy 模式端点无 URL，不同客户端实例会各写一次（宁可重复
+  写，也不丢镜像写）；镜像写失败返回 `dual-write mirror failed` 错误。
 - 状态表 `shard_migration_jobs` 记录 phase/cursor/rows/checksum；迁移可用 `FencedLock` 保证单执行。
 - 回滚后再次迁移会重新进入回填/校验流程。
 - B 阶段直接使用 ShardingSphere-Scaling；本执行器覆盖 A 阶段。

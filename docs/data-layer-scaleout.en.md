@@ -105,8 +105,11 @@ dual.for_key("orders", &json!(id))?
   instead of writing base64 text into the target.
 - For hash re-sharding use `DualWrite`: `before_cutover(&old_router, &new_router)` (old
   primary, new mirror) before cutover, `after_cutover(&new_router, &old_router)` afterwards
-  (new primary, old mirror, so `rollback` stays usable). A shard name present in both
-  topologies is written once; mirror failures return a `dual-write mirror failed` error.
+  (new primary, old mirror, so `rollback` stays usable). Dedupe happens only when both
+  resolved endpoints have equal non-empty URLs, or when the underlying client is the same
+  `Arc`; equal shard names do not prove the same physical target. In proxy mode endpoints
+  have no URL, so distinct client instances are written twice (the safe direction: duplicate
+  rather than lose a mirror write); mirror failures return a `dual-write mirror failed` error.
 - `shard_migration_jobs` stores phase/cursor/rows/checksum; `FencedLock` protects a single
   executor.
 - Re-running after rollback re-enters backfill/verify instead of getting stuck.

@@ -7,7 +7,10 @@
 //!
 //! 主拓扑先写，成功后才写镜像：主写失败时两侧都未半写；镜像失败返回
 //! `dual-write mirror failed` 错误，不静默吞掉。两次写不在同一事务内，调用方
-//! 需重试失败的镜像写。同一分片名在两侧目录里视为同一物理分片，只写一次。
+//! 需重试失败的镜像写。去重只认同一物理目标的证据：两侧端点都有非空 `url` 时
+//! 按 URL 相等去重，否则按底层客户端 `Arc` 指针相同去重；分片名相同不构成证明。
+//! proxy 模式端点没有 URL，不同客户端实例即使指向同一代理也会各写一次 ——
+//! 这是安全方向（宁可重复写，也不丢镜像写）。
 //! `transaction()` 只在主拓扑开启 —— 跨库事务不在本 helper 的范围内，需要
 //! 事务内双写的调用方必须自行拆分。
 use async_trait::async_trait;
@@ -40,13 +43,32 @@ impl<'a> DualWrite<'a> {
         }
     }
 
-    /// 按 `table` 的 `key` 同时绑定两侧目标分片。
+    /// 按 `table` 的 `key` 同时绑定两侧目标分片；仅对已证明的同一物理目标去重。
     pub fn for_key(&self, table: &str, key: &Value) -> Result<DualWriteClient, ShardError> {
-        let (primary_shard, primary) = self.primary.for_key_with_shard(table, key)?;
-        let (mirror_shard, mirror) = self.mirror.for_key_with_shard(table, key)?;
-        // 未迁移的分片两侧同名：同一物理分片写一次，避免非幂等语句被重复执行。
-        let mirror = (primary_shard != mirror_shard).then_some(mirror);
+        let (primary_url, primary) = self.primary.for_key_with_shard(table, key)?;
+        let (mirror_url, mirror) = self.mirror.for_key_with_shard(table, key)?;
+        let mirror = (!same_physical_target(
+            primary_url.as_deref(),
+            &primary,
+            mirror_url.as_deref(),
+            &mirror,
+        ))
+        .then_some(mirror);
         Ok(DualWriteClient { primary, mirror })
+    }
+}
+
+/// 两侧端点有非空 URL 时按 URL 判定；没有 URL 时只认同一客户端 `Arc`。
+/// 分片名相同不是物理同一性证明（proxy 模式可复用名字指向不同集群）。
+fn same_physical_target(
+    primary_url: Option<&str>,
+    primary: &KeyedClient,
+    mirror_url: Option<&str>,
+    mirror: &KeyedClient,
+) -> bool {
+    match (primary_url, mirror_url) {
+        (Some(a), Some(b)) if !a.trim().is_empty() && !b.trim().is_empty() => a == b,
+        _ => std::sync::Arc::ptr_eq(primary.client(), mirror.client()),
     }
 }
 
