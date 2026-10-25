@@ -1,3 +1,5 @@
+# 参考渲染（distributed）：Helm values 默认 deploymentMode=standalone，
+# 本文件是分布式形态的静态样例，不是 Helm 渲染输出。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
