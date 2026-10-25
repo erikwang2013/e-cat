@@ -1,16 +1,19 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 双写路由/回滚语义：只有证明同一物理目标时才去重。
+//! 双写路由/回滚语义：物理同一性只认客户端 `Arc`，同名未证明需要显式策略；
+//! 镜像失败只能通过 `mirror_client()` 重放，不能整体重试。
 #![cfg(feature = "migrate")]
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use ecat_data::{RdbmsClient, SqlExecutor};
+use async_trait::async_trait;
+use ecat_data::{Dialect, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
 use ecat_data_sharding::{
     DualWrite, ShardAlgorithm, ShardCatalog, ShardEndpoint, ShardRouter, ShardTable,
 };
 use ecat_data_sqlx::{PoolParams, SqlxClient};
-use serde_json::json;
+use serde_json::{Value, json};
 
 const INCREMENT: &str = "UPDATE orders SET amount = amount + 1 WHERE id = ?";
 
@@ -85,8 +88,7 @@ fn client_map(entries: &[(&str, &Arc<dyn RdbmsClient>)]) -> HashMap<String, Arc<
         .collect()
 }
 
-/// 单分片目录；`url` 用来证明两侧指向同一物理端点。
-fn one_shard_catalog(name: &str, url: Option<&str>) -> ShardCatalog {
+fn one_shard_catalog(name: &str) -> ShardCatalog {
     ShardCatalog {
         tables: vec![ShardTable {
             name: "orders".into(),
@@ -95,7 +97,7 @@ fn one_shard_catalog(name: &str, url: Option<&str>) -> ShardCatalog {
             algorithm: ShardAlgorithm::HashMod { shards: 1 },
             shards: vec![ShardEndpoint {
                 name: name.into(),
-                url: url.map(str::to_owned),
+                url: None,
             }],
         }],
     }
@@ -114,8 +116,8 @@ struct OneShardFixture {
 }
 
 async fn one_shard_fixture(
-    old: (&str, Option<&str>),
-    new: (&str, Option<&str>),
+    old_shard: &str,
+    new_shard: &str,
     shared_client: bool,
 ) -> OneShardFixture {
     let old_db = db().await;
@@ -131,15 +133,78 @@ async fn one_shard_fixture(
     if !shared_client {
         insert_amount(&new_db, 1, 100).await;
     }
-    let old_catalog = one_shard_catalog(old.0, old.1);
-    let new_catalog = one_shard_catalog(new.0, new.1);
-    let old_router = router_for(&old_catalog, old.0, &old_db);
-    let new_router = router_for(&new_catalog, new.0, &new_db);
+    let old_catalog = one_shard_catalog(old_shard);
+    let new_catalog = one_shard_catalog(new_shard);
+    let old_router = router_for(&old_catalog, old_shard, &old_db);
+    let new_router = router_for(&new_catalog, new_shard, &new_db);
     OneShardFixture {
         old_db,
         new_db,
         old_router,
         new_router,
+    }
+}
+
+/// 第一次 `execute_with` 失败的镜像；用于验证 `mirror_client()` 重放路径。
+struct FailOnce {
+    inner: Arc<dyn RdbmsClient>,
+    failed: AtomicBool,
+}
+
+impl FailOnce {
+    fn new(inner: Arc<dyn RdbmsClient>) -> Self {
+        Self {
+            inner,
+            failed: AtomicBool::new(false),
+        }
+    }
+}
+
+#[async_trait]
+impl SqlExecutor for FailOnce {
+    async fn execute(&self, sql: &str) -> Result<u64, RdbmsError> {
+        self.inner.execute(sql).await
+    }
+
+    async fn query(&self, sql: &str) -> Result<Vec<Row>, RdbmsError> {
+        self.inner.query(sql).await
+    }
+
+    async fn execute_with(&self, sql: &str, params: &[Value]) -> Result<u64, RdbmsError> {
+        if !self.failed.swap(true, Ordering::SeqCst) {
+            return Err(RdbmsError::Database("transient mirror failure".into()));
+        }
+        self.inner.execute_with(sql, params).await
+    }
+
+    async fn query_with(&self, sql: &str, params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
+        self.inner.query_with(sql, params).await
+    }
+
+    async fn query_write(&self, sql: &str, params: &[Value]) -> Result<Vec<Row>, RdbmsError> {
+        self.inner.query_write(sql, params).await
+    }
+
+    async fn execute_then_query(
+        &self,
+        first: &str,
+        first_params: &[Value],
+        second: &str,
+    ) -> Result<Vec<Row>, RdbmsError> {
+        self.inner
+            .execute_then_query(first, first_params, second)
+            .await
+    }
+
+    fn dialect(&self) -> Dialect {
+        self.inner.dialect()
+    }
+}
+
+#[async_trait]
+impl RdbmsClient for FailOnce {
+    async fn transaction(&self) -> Result<Transaction, RdbmsError> {
+        self.inner.transaction().await
     }
 }
 
@@ -213,10 +278,29 @@ async fn dual_write_before_cutover_reaches_old_and_new() {
 }
 
 #[tokio::test]
-async fn dual_write_same_name_distinct_clients_writes_both() {
-    let f = one_shard_fixture(("s0", None), ("s0", None), false).await;
+async fn dual_write_same_name_distinct_clients_requires_policy() {
+    let f = one_shard_fixture("s0", "s0", false).await;
+
+    let err = DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .for_key("orders", &json!(1))
+        .err()
+        .expect("unproven same-name shards must error")
+        .to_string();
+
+    assert!(
+        err.contains("assume_distinct()") && err.contains("assume_same()"),
+        "{err}"
+    );
+    assert_eq!(amount(&f.old_db, 1).await, 10, "no primary write");
+    assert_eq!(amount(&f.new_db, 1).await, 100, "no mirror write");
+}
+
+#[tokio::test]
+async fn dual_write_assume_distinct_writes_both() {
+    let f = one_shard_fixture("s0", "s0", false).await;
 
     DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_distinct()
         .for_key("orders", &json!(1))
         .unwrap()
         .execute_with(INCREMENT, &[json!(1)])
@@ -227,33 +311,28 @@ async fn dual_write_same_name_distinct_clients_writes_both() {
     assert_eq!(
         amount(&f.new_db, 1).await,
         101,
-        "same shard name alone must not drop the mirror write"
+        "assume_distinct writes mirror"
     );
 }
 
 #[tokio::test]
-async fn dual_write_equal_urls_write_once_even_with_distinct_clients() {
-    let url = "mysql://proxy:3306/s0";
-    let f = one_shard_fixture(("s0", Some(url)), ("s0", Some(url)), false).await;
+async fn dual_write_assume_same_writes_primary_only() {
+    let f = one_shard_fixture("s0", "s0", false).await;
 
-    DualWrite::before_cutover(&f.old_router, &f.new_router)
+    let client = DualWrite::before_cutover(&f.old_router, &f.new_router)
+        .assume_same()
         .for_key("orders", &json!(1))
-        .unwrap()
-        .execute_with(INCREMENT, &[json!(1)])
-        .await
         .unwrap();
+    client.execute_with(INCREMENT, &[json!(1)]).await.unwrap();
 
-    assert_eq!(amount(&f.old_db, 1).await, 11, "primary written once");
-    assert_eq!(
-        amount(&f.new_db, 1).await,
-        100,
-        "equal non-empty URL proves the same physical target and must dedupe"
-    );
+    assert_eq!(amount(&f.old_db, 1).await, 11, "primary write");
+    assert_eq!(amount(&f.new_db, 1).await, 100, "assume_same skips mirror");
+    assert!(client.mirror_client().is_none());
 }
 
 #[tokio::test]
 async fn dual_write_same_client_arc_writes_once_even_with_different_names() {
-    let f = one_shard_fixture(("old0", None), ("new0", None), true).await;
+    let f = one_shard_fixture("old0", "new0", true).await;
 
     DualWrite::before_cutover(&f.old_router, &f.new_router)
         .for_key("orders", &json!(1))
@@ -326,6 +405,49 @@ async fn dual_write_after_cutover_keeps_rollback_topology_current() {
         .await
         .unwrap();
     assert_eq!(rows[0].get("amount"), Some(&json!(12)));
+}
+
+#[tokio::test]
+async fn dual_write_mirror_failure_retry_via_mirror_client() {
+    let old_db = db().await;
+    create_orders(&old_db).await;
+    insert_amount(&old_db, 1, 10).await;
+    let new_db = db().await;
+    create_orders(&new_db).await;
+    insert_amount(&new_db, 1, 100).await;
+    let flaky: Arc<dyn RdbmsClient> = Arc::new(FailOnce::new(Arc::clone(&new_db)));
+    let old_router = router_for(&one_shard_catalog("old0"), "old0", &old_db);
+    let new_router = router_for(&one_shard_catalog("new0"), "new0", &flaky);
+    let client = DualWrite::before_cutover(&old_router, &new_router)
+        .for_key("orders", &json!(1))
+        .unwrap();
+
+    let err = client
+        .execute_with(INCREMENT, &[json!(1)])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("dual-write mirror failed"), "{err}");
+    assert!(err.contains("mirror_client()"), "{err}");
+    assert_eq!(
+        amount(&old_db, 1).await,
+        11,
+        "primary committed exactly once"
+    );
+    assert_eq!(amount(&new_db, 1).await, 100, "mirror still behind");
+
+    client
+        .mirror_client()
+        .expect("different clients have a mirror")
+        .execute_with(INCREMENT, &[json!(1)])
+        .await
+        .unwrap();
+    assert_eq!(
+        amount(&old_db, 1).await,
+        11,
+        "replay must not touch primary"
+    );
+    assert_eq!(amount(&new_db, 1).await, 101, "mirror caught up");
 }
 
 #[tokio::test]

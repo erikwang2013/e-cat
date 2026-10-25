@@ -101,15 +101,20 @@ dual.for_key("orders", &json!(id))?
 - Hash changes copy the whole table and route each row through the new topology; range
   changes move key intervals.
 - Before backfill/verify/cutover the executor inspects source columns (`information_schema`
-  on MySQL/PostgreSQL, `pragma_table_info` on SQLite). A BLOB/BYTEA column fails the run
-  instead of writing base64 text into the target.
+  on MySQL/PostgreSQL, `pragma_table_info` on SQLite). Qualified `schema.table` names are
+  split into schema + table for the metadata query. A BLOB/BYTEA column fails the run instead
+  of writing base64 text into the target.
 - For hash re-sharding use `DualWrite`: `before_cutover(&old_router, &new_router)` (old
   primary, new mirror) before cutover, `after_cutover(&new_router, &old_router)` afterwards
-  (new primary, old mirror, so `rollback` stays usable). Dedupe happens only when both
-  resolved endpoints have equal non-empty URLs, or when the underlying client is the same
-  `Arc`; equal shard names do not prove the same physical target. In proxy mode endpoints
-  have no URL, so distinct client instances are written twice (the safe direction: duplicate
-  rather than lose a mirror write); mirror failures return a `dual-write mirror failed` error.
+  (new primary, old mirror, so `rollback` stays usable). Physical identity is proven only by
+  the same underlying client `Arc`; URLs and shard names are not proof. Same-named shards
+  with different clients fail by default; choose explicitly: `assume_distinct()` writes both
+  (requires idempotent/replay-safe SQL), `assume_same()` writes the primary only (an explicit
+  assertion that both names are the same physical shard). Reuse the same client `Arc` for
+  physically identical shards. Mirror failures return `dual-write mirror failed` after the
+  primary committed: do not retry through `DualWriteClient` (it re-applies the primary);
+  replay the same statement via `mirror_client()`, and run `verify()` before cutover. The
+  crash window between primary and mirror writes remains.
 - `shard_migration_jobs` stores phase/cursor/rows/checksum; `FencedLock` protects a single
   executor.
 - Re-running after rollback re-enters backfill/verify instead of getting stuck.
@@ -283,9 +288,9 @@ idempotent and the handle is cheap to clone.
   sources. SQLite is checked by declared type, so a blob value stored in a column with
   non-BLOB affinity can still slip through.
 - `DualWrite` mirrors single write statements only; primary and mirror writes are not in the
-  same transaction (mirror failures are reported and must be retried), and `transaction()`
-  runs on the primary topology alone, so callers needing transactional dual writes must
-  split them.
+  same transaction. When a mirror write fails the primary is already committed: replay via
+  `mirror_client()`, never by retrying `DualWriteClient`. `transaction()` runs on the primary
+  topology alone, so callers needing transactional dual writes must split them.
 - `rollback` only restores routing and keeps old shards; it does not copy data back.
 - The 2PC coordinator DB is a single point. `xa_recover` cross-checking covers only the
   post-prepare phases; `started` active transactions are still rolled back from the log
