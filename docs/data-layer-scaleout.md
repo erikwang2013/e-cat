@@ -1,6 +1,6 @@
 # Ecat 数据层横向扩展
 
-> 状态：`Unreleased`（分支预览）。本页描述在 v7.1.1 之上新增、默认关闭的数据层能力。
+> 状态：`7.2.0`（已发布）。本页描述 7.2.0 新增、默认关闭的数据层能力。
 > 兼容性约束：既有 `SqlExecutor` / `RdbmsClient` / `Cache` / `Entity` / `Dialect` 与配置字段不变；
 > 新能力通过新 crate 和 feature 接入，不改变单机默认行为。
 

@@ -5,7 +5,7 @@
 
 Ecat中文名：一只猫
 
-**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v7.1.1 · 60 crates）。
+**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v7.2.0 · 60 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -552,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
 | Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
 | Phase 16 | ✅ 完成 | 维护强化 v2.4（M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 聚合 crate ecat / U2 examples / OAuth2 token hash / CVE 跟踪） |
-| Phase 17 | 🚧 分支预览 | 数据层横向扩展（分库分表 / 冷热分层 / 迁移 / Saga / 2PC / fencing / Redis 共享池 / 远程拓扑 / worker 接线；live gates 待真机） |
+| Phase 17 | ✅ 已发布 | 数据层横向扩展（分库分表 / 冷热分层 / 迁移 / Saga / 2PC / fencing / Redis 共享池 / 远程拓扑 / worker 接线；live gates 待真机） |
 
 ## 已知限制
 
@@ -588,7 +588,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### 为什么用 Cargo Workspace
 
-与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 7.1.1），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
+与 Kratos 的模块化设计一致。所有 `ecat-*` crate 以 workspace 锁步版本发布（当前 7.2.0），各自独立编译，用户按需引入。核心 crate 保持最小依赖，contrib crate 提供可选集成。
 
 ### 为什么用 prost（而非 protobuf-rs）
 

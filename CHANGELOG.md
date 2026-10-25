@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased] — Data-layer scale-out — 2026-10-25
+## [7.2.0] — 2026-10-25
 
-> 分支预览，未发布到 crates.io；既有版本号仍为 7.1.1。
+> 数据层横向扩展版本。补齐 60 个 crate；既有单机 API 与默认行为不变。
 
 ### Added
 
@@ -32,7 +32,7 @@
 
 - 兼容性：既有 trait、配置字段、方言与默认单机行为不变；所有新能力通过新 crate 或
   feature 接入且默认关闭。
-- 依赖：新增 `deadpool`（Redis 池）、`uuid`（2PC xid）等；workspace 版本仍为 7.1.1。
+- 依赖：新增 `deadpool`（Redis 池）、`uuid`（2PC xid）等；workspace 版本统一为 7.2.0。
 - 验证：`cargo test --workspace`、`cargo clippy --workspace -- -D warnings`、
   `cargo check --workspace --no-default-features`、`cargo fmt --check` 全绿；
   MySQL 8.4/9、PostgreSQL 2PC、Redis、ClickHouse/S3、Consul/etcd、Helm 与备份演练

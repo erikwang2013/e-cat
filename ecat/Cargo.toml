@@ -66,17 +66,17 @@ ecat-config-remote = { workspace = true, optional = true }
 ecat-data-redis = { workspace = true, optional = true }
 ecat-orm = { workspace = true, optional = true }
 # ecat-data-mssql 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-data-mssql = { version = "7.1.1", path = "../ecat-data-mssql", optional = true }
+ecat-data-mssql = { version = "7.2.0", path = "../ecat-data-mssql", optional = true }
 # ecat-data-tiering 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-data-tiering = { version = "7.1.1", path = "../ecat-data-tiering", optional = true }
+ecat-data-tiering = { version = "7.2.0", path = "../ecat-data-tiering", optional = true }
 # ecat-data-sharding 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-data-sharding = { version = "7.1.1", path = "../ecat-data-sharding", optional = true }
+ecat-data-sharding = { version = "7.2.0", path = "../ecat-data-sharding", optional = true }
 # ecat-saga 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-saga = { version = "7.1.1", path = "../ecat-saga", optional = true }
+ecat-saga = { version = "7.2.0", path = "../ecat-saga", optional = true }
 # ecat-data-2pc 不在 workspace.dependencies 表里，直写 path 依赖。
-ecat-data-2pc = { version = "7.1.1", path = "../ecat-data-2pc", optional = true }
+ecat-data-2pc = { version = "7.2.0", path = "../ecat-data-2pc", optional = true }
 # worker hook 的 Shutdown 类型来自 ecat-data；默认不引入。
-ecat-data = { version = "7.1.1", path = "../ecat-data", optional = true }
+ecat-data = { version = "7.2.0", path = "../ecat-data", optional = true }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "signal"] }
 tracing.workspace = true

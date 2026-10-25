@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-mq = { version = "7.1.1", path = "../ecat-mq" }
+ecat-mq = { version = "7.2.0", path = "../ecat-mq" }
 bytes.workspace = true
 tokio = { workspace = true, features = ["sync", "rt"] }
 tracing.workspace = true

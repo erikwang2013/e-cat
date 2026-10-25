@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md)
 
-**Ecat** is a Rust microservices framework (v7.1.1 · 60 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v7.2.0 · 60 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -537,7 +537,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
 | Phase 15 | ✅ Done | Ecosystem v2 (real Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / distributed lock / scheduler / CLI watch+upgrade) |
 | Phase 16 | ✅ Done | Maintenance v2.4 (M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 aggregation crate ecat / U2 examples / OAuth2 token hash / CVE tracking) |
-| Phase 17 | 🚧 Branch preview | Data-layer scale-out (sharding / hot-cold tiering / migration / Saga / 2PC / fencing / shared Redis pool / remote topology / worker wiring; live gates pending) |
+| Phase 17 | ✅ Released | Data-layer scale-out (sharding / hot-cold tiering / migration / Saga / 2PC / fencing / shared Redis pool / remote topology / worker wiring; live gates pending) |
 
 ## Known Limitations
 
@@ -573,7 +573,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 7.1.1), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
+Consistent with Kratos' modular design. All `ecat-*` crates release with lockstep workspace versioning (currently 7.2.0), compiling independently; users pull in only what they need. Core crates keep minimal dependencies; contrib crates provide optional integrations.
 
 ### Why prost (not protobuf-rs)
 

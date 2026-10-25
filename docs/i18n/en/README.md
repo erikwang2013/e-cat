@@ -5,11 +5,11 @@
 
 Ecat's Chinese name: 一只猫 (literally "a cat")
 
-**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.1.1 · 60 crates).
+**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.2.0 · 60 crates).
 
 It offers an API-first development experience, a pluggable component architecture, a unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started seamlessly, while fully leveraging Rust's type safety, zero-cost abstractions, and extreme performance.
 
-> **Data-layer scale-out (unreleased)**：Sharding, hot/cold tiering, Saga/2PC, fencing, shared Redis pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **Data-layer scale-out (7.2.0)**：Sharding, hot/cold tiering, Saga/2PC, fencing, shared Redis pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 <p align="center">
   <img src="e-cat.svg" alt="Ecat project mascot (animated)" width="220" />
@@ -554,7 +554,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Why a Cargo Workspace
 
-Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 7.1.1), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
+Consistent with Kratos's modular design. All `ecat-*` crates are released in lockstep versions within the workspace (currently 7.2.0), each compiled independently, and users import them as needed. Core crates keep dependencies minimal; contrib crates provide optional integrations.
 
 ### Why prost (instead of protobuf-rs)
 
