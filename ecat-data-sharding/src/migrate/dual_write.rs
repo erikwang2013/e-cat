@@ -7,12 +7,14 @@
 //!
 //! 主拓扑先写，成功后才写镜像：主写失败时两侧都未半写；镜像失败返回
 //! `dual-write mirror failed` 错误，不静默吞掉。物理同一性只认底层客户端
-//! `Arc` 指针相同；URL 和分片名都不是证据。两侧同名但客户端不同时默认报错，
-//! 调用方确认后可用 [`DualWrite::assume_distinct`]（两边都写，要求 SQL 幂等/
-//! 可重放）或 [`DualWrite::assume_same`]（只写主拓扑）显式选择。
+//! `Arc` 指针相同；URL 和分片名都不是证据。客户端不同时，无论分片名是否相同，
+//! 默认都报错（分片名只用于错误信息）；调用方必须显式选择：
+//! [`DualWrite::assume_distinct`]（两边都写，要求 SQL 幂等/可重放）或
+//! [`DualWrite::assume_same`]（只写主拓扑，断言两侧是同一物理目标）。
 //! 两次写不在同一事务内：镜像失败时主写已提交，不要用 [`DualWriteClient`] 重试
 //! （会重复主写）；应通过 [`DualWriteClient::mirror_client`] 重放同一语句，或
-//! 在切流前用 `verify()` 对账。主写与镜像写之间的崩溃窗口仍然存在。
+//! 在切流前用 `verify()` 对账。主写与镜像写之间的崩溃窗口仍然存在；`after_cutover`
+//! 期间崩溃可能让旧（回滚）拓扑落后，依赖回滚前必须对账两侧。
 //! `transaction()` 只在主拓扑开启 —— 跨库事务不在本 helper 的范围内，需要
 //! 事务内双写的调用方必须自行拆分。
 use async_trait::async_trait;
@@ -22,9 +24,9 @@ use super::*;
 use crate::ShardRouter;
 use crate::client::KeyedClient;
 
-/// 同名分片两侧客户端不同时的处理策略。
+/// 两侧客户端 `Arc` 不同时的处理策略；与分片名是否相同无关。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SameNamePolicy {
+enum IdentityPolicy {
     /// 默认：无法证明同一物理目标，拒绝双写。
     Error,
     /// 调用方断言两侧是不同物理分片：两边都写。
@@ -37,7 +39,9 @@ enum SameNamePolicy {
 pub struct DualWrite<'a> {
     primary: &'a ShardRouter,
     mirror: &'a ShardRouter,
-    same_name: SameNamePolicy,
+    primary_topology: &'static str,
+    mirror_topology: &'static str,
+    identity: IdentityPolicy,
 }
 
 impl<'a> DualWrite<'a> {
@@ -46,7 +50,9 @@ impl<'a> DualWrite<'a> {
         Self {
             primary: old,
             mirror: new,
-            same_name: SameNamePolicy::Error,
+            primary_topology: "old",
+            mirror_topology: "new",
+            identity: IdentityPolicy::Error,
         }
     }
 
@@ -55,20 +61,23 @@ impl<'a> DualWrite<'a> {
         Self {
             primary: new,
             mirror: old,
-            same_name: SameNamePolicy::Error,
+            primary_topology: "new",
+            mirror_topology: "old",
+            identity: IdentityPolicy::Error,
         }
     }
 
-    /// 断言同名但客户端不同的分片是不同物理分片：两侧都写。
-    /// SQL 必须幂等或可安全重放，否则同一逻辑写会执行两次。
+    /// 断言两侧客户端指向不同物理分片：两侧都写。
+    /// 不检查分片名；SQL 必须幂等或可安全重放，否则同一逻辑写会执行两次。
     pub fn assume_distinct(mut self) -> Self {
-        self.same_name = SameNamePolicy::WriteBoth;
+        self.identity = IdentityPolicy::WriteBoth;
         self
     }
 
-    /// 断言同名但客户端不同的分片是同一物理分片：只写主拓扑。
+    /// 断言两侧客户端指向同一物理分片：只写主拓扑。
+    /// 分片名不是证据；只在调用方确认了物理目标时使用。
     pub fn assume_same(mut self) -> Self {
-        self.same_name = SameNamePolicy::PrimaryOnly;
+        self.identity = IdentityPolicy::PrimaryOnly;
         self
     }
 
@@ -79,22 +88,21 @@ impl<'a> DualWrite<'a> {
         let mirror = if std::sync::Arc::ptr_eq(primary.client(), mirror.client()) {
             // 同一个客户端实例就是同一物理目标；名字不同也一样。
             None
-        } else if primary_shard != mirror_shard {
-            // 正常的 hash 重分片：旧、新拓扑落不同分片，必须双写。
-            Some(mirror)
         } else {
-            match self.same_name {
-                SameNamePolicy::Error => {
+            // 客户端不同永远不是「不同物理目标」的证明，与分片名是否相同无关。
+            match self.identity {
+                IdentityPolicy::Error => {
                     return Err(ShardError::Config(format!(
-                        "dual-write: shard `{primary_shard}` has different clients in the old and \
-                         new topologies; physical identity is unproven. Call \
-                         DualWrite::assume_same() if they are the same physical shard, or \
-                         DualWrite::assume_distinct() (requires idempotent/replay-safe SQL) to \
-                         write both."
+                        "dual-write: shard `{primary_shard}` in the {} topology and shard \
+                         `{mirror_shard}` in the {} topology use different clients; physical \
+                         identity is unproven. Call DualWrite::assume_same() if they are the same \
+                         physical shard, or DualWrite::assume_distinct() (requires \
+                         idempotent/replay-safe SQL) to write both.",
+                        self.primary_topology, self.mirror_topology
                     )));
                 }
-                SameNamePolicy::WriteBoth => Some(mirror),
-                SameNamePolicy::PrimaryOnly => None,
+                IdentityPolicy::WriteBoth => Some(mirror),
+                IdentityPolicy::PrimaryOnly => None,
             }
         };
         Ok(DualWriteClient { primary, mirror })

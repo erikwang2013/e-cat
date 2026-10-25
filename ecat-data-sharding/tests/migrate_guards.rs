@@ -388,6 +388,27 @@ async fn sqlite_qualified_table_uses_table_then_schema_params() {
 }
 
 #[tokio::test]
+async fn unsupported_table_names_fail_closed_before_query() {
+    for table in [
+        "catalog.main.orders",
+        "\"catalog.main\".orders",
+        "main.\"order.items\"",
+    ] {
+        let (migrator, _, _) = schema_migrator(
+            Dialect::Sqlite,
+            table,
+            vec![("id", "INTEGER")],
+            SQLITE_QUALIFIED,
+            &[],
+        )
+        .await;
+        let err = migrator.backfill().await.unwrap_err().to_string();
+        assert!(err.contains("not supported"), "{table}: {err}");
+        assert!(err.contains("refusing to copy"), "{table}: {err}");
+    }
+}
+
+#[tokio::test]
 async fn backfill_accepts_qualified_sqlite_table_name() {
     let source = db().await;
     source

@@ -86,7 +86,9 @@ migrator.cutover(&router, new_catalog.clone()).await?;
 migrator.rollback(&router).await?; // 只切回旧拓扑，旧分片保留
 
 // hash 重分片期间由调用方双写（切流前：旧为主、新为镜像）：
-let dual = DualWrite::before_cutover(&old_router, &new_router);
+// 此调用假定每个同名分片都已真正重建；未变化的分片必须复用客户端 Arc，或改用 assume_same()。
+let dual = DualWrite::before_cutover(&old_router, &new_router)
+    .assume_distinct();
 dual.for_key("orders", &json!(id))?
     .execute_with(
         "UPDATE orders SET status = ? WHERE id = ?",
@@ -97,16 +99,19 @@ dual.for_key("orders", &json!(id))?
 
 - hash 变更按全表复制并逐行按新拓扑路由；range 变更按区间搬移。
 - 回填/校验/切流前会检查源表结构（MySQL/PostgreSQL 用 `information_schema`，SQLite 用
-  `pragma_table_info`）；`schema.table` 形式会拆成 schema + 表名查询元数据。BLOB/BYTEA
-  等二进制列直接报错，绝不把 base64 文本写进目标表。
+  `pragma_table_info`）；只拆分两段 `schema.table` / `db.table`，三段 `db.schema.table`
+  与含点的引号标识符不支持，直接 fail closed，不做拆名。BLOB/BYTEA 等二进制列直接报错，
+  绝不把 base64 文本写进目标表。
 - hash 重分片期间用 `DualWrite`：切流前 `before_cutover(&old_router, &new_router)`（旧为主、
   新为镜像），切流后 `after_cutover(&new_router, &old_router)`（新为主、旧为镜像，便于
-  `rollback`）。物理同一性只认底层客户端的同一 `Arc`；URL 与分片名都不是证据。两侧同名
-  但客户端不同时默认报错，调用方须显式选择：`assume_distinct()` 两边都写（要求 SQL
-  幂等/可重放），`assume_same()` 只写主拓扑（显式断言同一物理分片）；物理相同的分片应
-  复用同一个客户端 `Arc`。镜像写失败返回 `dual-write mirror failed`，此时主写已提交：
-  不要用 `DualWriteClient` 重试（会重复主写），应通过 `mirror_client()` 重放同一语句；
-  切流前务必用 `verify()` 对账，主写与镜像写之间的崩溃窗口仍然存在。
+  `rollback`）。物理同一性只认底层客户端的同一 `Arc`；URL 与分片名都不是证据，分片名
+  只用于错误信息。客户端不同时，无论分片名是否相同，默认都报错，调用方必须显式选择：
+  `assume_distinct()` 两边都写（要求 SQL 幂等/可重放；须确认每个同名分片确实已重建，
+  未变化的分片复用客户端 `Arc` 或改用 `assume_same()`），`assume_same()` 只写主拓扑
+  （显式断言两侧是同一物理目标）。镜像写失败返回 `dual-write mirror failed`，此时主写
+  已提交：不要用 `DualWriteClient` 重试（会重复主写），应通过 `mirror_client()` 重放同一
+  语句；切流前务必用 `verify()` 对账，主写与镜像写之间的崩溃窗口仍然存在。`after_cutover`
+  后若在主写与镜像写之间崩溃，旧（回滚）拓扑可能落后；依赖回滚前必须对账两侧。
 - 状态表 `shard_migration_jobs` 记录 phase/cursor/rows/checksum；迁移可用 `FencedLock` 保证单执行。
 - 回滚后再次迁移会重新进入回填/校验流程。
 - B 阶段直接使用 ShardingSphere-Scaling；本执行器覆盖 A 阶段。
@@ -264,6 +269,8 @@ App::builder()
 
 - 迁移执行器只搬移标量列：回填/校验/切流前发现 BLOB/BYTEA 等二进制列即拒绝。SQLite
   只能按声明类型判断，声明为非 BLOB affinity 的列里若实际存了 blob 值仍可能漏检。
+- 迁移预检只支持不带引号的单段表名或两段 `schema.table` / `db.table`；三段
+  `db.schema.table` 与含点的引号标识符直接 fail closed，不尝试拆名。
 - `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内。镜像失败时主写已提交，
   调用方须通过 `mirror_client()` 重放（不能重试 `DualWriteClient`）；`transaction()` 只在
   主拓扑执行，跨库事务内的双写需调用方自行拆分。
