@@ -440,7 +440,7 @@ User::update(&amp;db, &amp;got).<span class="k">await</span>?;
                 <li data-i18n="ref.limit6">批量 update_many 的乐观锁冲突无法定位到行；只能比较返回行数，或逐行 update。</li>
                 <li data-i18n="ref.limit7">join 的表名与 ON 条件不做白名单校验，与 filter_raw 同一信任边界。</li>
                 <li data-i18n="ref.limit8">分片迁移只搬移标量列，BLOB/BYTEA 在复制前即 fail-closed；hash 变更用“回填 + <code>DualWrite</code>”，同名但客户端不同须显式 <code>assume_distinct()</code>/<code>assume_same()</code>，镜像失败用 <code>mirror_client()</code> 重放；主/镜像不在同一事务内。</li>
-                <li data-i18n="ref.limit9">opt-in 2PC 仅 MySQL/PostgreSQL；协调器数据库单点，生产需外部 HA；恢复只在启动/无活跃事务时调用，<code>xa_recover</code> 交叉核对仅限 <code>prepared</code>/<code>committing</code>，且每个 participant 的 pool 必须固定到持有分支的单台服务器。</li>
+                <li data-i18n="ref.limit9">opt-in 2PC 仅 MySQL/PostgreSQL；协调器数据库单点且假设单写者，生产需外部 HA/leader；恢复只在启动/无活跃事务时调用，<code>xa_recover</code> 交叉核对仅限 <code>prepared</code>/<code>committing</code>，每个 participant 的 pool 必须固定到持有分支的单台服务器。</li>
                 <li data-i18n="ref.limit10">ecat-tier 冷后端通过环境变量配置，ClickHouse Basic Auth 需同时设置非空用户名与密码；冷层探针与归档滞后查询各用一份 probe_timeout（最坏约 2×）。</li>
               </ul>
             </div>

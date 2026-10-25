@@ -309,7 +309,10 @@ idempotent and the handle is cheap to clone.
   serving process: it would roll back this process's live `started` branches (a crashed
   process's branches are rolled back by the database when the pinned connection drops).
   `xa_recover` cross-checking covers only `prepared`/`committing`; `rolling_back`/`started`
-  always replay. Each participant's pool must be pinned to the single server holding its
+  always replay. 2PC also assumes a single writer per coordinator DB at a time: recovery
+  must not run concurrently with another process that still owns active branches; the fence
+  serializes recoverers, not live transactions. Multi-instance deployments need an external
+  leader/owner lease. Each participant's pool must be pinned to the single server holding its
   branches; do not put a load-balanced proxy in front of an XA participant unless it
   guarantees session/server affinity for XA RECOVER and the prepared XID; otherwise an
   empty in-doubt list is not conclusive.

@@ -33,7 +33,8 @@
   in-doubt 列表交叉核对；`rolling_back` / `started` 一律按日志重放（可能含未
   PREPARE 的活跃分支）。恢复只应在启动时、开始接受 2PC 工作之前调用；每个
   participant 的 pool 必须固定到持有其分支的单台服务器，`xa_recover` 的空列表
-  才可作为“已解决”的证据。
+  才可作为“已解决”的证据。2PC 还假设同一协调库同一时刻只有一个写入者；恢复不得
+  与仍持有活跃分支的进程并发，多实例需外部 leader/owner 租约。
 - **冷热分层** —— 归档滞后状态查询受 `probe_timeout` 约束，协调库挂起不再拖住
   `/ready`；`ecat-tier` 支持 `ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`
   Basic Auth，只设置其中一个直接报配置错误。

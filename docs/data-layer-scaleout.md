@@ -280,7 +280,9 @@ App::builder()
   active 分支随连接断开由数据库回滚。`xa_recover` 交叉核对只覆盖 `prepared`/`committing`，
   `rolling_back`/`started` 一律重放。每个 participant 的 pool 必须固定到持有其分支的
   单台服务器，XA participant 前不要放负载均衡代理，除非保证 XA RECOVER 与 prepared XID
-  的会话/服务器亲和性；否则交叉核对的空列表结论不可信。
+  的会话/服务器亲和性；否则交叉核对的空列表结论不可信。2PC 还假设同一协调库同一时刻
+  只有一个写入者：恢复不得与另一个仍持有活跃分支的进程并发，fence 只串行化恢复者，
+  不串行化活跃事务；多实例部署需外部 leader/owner 租约。
 - `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth；用户名/密码必须成对设置（空值视为
   未设置），只设置一个非空值会直接报配置错误。
 
