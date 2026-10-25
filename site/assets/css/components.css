@@ -29,6 +29,7 @@
   transform: translateY(-2px);
 }
 
+.span-12 { grid-column: 1 / -1; }
 .span-7 { grid-column: span 7; }
 .span-6 { grid-column: span 6; }
 .span-5 { grid-column: span 5; }
@@ -430,3 +431,6 @@ html.has-qr-dialog {
   }
 }
 
+
+.scale-panel { margin-top: 1.5rem; }
+.scale-figure { display:block; width:100%; height:auto; margin-top:1.25rem; border:1px solid var(--line, #1d3a43); border-radius:18px; }
