@@ -48,8 +48,9 @@ impl SqlxXaParticipant {
 #[async_trait]
 impl XaParticipant for SqlxXaParticipant {
     async fn xa_start(&self, xid: &str) -> Result<(), XaError> {
-        let mut conns = self.conns.lock().await;
-        if conns.contains_key(xid) {
+        // 不在持有 conns 锁时等连接：池满时 commit 需要拿回连接并回收 guard，
+        // 持锁等池会与它互等。
+        if self.conns.lock().await.contains_key(xid) {
             return Ok(());
         }
         let mut guard = self.acquire().await?;
@@ -59,6 +60,17 @@ impl XaParticipant for SqlxXaParticipant {
             _ => return Err(XaError::UnsupportedDialect),
         };
         exec_guard(&mut guard, &sql).await?;
+        let mut conns = self.conns.lock().await;
+        if conns.contains_key(xid) {
+            // 另一个调用已为同一 xid 固定了连接；这条新建的活动事务必须回滚。
+            let rollback = match self.dialect {
+                Dialect::MySql => format!("XA ROLLBACK '{}'", quote_xid(xid)),
+                Dialect::Postgres => "ROLLBACK".to_owned(),
+                _ => return Err(XaError::UnsupportedDialect),
+            };
+            let _ = exec_guard(&mut guard, &rollback).await;
+            return Err(XaError::UnknownXid(xid.to_owned()));
+        }
         conns.insert(
             xid.to_owned(),
             Pinned {
@@ -101,8 +113,9 @@ impl XaParticipant for SqlxXaParticipant {
     }
 
     async fn xa_commit(&self, xid: &str) -> Result<(), XaError> {
-        let mut conns = self.conns.lock().await;
-        let mut guard = match conns.remove(xid) {
+        // 先取走 guard 并释放锁；池满时等待不能挡住同一参与者的其它命令。
+        let pinned = self.conns.lock().await.remove(xid);
+        let mut guard = match pinned {
             Some(pinned) => pinned.guard,
             None => self.acquire().await?,
         };
@@ -119,8 +132,7 @@ impl XaParticipant for SqlxXaParticipant {
     }
 
     async fn xa_rollback(&self, xid: &str) -> Result<(), XaError> {
-        let mut conns = self.conns.lock().await;
-        let pinned = conns.remove(xid);
+        let pinned = self.conns.lock().await.remove(xid);
         let (mut guard, active) = match pinned {
             Some(pinned) => (pinned.guard, !pinned.prepared),
             None => (self.acquire().await?, false),

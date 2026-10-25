@@ -72,24 +72,13 @@ impl HealthCheck for TieringHealthCheck {
 }
 
 async fn check_archive_lag(lag: &ArchiveLag) -> Result<(), String> {
-    let rows = lag
+    let latest = lag
         .store
-        .list(None)
+        .latest_per_table()
         .await
         .map_err(|e| format!("archive state: {e}"))?;
-    let mut tables: Vec<String> = rows.into_iter().map(|row| row.table).collect();
-    tables.sort();
-    tables.dedup();
     let now = time::OffsetDateTime::now_utc();
-    for table in tables {
-        let latest = lag
-            .store
-            .latest_updated_at(&table)
-            .await
-            .map_err(|e| format!("archive state for `{table}`: {e}"))?;
-        let Some(latest) = latest else {
-            continue;
-        };
+    for (table, latest) in latest {
         let age = now - latest;
         if age > lag.max_lag {
             return Err(format!(

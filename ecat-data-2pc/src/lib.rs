@@ -2,6 +2,7 @@
 //! 显式 opt-in 的 XA 2PC 协调器；不接入 `KeyedClient` / `scatter`。
 mod coordinator;
 mod recovery;
+#[cfg(feature = "sqlx")]
 mod xa;
 
 pub use coordinator::{DistributedTx, RecoveryReport, TwoPhaseCoordinator, XaError, XaParticipant};

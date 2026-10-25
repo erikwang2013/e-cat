@@ -40,6 +40,12 @@ impl ShardMigrator {
         if matches!(job.phase, Phase::Verified | Phase::Cutover | Phase::Done) {
             return Ok(());
         }
+        if job.phase == Phase::RolledBack {
+            // 回滚后重新迁移：游标通常已在末尾；重新标记为回填中，
+            // 让 verify 重新核对目标分片后再允许 cutover。
+            job.phase = Phase::Backfilling;
+            self.save_job(mv, &job).await?;
+        }
         let source = self.client(&mv.from)?;
         let target = self.client(&mv.to)?;
         let table = self.new_catalog.table(&mv.table)?;

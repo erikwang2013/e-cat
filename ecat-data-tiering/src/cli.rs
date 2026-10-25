@@ -37,6 +37,9 @@ pub async fn run_cli(
     command: Command,
     dry_run: bool,
 ) -> Result<(), TieringError> {
+    if command == Command::Restore {
+        return Err(restore_error());
+    }
     let client = Arc::new(
         SqlxClient::from_config(config.database.clone())
             .await
@@ -61,12 +64,16 @@ pub(crate) async fn run_with(
     match command {
         Command::Run => run_archive(config, dry_run, deps).await,
         Command::Verify => verify_archive(config, deps).await,
-        Command::Restore => Err(TieringError::Config(
-            "restore requires the operator to load cold data into a staging table first; \
-             call `prepare_staging` + `restore_partition` after the staging load"
-                .into(),
-        )),
+        Command::Restore => Err(restore_error()),
     }
+}
+
+fn restore_error() -> TieringError {
+    TieringError::Config(
+        "restore requires the operator to load cold data into a staging table first; \
+         call `prepare_staging` + `restore_partition` after the staging load"
+            .into(),
+    )
 }
 
 async fn run_archive(

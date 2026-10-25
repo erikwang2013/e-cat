@@ -288,6 +288,22 @@ async fn cutover_reloads_router() {
 }
 
 #[tokio::test]
+async fn rebackfill_after_rollback_can_cutover() {
+    let f = fixture().await;
+    f.migrator.backfill().await.unwrap();
+    f.migrator.verify().await.unwrap();
+    f.migrator.cutover(&f.router, f.new.clone()).await.unwrap();
+    f.migrator.rollback(&f.router).await.unwrap();
+    assert_eq!(boundaries(&f.router.catalog()), vec![100]);
+
+    let report = f.migrator.backfill().await.unwrap();
+    assert_eq!(report.moved_rows, 0, "cursor is already at the end");
+    f.migrator.verify().await.unwrap();
+    f.migrator.cutover(&f.router, f.new.clone()).await.unwrap();
+    assert_eq!(boundaries(&f.router.catalog()), vec![0]);
+}
+
+#[tokio::test]
 async fn rollback_restores_old_catalog() {
     let f = fixture().await;
     f.migrator.backfill().await.unwrap();

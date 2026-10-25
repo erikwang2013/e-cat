@@ -10,6 +10,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use super::{RecoveryReport, TwoPhaseCoordinator, XaError, XaParticipant};
+#[cfg(feature = "sqlx")]
 use crate::SqlxXaParticipant;
 
 #[derive(Default)]
@@ -240,6 +241,7 @@ async fn xa_recover_lists_in_doubt() {
     assert_eq!(in_doubt, vec!["in-doubt-xid"]);
 }
 
+#[cfg(feature = "sqlx")]
 #[tokio::test]
 async fn unsupported_dialect_is_rejected() {
     let client = SqlxClient::connect("sqlite::memory:").await.unwrap();

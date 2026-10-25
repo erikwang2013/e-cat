@@ -145,6 +145,25 @@ impl ArchiveStateStore {
         Ok(())
     }
 
+    /// 每张表的最新状态更新时间（单次 GROUP BY，供 readiness 探针用）。
+    pub async fn latest_per_table(&self) -> Result<Vec<(String, OffsetDateTime)>, TieringError> {
+        let sql = format!(
+            "SELECT table_name, MAX(updated_at) AS latest FROM {TABLE} \
+             GROUP BY table_name ORDER BY table_name"
+        );
+        let rows = self.db.query(&sql).await?;
+        rows.iter()
+            .map(|row| {
+                let table = text(row, "table_name")?.to_owned();
+                let latest =
+                    OffsetDateTime::parse(text(row, "latest")?, &Rfc3339).map_err(|e| {
+                        TieringError::State(format!("latest updated_at is not RFC3339: {e}"))
+                    })?;
+                Ok((table, latest))
+            })
+            .collect()
+    }
+
     /// 表的最新状态更新时间；没有状态行时为 `None`。
     pub async fn latest_updated_at(
         &self,
