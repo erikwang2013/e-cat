@@ -88,8 +88,9 @@ migrator.cutover(&router, new_catalog.clone()).await?;
 // if needed:
 migrator.rollback(&router).await?; // switch routing back; old shards are retained
 
-// caller-side dual write during hash re-sharding (before cutover: old primary, new mirror):
-let dual = DualWrite::before_cutover(&old_router, &new_router);
+// caller-side dual write during hash re-sharding (before cutover: old primary, new mirror).
+// The new topology uses distinct clients: assume_distinct() explicitly; SQL must be idempotent/replay-safe.
+let dual = DualWrite::before_cutover(&old_router, &new_router).assume_distinct();
 dual.for_key("orders", &json!(id))?
     .execute_with(
         "UPDATE orders SET status = ? WHERE id = ?",

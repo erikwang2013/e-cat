@@ -24,11 +24,16 @@
   `ShardError::Config` fail-closed，避免 base64 文本写坏目标表；MySQL/PostgreSQL
   用 `information_schema`，SQLite 用 `pragma_table_info`，元数据不可读同样拒绝。
 - **双写** —— 新增 `DualWrite` / `DualWriteClient`：切流前旧为主、新为镜像，切流后
-  新为主、旧为镜像；读只走主拓扑，镜像失败显式报错。仅当两侧端点 URL 相等或底层
-  客户端为同一 `Arc` 时去重，分片名相同不再视为同一物理目标。
-- **2PC 恢复** —— `prepared` / `committing` / `rolling_back` 行先按 participant
-  的 `xa_recover` in-doubt 列表交叉核对；XID 已不在列表则不重发 COMMIT/ROLLBACK，
-  `xa_recover` 失败仍回退到日志重放。`started` 阶段保持直接回滚。
+  新为主、旧为镜像；读只走主拓扑，镜像失败显式报错。物理同一性只认底层客户端
+  的同一 `Arc`；同名但客户端不同默认报错，须显式 `assume_distinct()`（两边都写，
+  要求 SQL 幂等/可重放）或 `assume_same()`（只写主拓扑）。镜像失败后通过
+  `mirror_client()` 重放同一语句，不要重试 `DualWriteClient`；主/镜像崩溃窗口
+  仍需 `verify()` 对账。
+- **2PC 恢复** —— 仅 `prepared` / `committing` 行按 participant 的 `xa_recover`
+  in-doubt 列表交叉核对；`rolling_back` / `started` 一律按日志重放（可能含未
+  PREPARE 的活跃分支）。恢复只应在启动时、开始接受 2PC 工作之前调用；每个
+  participant 的 pool 必须固定到持有其分支的单台服务器，`xa_recover` 的空列表
+  才可作为“已解决”的证据。
 - **冷热分层** —— 归档滞后状态查询受 `probe_timeout` 约束，协调库挂起不再拖住
   `/ready`；`ecat-tier` 支持 `ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`
   Basic Auth，只设置其中一个直接报配置错误。

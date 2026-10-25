@@ -85,8 +85,9 @@ migrator.cutover(&router, new_catalog.clone()).await?;
 // 出问题时：
 migrator.rollback(&router).await?; // 只切回旧拓扑，旧分片保留
 
-// hash 重分片期间由调用方双写（切流前：旧为主、新为镜像）：
-let dual = DualWrite::before_cutover(&old_router, &new_router);
+// hash 重分片期间由调用方双写（切流前：旧为主、新为镜像）。
+// 新拓扑使用不同客户端：显式 assume_distinct()，SQL 必须幂等/可重放。
+let dual = DualWrite::before_cutover(&old_router, &new_router).assume_distinct();
 dual.for_key("orders", &json!(id))?
     .execute_with(
         "UPDATE orders SET status = ? WHERE id = ?",
