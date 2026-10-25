@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
+#[cfg(feature = "cli")]
+use ecat_data_tiering::cli::{CliConfig, Command as CliAction, run_cli};
 use ecat_data_tiering::{PartitionSpec, TieringConfig, TieringError, plan_range_partitions};
 use serde::Deserialize;
 use time::{Duration, OffsetDateTime};
@@ -48,6 +50,7 @@ impl Command {
         }
     }
 
+    #[cfg_attr(feature = "cli", allow(dead_code))]
     fn name(&self) -> &'static str {
         match self {
             Self::Plan(_) => "plan",
@@ -69,26 +72,70 @@ fn main() -> ExitCode {
 }
 
 fn dispatch(cli: Cli) -> Result<(), TieringError> {
-    let config = load_config(&cli.command.common().config)?;
-    config.validate()?;
-    match cli.command {
-        Command::Plan(common) => print_plan(&config, common.dry_run),
-        other => Err(TieringError::Config(format!(
-            "`{}` needs a live MySQL connection and cold sink; only `plan` is wired so far",
-            other.name()
-        ))),
+    let path = &cli.command.common().config;
+    let value = load_value(path)?;
+    match &cli.command {
+        Command::Plan(common) => {
+            let config = load_tiering(&value, path)?;
+            config.validate()?;
+            print_plan(&config, common.dry_run)
+        }
+        other => dispatch_live(other, &value, path),
     }
 }
 
-fn load_config(path: &Path) -> Result<TieringConfig, TieringError> {
+#[cfg(feature = "cli")]
+fn dispatch_live(
+    command: &Command,
+    value: &serde_json::Value,
+    path: &Path,
+) -> Result<(), TieringError> {
+    let config = load_cli_config(value, path)?;
+    let (action, dry_run) = match command {
+        Command::Run(common) => (CliAction::Run, common.dry_run),
+        Command::Verify(common) => (CliAction::Verify, common.dry_run),
+        Command::Restore(common) => (CliAction::Restore, common.dry_run),
+        Command::Plan(_) => unreachable!("plan is handled before live dispatch"),
+    };
+    block_on(run_cli(config, action, dry_run))
+}
+
+#[cfg(not(feature = "cli"))]
+fn dispatch_live(
+    command: &Command,
+    _value: &serde_json::Value,
+    _path: &Path,
+) -> Result<(), TieringError> {
+    Err(TieringError::Config(format!(
+        "`{}` requires the `cli` feature",
+        command.name()
+    )))
+}
+
+#[cfg(feature = "cli")]
+fn block_on<F>(future: F) -> Result<(), TieringError>
+where
+    F: std::future::Future<Output = Result<(), TieringError>>,
+{
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| TieringError::Config(format!("tokio runtime: {e}")))?
+        .block_on(future)
+}
+
+fn load_value(path: &Path) -> Result<serde_json::Value, TieringError> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| TieringError::Config(format!("read {}: {e}", path.display())))?;
-    let value: serde_json::Value = match path.extension().and_then(|ext| ext.to_str()) {
+    match path.extension().and_then(|ext| ext.to_str()) {
         Some("yaml" | "yml") => yaml_serde::from_str(&text)
-            .map_err(|e| TieringError::Config(format!("parse {}: {e}", path.display())))?,
+            .map_err(|e| TieringError::Config(format!("parse {}: {e}", path.display()))),
         _ => serde_json::from_str(&text)
-            .map_err(|e| TieringError::Config(format!("parse {}: {e}", path.display())))?,
-    };
+            .map_err(|e| TieringError::Config(format!("parse {}: {e}", path.display()))),
+    }
+}
+
+fn load_tiering(value: &serde_json::Value, path: &Path) -> Result<TieringConfig, TieringError> {
     let tiering = value.get("tiering").ok_or_else(|| {
         TieringError::Config(format!(
             "{}: missing top-level `tiering:` section",
@@ -98,6 +145,32 @@ fn load_config(path: &Path) -> Result<TieringConfig, TieringError> {
     TieringConfig::deserialize(tiering).map_err(|e| {
         TieringError::Config(format!(
             "{}: invalid `tiering:` section: {e}",
+            path.display()
+        ))
+    })
+}
+
+#[cfg(feature = "cli")]
+fn load_cli_config(value: &serde_json::Value, path: &Path) -> Result<CliConfig, TieringError> {
+    let database = value.get("database").ok_or_else(|| {
+        TieringError::Config(format!(
+            "{}: missing top-level `database:` section",
+            path.display()
+        ))
+    })?;
+    let tiering = value.get("tiering").ok_or_else(|| {
+        TieringError::Config(format!(
+            "{}: missing top-level `tiering:` section",
+            path.display()
+        ))
+    })?;
+    serde_json::from_value(serde_json::json!({
+        "database": database,
+        "tiering": tiering,
+    }))
+    .map_err(|e| {
+        TieringError::Config(format!(
+            "{}: invalid database/tiering config: {e}",
             path.display()
         ))
     })

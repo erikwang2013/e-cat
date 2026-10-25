@@ -67,6 +67,7 @@ pub struct ArchiveJobState {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Clone)]
 pub struct ArchiveStateStore {
     db: Arc<dyn SqlExecutor>,
 }
@@ -142,6 +143,36 @@ impl ArchiveStateStore {
         ];
         self.db.execute_with(&sql, &params).await?;
         Ok(())
+    }
+
+    /// 列出状态行；`table` 为 `None` 时列出全部表。
+    pub async fn list(&self, table: Option<&str>) -> Result<Vec<ArchiveJobState>, TieringError> {
+        let dialect = self.dialect()?;
+        let (sql, params) = match table {
+            Some(table) => (
+                format!(
+                    "SELECT {} FROM {} WHERE table_name = {} ORDER BY partition_name, chunk",
+                    columns(dialect),
+                    TABLE,
+                    placeholder(dialect, 1)
+                ),
+                vec![Value::String(table.into())],
+            ),
+            None => (
+                format!(
+                    "SELECT {} FROM {} ORDER BY table_name, partition_name, chunk",
+                    columns(dialect),
+                    TABLE
+                ),
+                Vec::new(),
+            ),
+        };
+        let rows = if params.is_empty() {
+            self.db.query(&sql).await?
+        } else {
+            self.db.query_with(&sql, &params).await?
+        };
+        rows.iter().map(Self::from_row).collect()
     }
 
     pub async fn load(

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 冷热分层：配置与校验、归档任务状态机、归档主循环、冷层 sink 抽象与跨边界查询。
 mod archive;
+#[cfg(feature = "cli")]
+pub mod cli;
 mod config;
 #[cfg(feature = "health")]
 mod health;
@@ -10,6 +12,8 @@ mod sink;
 mod state;
 
 pub use archive::{ArchiveJob, ArchiveReport, ColdSink, Pacer};
+#[cfg(feature = "cli")]
+pub use cli::{CliConfig, Command, run_cli};
 pub use config::{ColdTarget, TableTieringConfig, TieringConfig, TieringError, validate_ident};
 #[cfg(feature = "health")]
 pub use health::TieringHealthCheck;
