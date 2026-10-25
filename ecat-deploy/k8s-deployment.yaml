@@ -25,6 +25,12 @@ spec:
           env:
             - name: RUST_LOG
               value: info
+            - name: ECAT_DEPLOYMENT_MODE
+              value: distributed
+            - name: ECAT_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           livenessProbe:
             httpGet:
               path: /health

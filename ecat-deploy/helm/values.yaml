@@ -1,9 +1,25 @@
+# standalone: 单 MySQL + Redis；distributed: ShardingSphere-Proxy + ClickHouse + 多副本 app。
+deploymentMode: standalone
+
 replicaCount: 3
+
+# nodeId 从 Pod 字段注入（Deployment 用 valueFrom.fieldRef），不写死。
+nodeId:
+  fieldRef:
+    fieldPath: metadata.name
 
 image:
   repository: ecat-app
   tag: latest
   pullPolicy: IfNotPresent
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.4" # "8.4" 或 "9"
+
+# 口令一律从 Secret 读取，values.yaml 不出现任何密码。
+existingSecret: ecat-secrets
 
 service:
   type: ClusterIP
@@ -27,6 +43,16 @@ autoscaling:
 env:
   RUST_LOG: info
 
-health:
-  livenessPath: /health
-  readinessPath: /ready
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8000
+  initialDelaySeconds: 3
+  periodSeconds: 5
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10
