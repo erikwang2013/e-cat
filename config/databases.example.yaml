@@ -6,6 +6,7 @@
 # 📖 教程:
 #   docs/database-config-tutorial.md    — 数据库配置
 #   docs/tls-certificate-tutorial.md    — TLS 证书认证
+#   config/sharding-tiering.example.yaml — 分库分表 / 冷热分层（Unreleased）
 #
 # TLS 证书可通过 ecat-tls 自动生成:
 #   use ecat_tls::{generate_ca, generate_server_cert, generate_client_cert};

@@ -5,9 +5,11 @@
 
 Ecat's Chinese name: 一只猫 (literally "a cat")
 
-**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.1.1 · 56 crates).
+**一只猫** is a Rust microservice framework benchmarked against [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.1.1 · 60 crates).
 
 It offers an API-first development experience, a pluggable component architecture, a unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started seamlessly, while fully leveraging Rust's type safety, zero-cost abstractions, and extreme performance.
+
+> **Data-layer scale-out (unreleased)**：Sharding, hot/cold tiering, Saga/2PC, fencing, shared Redis pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 <p align="center">
   <img src="e-cat.svg" alt="Ecat project mascot (animated)" width="220" />
@@ -214,7 +216,7 @@ ch.execute("INSERT INTO events VALUES (1, 'start')").await?;
 | MongoDB | `MongoConfig` | `url`, `database`, `tls`? | `mongodb://localhost:27017`, `app` |
 | S3 | `S3Config` | `endpoint`, `region`, `access_key`, `secret_key`, `tls`? | `http://localhost:9000`, `us-east-1` |
 
-> Except for two cases, all backends support the optional `tls` field (`TlsClientConfig`) for client certificate auth: `ecat-data-sqlx` **does not support** it — setting it makes startup fail (its TLS goes through URL parameters); `ecat-data-memcached` accepts the field but **silently ignores** it (declared, never read). See [Database Config Tutorial](docs/database-config-tutorial.md) and [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md).
+> Except for two cases, all backends support the optional `tls` field (`TlsClientConfig`) for client certificate auth: `ecat-data-sqlx` **does not support** it — setting it makes startup fail (its TLS goes through URL parameters); `ecat-data-memcached` accepts the field but **silently ignores** it (declared, never read). See [Database Config Tutorial](../../database-config-tutorial.md) and [TLS Certificate Tutorial](../../tls-certificate-tutorial.md).
 
 ## ORM (ecat-orm)
 

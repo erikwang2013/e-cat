@@ -1,5 +1,43 @@
 # Changelog
 
+## [Unreleased] — Data-layer scale-out — 2026-10-25
+
+> 分支预览，未发布到 crates.io；既有版本号仍为 7.1.1。
+
+### Added
+
+- **`ecat-data-sharding`** —— 分库分表：`ShardCatalog` / `ShardRouter` / `KeyedClient`
+  按请求绑定分片；`scatter` 跨分片归并；Snowflake 全局 ID；outbox 存储与 relay；
+  ShardingSphere-Proxy 配置校验；池预算校验；`health` 探针；Consul/etcd 远程拓扑
+  `TopologySource` + 热更新；`migrate` 执行器（`ShardPlan::diff` → backfill → verify →
+  cutover → rollback），XOR checksum 不一致不切流。
+- **`ecat-data-tiering`** —— 冷热分层：MySQL 分区归档状态机、ClickHouse/S3 `ColdSink`、
+  `TieredQuery` 跨边界归并分页、ClickHouse `ColdQuery` 适配器、`ecat-tier run/verify` CLI、
+  归档滞后 readiness 检查与分片备份/恢复演练脚本。
+- **`ecat-saga`** —— 轻量 Saga 引擎：顺序执行、逆序补偿、`saga_instances` /
+  `saga_steps` 持久化与 `resume`；补偿失败上报 `CompensationFailed`，不无限重试。
+- **`ecat-data-2pc`** —— opt-in XA 2PC（仅 MySQL/PostgreSQL）：协调日志、固定物理连接、
+  PREPARE 失败全回滚、协调器崩溃恢复与幂等提交；不接入 `KeyedClient` / `scatter`。
+- **`ecat-lock`** —— `renew` 与 `FencedLock` / `FenceGuard`；Redis 锁实现单调 fencing token。
+- **`ecat-data-redis`** —— `RedisPool` / `RedisPoolConfig`：cache 与 lock 共享 deadpool
+  连接池；旧 `connect` / `from_config` / `from_connection` 仍走单连接。
+- **`ecat` `worker` feature** —— `AppBuilder::background_worker`：启动时 spawn，停机时
+  shutdown + 等待；不新增调度器。
+- **MySQL 8.4 / 9 支持** —— 复制状态版本分支（`SHOW REPLICA STATUS` / `SHOW BINARY LOG
+  STATUS`）、`caching_sha2_password`、CI 8.4/9 认证矩阵；不引入 `mysql_native_password`。
+- **部署与文档** —— Helm/compose 双拓扑、parity、分片校验脚本；数据层扩展指南、API
+  参考、README 12 份 i18n 镜像、静态站与 Social Preview 更新。
+
+### Changed / Notes
+
+- 兼容性：既有 trait、配置字段、方言与默认单机行为不变；所有新能力通过新 crate 或
+  feature 接入且默认关闭。
+- 依赖：新增 `deadpool`（Redis 池）、`uuid`（2PC xid）等；workspace 版本仍为 7.1.1。
+- 验证：`cargo test --workspace`、`cargo clippy --workspace -- -D warnings`、
+  `cargo check --workspace --no-default-features`、`cargo fmt --check` 全绿；
+  MySQL 8.4/9、PostgreSQL 2PC、Redis、ClickHouse/S3、Consul/etcd、Helm 与备份演练
+  仍需 live gate。
+
 ## [7.1.1] — 2026-10-19
 
 ### Security

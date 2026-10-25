@@ -5,9 +5,11 @@
 
 Ecat の日本語名: 一匹の猫
 
-**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v7.1.1 · 56 crates）。
+**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v7.1.1 · 60 crates）。
 
 API-first の開発体験、プラグイン可能なコンポーネントアーキテクチャ、統一された HTTP/gRPC ミドルウェア抽象、そして充実した CLI ツールチェーンを提供します。Kratos に慣れた開発者がシームレスに使い始められる一方、Rust の型安全性、ゼロコスト抽象、極限のパフォーマンスを最大限に活用できます。
+
+> **データ層スケールアウト（未リリース）**：シャーディング、ホット/コールド階層化、Saga/2PC、fencing、Redis 共有プール。 [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 <p align="center">
   <img src="e-cat.svg" alt="Ecat プロジェクトマスコット（動的）" width="220" />

@@ -12,7 +12,13 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 with open("Cargo.toml", "rb") as f:
     members = tomllib.load(f)["workspace"]["members"]
 CRATES = sum(1 for m in members if not m.startswith("examples/"))
-DATA_BACKENDS = sum(1 for m in members if m.startswith("ecat-data-"))
+# ecat-data-sqlx covers four products (SQLite/PG/MySQL/TiDB); the sharding,
+# tiering and 2PC crates are data-layer extensions, not database backends.
+NON_BACKEND_DATA_CRATES = {"ecat-data-sharding", "ecat-data-tiering", "ecat-data-2pc"}
+DATA_BACKENDS = (
+    sum(1 for m in members if m.startswith("ecat-data-") and m not in NON_BACKEND_DATA_CRATES)
+    + 3
+)
 
 W, H = 1280, 640
 BG = (249, 246, 241)
@@ -84,8 +90,8 @@ LINE_GAP_EN = 40
 pairs = [
     ("Rust 微服务框架 · 对标 go-kratos/kratos",
      "Rust microservices framework · benchmarked against go-kratos/kratos"),
-    (f"HTTP · gRPC · {DATA_BACKENDS} 数据后端 · 完整 ORM",
-     f"HTTP · gRPC · {DATA_BACKENDS} data backends · full ORM"),
+    (f"HTTP · gRPC · {DATA_BACKENDS} 数据后端 · 分库分表 / 冷热分层",
+     f"HTTP · gRPC · {DATA_BACKENDS} data backends · sharding / tiering"),
 ]
 
 for zh, en in pairs:
@@ -94,7 +100,7 @@ for zh, en in pairs:
     d.text((X, y), en, font=fit(d, en, FONT_REG, 30, MAXW), fill=EN)
     y += LINE_GAP_EN + 18
 
-# 徽章：56 crates
+# 徽章：crate 数从 workspace members 推导
 f_badge = font(FONT_REG, 30)
 btext = f"{CRATES} crates"
 tw = d.textlength(btext, font=f_badge)
@@ -113,4 +119,5 @@ d.text((W - 40 - d.textlength(right, font=f_foot), FY + 22), right,
        font=f_foot, fill=(150, 136, 124))
 
 im.save("docs/social-preview.png", optimize=True)
-print("✅ docs/social-preview.png", im.size)
+subprocess.run(["cp", "docs/social-preview.png", "site/assets/img/social-preview.png"], check=True)
+print("✅ docs/social-preview.png + site/assets/img/social-preview.png", im.size)

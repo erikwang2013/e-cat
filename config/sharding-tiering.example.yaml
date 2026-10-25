@@ -1,0 +1,64 @@
+# Ecat 数据层横向扩展示例（Unreleased）
+# 这些段落都是可选的；默认配置仍按单库单表运行。
+# 启用方式（按需选择）：
+#   ecat = { version = "7.1.1", features = ["sharding", "tiering", "saga", "2pc", "worker"] }
+#   ecat-data-sharding = { version = "7.1.1", features = ["migrate"] }
+#   ecat-data-tiering  = { version = "7.1.1", features = ["clickhouse", "cli"] }
+
+database:
+  url: "mysql://user:pass@127.0.0.1:3306/app"
+  max_connections: 20
+  query_timeout_secs: 30
+
+# 分库分表：proxy 模式由 ShardingSphere-Proxy 路由；client 模式由 e-cat 直连分片。
+sharding:
+  mode: proxy
+  catalog:
+    tables:
+      - name: orders
+        key: user_id
+        pk: id
+        algorithm:
+          hash_mod: { shards: 4 }
+        shards:
+          - { name: s0 }
+          - { name: s1 }
+          - { name: s2 }
+          - { name: s3 }
+
+# 冷热分层：热层 MySQL 分区，冷层 ClickHouse 或 S3/MinIO。
+tiering:
+  enabled: true
+  hot_days: 180
+  partition_months: 1
+  batch_size: 1000
+  verify_sample: 0.01
+  tables:
+    - name: orders
+      time_col: created_at
+      id_col: id
+      retention_days: 365
+      target: clickhouse
+      filter: "status = 'closed'"
+
+# 可选：cache 与 lock 共享同一个 Redis 池。
+# 应用侧映射到 RedisPoolConfig；CliConfig 只认 database 与 tiering。
+redis_pool:
+  url: "redis://127.0.0.1:6379"
+  max_size: 16
+  acquire_timeout_secs: 30
+  create_timeout_secs: 30
+  recycle_timeout_secs: 30
+  query_timeout_secs: 30
+
+# 可选：远程拓扑源（按 feature 使用 Consul 或 etcd）。
+# 应用侧映射到 ConsulTopologySource / EtcdTopologySource；不在 CliConfig 内。
+# topology:
+#   consul:
+#     base_url: "http://127.0.0.1:8500"
+#     prefix: "ecat/sharding"     # 实际读取 <prefix>/topology
+#     token: null
+#   etcd:
+#     endpoints: ["http://127.0.0.1:2379"]
+#     prefix: "ecat/sharding"
+#     watch_interval_secs: 30

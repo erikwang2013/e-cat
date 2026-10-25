@@ -5,9 +5,11 @@
 
 الاسم الصيني لـ Ecat: 一只猫 (تُنطق "إي تشي ماو"، وتعني حرفيًا "قطة")
 
-**一只猫 (Ecat)** هو إطار عمل للخدمات المصغرة بلغة Rust، يهدف إلى منافسة [go-kratos/kratos](https://github.com/go-kratos/kratos) الإصدار v3 (v7.1.1 · 56 crate).
+**一只猫 (Ecat)** هو إطار عمل للخدمات المصغرة بلغة Rust، يهدف إلى منافسة [go-kratos/kratos](https://github.com/go-kratos/kratos) الإصدار v3 (v7.1.1 · 60 crate).
 
 يوفر تجربة تطوير API-first، وبنية مكونات قابلة للتركيب، وتجريدًا موحدًا للوسائط الوسيطة (middleware) بين HTTP/gRPC، وسلسلة أدوات CLI متكاملة. يمكن للمطوّرين الملمّين بـ Kratos البدء فورًا دون عناء، مع الاستفادة الكاملة من أمان الأنواع في Rust، وتجريدات التكلفة الصفرية، والأداء الفائق.
+
+> **توسيع طبقة البيانات (غير منشور)**：التقسيم الأفقي، التدرج الساخن/البارد، Saga/2PC، fencing، تجمع Redis مشترك. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 <p align="center">
   <img src="e-cat.svg" alt="تميمة مشروع Ecat (متحركة)" width="220" />

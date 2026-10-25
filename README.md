@@ -5,7 +5,7 @@
 
 Ecat中文名：一只猫
 
-**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v7.1.1 · 56 crates）。
+**一只猫** 是对标 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 的 Rust 微服务框架（v7.1.1 · 60 crates）。
 
 提供 API-first 开发体验、可插拔的组件架构、统一的 HTTP/gRPC 中间件抽象，以及完备的 CLI 工具链。让熟悉 Kratos 的开发者可以无缝上手，同时充分利用 Rust 的类型安全、零成本抽象和极致性能。
 
@@ -42,9 +42,12 @@ Ecat中文名：一只猫
 │                         data 层                               │
 │     ────────────────────────────────────────────────          │
 │     rdbms:   SQLite / PostgreSQL / MySQL / TiDB              │
-│     cache:   Redis ✓                                         │
-│     config:  remote (Consul KV)                              │
-│     registry: consul                                         │
+│     sharding: ShardRouter / scatter / Snowflake / outbox     │
+│     tiering:  TieredQuery / ClickHouse / S3                  │
+│     distributed: Saga / opt-in 2PC / fencing lock            │
+│     cache:   Redis (single / shared pool)                    │
+│     config:  remote (Consul KV / etcd)                       │
+│     registry: consul / etcd                                  │
 ├──────────────────────────────────────────────────────────────┤
 │                       ecat-protos                             │
 │     (共享 .proto 定义: errors, metadata, ...)                 │
@@ -100,6 +103,7 @@ Ecat中文名：一只猫
 - **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
 - **多协议**：HTTP、gRPC、WebSocket、GraphQL 统一路由
 - **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）、OLAP（ClickHouse）
+- **数据层横向扩展**：分库分表（ShardRouter / scatter / Snowflake / outbox）、冷热分层（ArchiveJob / TieredQuery / ClickHouse / S3）、分片迁移、Saga、opt-in XA 2PC、fencing lock、Consul/etcd 拓扑与 Redis 共享池；全部按 feature 接入且默认关闭（详见[数据层横向扩展指南](docs/data-layer-scaleout.md)）
 
 ### Kratos 概念映射
 
@@ -128,6 +132,7 @@ Ecat中文名：一只猫
 | 攻击检测 | **security-rust** |
 | RDBMS | **sqlx** |
 | Redis | **redis-rs** |
+| Redis 池 | **deadpool** |
 | JWT | **jsonwebtoken** |
 | HTTP Client | **reqwest** |
 | CLI | **clap** |
@@ -161,6 +166,26 @@ Ecat中文名：一只猫
 > 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
 
 > **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
+
+### 数据层横向扩展（Unreleased）
+
+![Ecat 数据层横向扩展架构](docs/data-layer-scaleout.svg)
+
+`ecat-data-sharding`、`ecat-data-tiering`、`ecat-saga`、`ecat-data-2pc` 与 `ecat` 的
+`worker` feature 在既有单机数据层之上增加横向扩展能力。它们**不改变**既有 trait、配置字段与
+默认行为；默认 feature 关闭，按需引入。
+
+| 能力 | 入口 | 关键 API / 说明 |
+|---|---|---|
+| 分库分表 | `ecat-data-sharding` | `ShardRouter::for_key` 绑定分片；`scatter` 跨分片归并；Snowflake 全局 ID；outbox/relay |
+| 冷热分层 | `ecat-data-tiering` | `ArchiveJob` + `ColdSink`（ClickHouse/S3）；`TieredQuery` 跨边界查询；`ecat-tier` CLI |
+| 分片迁移 | `migrate` feature | `ShardPlan::diff` → backfill → verify → cutover → rollback；XOR checksum 不一致不切流 |
+| 分布式一致性 | `ecat-lock` / `ecat-saga` / `ecat-data-2pc` | fencing token、Saga 逆序补偿、opt-in XA 2PC（仅 MySQL/PostgreSQL） |
+| 拓扑与连接 | `consul` / `etcd` / `redis` | Consul/etcd 远程拓扑 watch；`RedisPool` 共享 cache+lock 连接池 |
+| 生命周期 | `ecat` 的 `worker` feature | `AppBuilder::background_worker` 启动/停机接线 |
+
+MySQL 目标版本为 8.4 LTS / 9.x；代理模式与客户端直连模式都保留。完整配置、代码示例、live gate
+与已知限制见 [数据层横向扩展指南](docs/data-layer-scaleout.md)。
 
 ### 数据库配置示例
 
@@ -338,9 +363,14 @@ e-cat/
 ├── ecat-data-tdengine/         # TDengine 时序后端
 ├── ecat-data-mongodb/          # MongoDB 文档后端
 ├── ecat-data-s3/               # S3 / MinIO 对象存储后端
+├── ecat-data-sharding/         # 分库分表：catalog/router/scatter/outbox/迁移
+├── ecat-data-tiering/          # 冷热分层：归档/冷层 sink/跨边界查询/CLI
+├── ecat-saga/                  # Saga 引擎（逆序补偿 + 持久化续跑）
+├── ecat-data-2pc/              # opt-in XA 2PC 协调器（MySQL/PostgreSQL）
 ├── ecat-mq-rabbitmq/           # RabbitMQ 消息后端
 ├── ecat-mq-mqtt/               # MQTT 消息后端
 ├── ecat-mq-nats/               # NATS 消息后端
+├── site/                       # 静态站（index/docs/changelog/pet）
 ├── config/                     # 配置示例文件
 ├── docs/                       # 设计文档与生态规划
 └── examples/                   # 示例项目
@@ -522,6 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 14 | ✅ 完成 | 运维与体验（WebSocket / API 版本管理 / Helm / CI/CD） |
 | Phase 15 | ✅ 完成 | 生态扩展 v2（真 Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / 分布式锁 / 调度 / CLI watch+upgrade） |
 | Phase 16 | ✅ 完成 | 维护强化 v2.4（M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 聚合 crate ecat / U2 examples / OAuth2 token hash / CVE 跟踪） |
+| Phase 17 | 🚧 分支预览 | 数据层横向扩展（分库分表 / 冷热分层 / 迁移 / Saga / 2PC / fencing / Redis 共享池 / 远程拓扑 / worker 接线；live gates 待真机） |
 
 ## 已知限制
 
@@ -532,6 +563,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **`join` 的列清单不带表前缀（ecat-orm）**：被连表与主体有同名列时真库报 `ambiguous column name`。
 - **批量 `update_many` 的乐观锁冲突无法定位到行（ecat-orm）**：只能靠「返回行数 < 传入行数」察觉，需要定位时用逐行 `update`。
 - **`join` 的表名与 ON 条件不做白名单校验（ecat-orm）**：`join(table, on)` 收的是字符串，字符串里没有类型信息；与 `filter_raw` 同一信任边界。
+- **分片迁移（ecat-data-sharding）**：只搬移标量列，BLOB/BYTEA 会按 base64 文本复制而损坏；hash 变更是“回填 + 调用方双写”的组合，执行器不提供双写钩子；`rollback` 只恢复路由，不反向搬数据。
+- **opt-in 2PC（ecat-data-2pc）**：仅 MySQL/PostgreSQL；协调器数据库是单点，生产需外部 HA；恢复未用 participant `xa_recover` 交叉核对。
+- **冷层 CLI（ecat-data-tiering）**：冷后端连接通过环境变量配置，当前没有 ClickHouse 认证环境变量；readiness 的归档滞后状态查询不受 `probe_timeout` 约束。
 
 ## 设计目标
 
@@ -567,12 +601,14 @@ prost 是 Rust 社区最广泛使用的 protobuf 实现，编译期生成类型�
 - [生态规划 v1](docs/ecosystem-plan.md)（已完成）
 - [生态规划 v2](docs/ecosystem-plan-v2.md)（已完成）
 - [生态规划 v3](docs/ecosystem-plan-v3.md)（最终评估）
+- [数据层横向扩展指南](docs/data-layer-scaleout.md)
+- [数据层横向扩展设计](docs/superpowers/specs/2026-10-24-data-layer-scaleout-design.md)
 - [API 参考](docs/api.md)
 - [审计报告 r5](docs/audit-report-2026-08-01-r5.md)（2026-08-01）
 - [数据库配置教程](docs/database-config-tutorial.md)
 - [依赖 CVE 跟踪](docs/dependency-cve-tracking.md)
 - [TLS 证书认证教程](docs/tls-certificate-tutorial.md)
-- [配置示例文件](config/databases.example.yaml)
+- [配置示例文件](config/databases.example.yaml) / [分片与分层示例](config/sharding-tiering.example.yaml)
 
 ## 支持
 

@@ -676,8 +676,38 @@ struct AppConfig {
 
 ---
 
+### MySQL 8.4 / 9 兼容说明
+
+- 认证插件使用 `caching_sha2_password`；9.x 已移除 `mysql_native_password`，不要用它绕过连接失败。
+- 复制状态：8.4/9 使用 `SHOW REPLICA STATUS`；binlog 位置用 `SHOW BINARY LOG STATUS`。
+  8.0 的 `SHOW MASTER STATUS` 只保留在版本分支中。
+- `RANGE COLUMNS` 分区语法未变；首次分区转换的锁级别/算法需在目标版本实测。
+- `SqlxConfig` 的 TLS 仍通过 URL 参数配置（如 `?ssl-mode=REQUIRED`）；`tls` 字段配了会启动报错。
+
+## 数据层横向扩展配置
+
+分库分表、冷热分层、迁移、Saga 与 2PC 的配置不在 `database:` 数据后端段内；它们分别属于
+新 crate / feature。示例见 [sharding-tiering.example.yaml](../config/sharding-tiering.example.yaml)
+与 [数据层横向扩展指南](data-layer-scaleout.md)。
+
+```yaml
+sharding:
+  mode: proxy
+  catalog: { tables: [] }
+
+tiering:
+  enabled: true
+  hot_days: 180
+  tables: []
+```
+
+`ecat-tier run|verify` 的 CLI 配置文件还要求顶层 `database:` 与 `tiering:`；冷后端
+（ClickHouse/S3）由环境变量提供连接信息。
+
 ## 相关文档
 
 - [审计报告 r5](audit-report-2026-08-01-r5.md)
 - [TLS 证书认证教程](tls-certificate-tutorial.md)
 - [示例配置文件](../config/databases.example.yaml)
+- [分片与分层示例](../config/sharding-tiering.example.yaml)
+- [数据层横向扩展指南](data-layer-scaleout.md)

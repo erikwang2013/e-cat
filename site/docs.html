@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ecat 安装与使用 | Rust 微服务框架文档</title>
+<meta name="description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。">
+<meta name="keywords" content="Ecat 安装,ecat-cli,Rust 微服务,ORM,数据后端,分库分表,冷热分层,中间件,Kratos">
+<meta name="theme-color" content="#0a0e13">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1">
+<meta name="author" content="erik">
+<meta name="applicable-device" content="pc,mobile">
+<link rel="canonical" href="https://e-cat.erik.xyz/docs.html">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/img/pet/smile.svg" as="image" type="image/svg+xml" fetchpriority="high">
+<link rel="preload" href="assets/fonts/space-grotesk-400700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/layout.css">
+<link rel="stylesheet" href="assets/css/layout-chrome.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/components-code.css">
+<link rel="stylesheet" href="assets/css/components-pet.css">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Ecat">
+<meta property="og:title" content="Ecat 安装与使用 | Rust 微服务框架文档">
+<meta property="og:description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。">
+<meta property="og:url" content="https://e-cat.erik.xyz/docs.html">
+<meta property="og:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Ecat 一只猫 Rust 微服务框架">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="article:published_time" content="2026-10-21T00:00:00+08:00">
+<meta property="article:modified_time" content="2026-10-25T00:00:00+08:00">
+<meta property="article:author" content="https://erik.xyz">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ecat 安装与使用 | Rust 微服务框架文档">
+<meta name="twitter:description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。">
+<meta name="twitter:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
+    {"@type":"Person","@id":"https://e-cat.erik.xyz/#person","name":"erik","url":"https://erik.xyz","email":"erik@erik.xyz","sameAs":["https://github.com/erikwang2013"]},
+    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.1.1","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
+    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/docs.html#webpage","url":"https://e-cat.erik.xyz/docs.html","name":"Ecat 安装与使用 | Rust 微服务框架文档","description":"安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-25","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"breadcrumb":{"@id":"https://e-cat.erik.xyz/docs.html#breadcrumb"}},
+    {"@type":"BreadcrumbList","@id":"https://e-cat.erik.xyz/docs.html#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"概览","item":"https://e-cat.erik.xyz/"},{"@type":"ListItem","position":2,"name":"文档","item":"https://e-cat.erik.xyz/docs.html"}]}
+  ]
+}
+</script>
+<script>document.documentElement.classList.add("js");window.setTimeout(function(){if(!window.__ecatReady)document.documentElement.classList.remove("js")},3000);</script>
+<script src="assets/js/i18n-en.js" defer></script>
+<script src="assets/js/main.js" defer></script>
+</head>
+<body data-page="docs" data-title-zh="Ecat 安装与使用 | Rust 微服务框架文档" data-title-en="Install and use Ecat | Rust microservices documentation" data-desc-zh="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。" data-desc-en="Install ecat-cli, scaffold a service, add middleware, connect 19 data backends, use the ORM, and review the stack, Kratos mapping, and known limitations.">
+<a class="skip-link" href="#main" data-i18n="a11y.skip">跳到主要内容</a>
+<header class="site-header">
+  <div class="shell header-inner">
+    <a class="brand" href="./" aria-label="Ecat">
+      <img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32">
+      <span class="brand-name">Ecat</span>
+      <span class="brand-cn" data-i18n="brand.cn">一只猫</span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="主导航" data-i18n-aria="a11y.nav">
+      <a href="./" data-i18n="nav.home">概览</a>
+      <a href="./#features" data-i18n="nav.features">功能</a>
+      <a href="./#timeline" data-i18n="nav.timeline">迭代</a>
+      <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
+      <a href="docs.html" aria-current="page" data-i18n="nav.docs">文档</a>
+      <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
+      <a href="./#download" data-i18n="nav.download">下载</a>
+    </nav>
+    <div class="header-actions">
+      <button class="lang-toggle" id="lang-toggle" type="button" aria-label="Switch to English" aria-pressed="false">EN</button>
+      <a class="icon-btn" href="https://github.com/erikwang2013/e-cat" target="_blank" rel="noopener" aria-label="GitHub" data-i18n-aria="a11y.github"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-brand-github"></use></svg></a>
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="打开菜单"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-menu"></use></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-hero">
+    <div class="shell page-hero-grid">
+      <div class="page-hero-copy">
+        <nav class="breadcrumbs" aria-label="面包屑" data-i18n-aria="a11y.breadcrumb"><a href="./" data-i18n="nav.home">概览</a><span aria-hidden="true">/</span><span aria-current="page" data-i18n="nav.docs">文档</span></nav>
+        <h1 data-i18n="docs.pageTitle">安装与使用 Ecat</h1>
+        <p data-i18n="docs.pageLead">从 cargo install 到运行中的 HTTP 与 gRPC 服务，再看 ORM、19 个数据后端、分库分表/冷热分层与已知限制。示例与仓库 examples 使用同一套 API。</p>
+      </div>
+      <img class="page-hero-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480" loading="eager" fetchpriority="high" decoding="async">
+    </div>
+  </section>
+  <div class="back-top-sentinel" id="back-top-sentinel" aria-hidden="true"></div>
+
+  <section class="section" id="install">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="docs.installTitle">让服务跑起来</h2>
+        <p data-i18n="docs.installLead">四个具体步骤。右栏保留完整命令序列。</p>
+      </div>
+      <div class="install-grid">
+        <div class="install-steps">
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-rocket"></use></svg><h3 data-i18n="docs.step1Title">准备 Rust 与 protoc</h3></div>
+            <p data-i18n="docs.step1Desc">Ecat 使用 edition 2024，需要 Rust 1.85 或更新版本。CLI 和生成的代码还需要 protoc。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-prereq" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-prereq"><span class="c" data-i18n="code.install.comment1"># Ubuntu / Debian</span>
+sudo apt install protobuf-compiler
+
+<span class="c" data-i18n="code.install.comment2"># macOS</span>
+brew install protobuf
+
+<span class="c" data-i18n="code.install.comment3"># verify</span>
+rustc --version
+protoc --version</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-package"></use></svg><h3 data-i18n="docs.step2Title">安装 CLI</h3></div>
+            <p data-i18n="docs.step2Desc">从 crates.io 安装。二进制随包携带宠物资源与 ASSETS-LICENSE 说明。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-install" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-install">cargo install ecat-cli
+ecat --version</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-git-branch"></use></svg><h3 data-i18n="docs.step3Title">创建服务</h3></div>
+            <p data-i18n="docs.step3Desc">创建项目，添加 proto 文件，再生成客户端与服务端代码。生成的 build.rs 已接好 tonic-build。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-scaffold" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-scaffold">ecat new helloworld
+cd helloworld
+ecat proto add proto/service.proto
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service</code></pre>
+            </div>
+          </div>
+          <div class="step reveal">
+            <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-terminal"></use></svg><h3 data-i18n="docs.step4Title">运行</h3></div>
+            <p data-i18n="docs.step4Desc">默认 HTTP 服务监听 0.0.0.0:8000。使用 --watch 在 src/ 变更时重启。</p>
+            <div class="code-block">
+              <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-run" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+              <pre><code id="code-run">ecat run
+ecat run --watch</code></pre>
+            </div>
+          </div>
+        </div>
+        <aside class="quickstart reveal">
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="docs.quickstartTitle">完整快速开始</span><button class="copy-btn" data-copy="#code-quickstart" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-quickstart"><span class="c" data-i18n="code.quickstart.comment1"># 脚手架</span>
+ecat new helloworld
+cd helloworld
+
+<span class="c" data-i18n="code.quickstart.comment2"># 添加 proto</span>
+ecat proto add proto/service.proto
+
+<span class="c" data-i18n="code.quickstart.comment3"># 生成客户端与服务端</span>
+ecat proto client proto/service.proto
+ecat proto server proto/service.proto -t internal/service
+
+<span class="c" data-i18n="code.quickstart.comment4"># 运行</span>
+ecat run</code></pre>
+          </div>
+          <p class="quickstart-note" data-i18n="docs.quickstartNote">把整段命令复制到 shell。生成的服务地址是 http://localhost:8000/helloworld/ecat。</p>
+        </aside>
+      </div>
+
+      <details class="deploy-details reveal" id="deploy">
+        <summary><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-arrow-right"></use></svg><span data-i18n="docs.deploySummary">用 Docker、Kubernetes 或 Helm 部署</span></summary>
+        <div class="deploy-body">
+          <p data-i18n="docs.deployDesc">模板以仓库根目录作为构建上下文。</p>
+          <div class="code-block">
+            <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-deploy" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-deploy">docker build -t ecat-app -f ecat-deploy/Dockerfile .
+kubectl apply -f ecat-deploy/k8s-deployment.yaml
+helm install my-ecat ecat-deploy/helm/</code></pre>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section section--tint" id="usage">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="docs.usageTitle">使用各个部件</h2>
+        <p data-i18n="docs.usageLead">聚合 crate 按 feature 重新导出模块；应用、中间件、数据、数据层横向扩展、ORM、CLI 与参考表都在下面。</p>
+      </div>
+      <div class="reveal">
+        <div class="tabs" role="tablist" aria-label="使用示例" data-i18n-aria="usage.tabsLabel">
+          <button class="tab" role="tab" id="tab-app" aria-controls="panel-app" aria-selected="true" data-tab="app" data-i18n="usage.tabApp">应用</button>
+          <button class="tab" role="tab" id="tab-middleware" aria-controls="panel-middleware" aria-selected="false" tabindex="-1" data-tab="middleware" data-i18n="usage.tabMiddleware">中间件</button>
+          <button class="tab" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1" data-tab="data" data-i18n="usage.tabData">数据</button>
+          <button class="tab" role="tab" id="tab-cli" aria-controls="panel-cli" aria-selected="false" tabindex="-1" data-tab="cli" data-i18n="usage.tabCli">CLI</button>
+          <button class="tab" role="tab" id="tab-orm" aria-controls="panel-orm" aria-selected="false" tabindex="-1" data-tab="orm" data-i18n="usage.tabOrm">ORM</button>
+          <button class="tab" role="tab" id="tab-reference" aria-controls="panel-reference" aria-selected="false" tabindex="-1" data-tab="reference" data-i18n="usage.tabReference">参考</button>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-app" aria-labelledby="tab-app">
+          <div class="tab-copy">
+            <h3 data-i18n="usage.appTitle">应用生命周期</h3>
+            <p data-i18n="usage.appDesc">AppBuilder 组合服务器、生命周期钩子和信号处理。run() 阻塞到 SIGTERM 或 SIGINT。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.appPoint1">HTTP 与 gRPC 服务监听不同端口。</li>
+              <li data-i18n="usage.appPoint2">on_start 与 on_stop 钩子是异步的。</li>
+              <li data-i18n="usage.appPoint3">聚合 crate 让导入路径更短。</li>
+              <li data-i18n="usage.appPoint4">features：http / grpc / middleware / auth / client / events / metrics / tracing / circuit-breaker / consul / remote / redis / orm / mssql，默认 http + grpc。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeAppLabel">main.rs</span><button class="copy-btn" data-copy="#code-app" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-app"><span class="k">use</span> ecat::App;
+<span class="k">use</span> ecat_transport_http::HttpServer;
+<span class="k">use</span> ecat_transport_grpc::GrpcServer;
+
+#[tokio::main]
+<span class="k">async fn</span> <span class="f">main</span>() -&gt; Result&lt;(), Box&lt;dyn std::error::Error + Send + Sync&gt;&gt; {
+    <span class="k">let</span> app = App::builder()
+        .name(<span class="s">"my-service"</span>)
+        .version(<span class="s">"v1.0.0"</span>)
+        .server(HttpServer::new(<span class="s">"0.0.0.0:8000"</span>))
+        .server(GrpcServer::new(<span class="s">"0.0.0.0:9000"</span>))
+        .on_start(|| <span class="k">async</span> {
+            tracing::info!(<span class="s">"service started"</span>);
+            Ok(())
+        })
+        .on_stop(|| <span class="k">async</span> {
+            tracing::info!(<span class="s">"service stopped"</span>);
+            Ok(())
+        })
+        .build()?;
+
+    app.run().<span class="k">await</span>?; <span class="c" data-i18n="code.app.comment1">// 阻塞到 SIGTERM 或 SIGINT</span>
+    Ok(())
+}</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-middleware" aria-labelledby="tab-middleware" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.middlewareTitle">组合中间件</h3>
+            <p data-i18n="usage.middlewareDesc">每个 layer 都是 tower::Layer。顺序有影响：恢复与追踪在外层，认证与安全靠近 Handler。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.middlewarePoint1">JWT 密钥至少 32 字节。</li>
+              <li data-i18n="usage.middlewarePoint2">超时与熔断保护下游调用。</li>
+              <li data-i18n="usage.middlewarePoint3">SecurityLayer 阻断高风险请求模式。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeMiddlewareLabel">middleware.rs</span><button class="copy-btn" data-copy="#code-middleware" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-middleware"><span class="k">use</span> tower::ServiceBuilder;
+<span class="k">use</span> ecat_middleware::{RecoveryLayer, TracingLayer, LoggingLayer, TimeoutLayer};
+<span class="k">use</span> ecat_circuit_breaker::CircuitBreakerLayer;
+<span class="k">use</span> ecat_security::SecurityLayer;
+<span class="k">use</span> ecat_auth::JwtAuthLayer;
+<span class="k">use</span> std::time::Duration;
+
+<span class="c" data-i18n="code.middleware.comment1">// JWT 密钥至少 32 字节</span>
+<span class="k">let</span> jwt = JwtAuthLayer::new(<span class="s">"change-me-32-bytes-minimum-secret"</span>)
+    .expect(<span class="s">"valid jwt secret"</span>);
+
+<span class="c" data-i18n="code.middleware.comment2">// 顺序有影响</span>
+<span class="k">let</span> layer = ServiceBuilder::new()
+    .layer(RecoveryLayer)
+    .layer(TracingLayer)
+    .layer(LoggingLayer)
+    .layer(TimeoutLayer::new(Duration::from_secs(<span class="n">30</span>)))
+    .layer(CircuitBreakerLayer::new())
+    .layer(jwt)
+    .layer(SecurityLayer::new());</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-data" aria-labelledby="tab-data" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.dataTitle">连接数据后端</h3>
+            <p data-i18n="usage.dataDesc">每个后端都有 XxxConfig 与 from_config()。Redis、SQLx、ClickHouse 和其余后端形状一致。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.dataPoint1">配置可以来自 JSON 或 YAML。</li>
+              <li data-i18n="usage.dataPoint2">出站超时与熔断按 client 配置。</li>
+              <li data-i18n="usage.dataPoint3">feature 名与后端名对应。</li>
+              <li data-i18n="usage.dataPoint4">Memcached 是内存实现，不能当生产持久缓存；其余后端均带超时与熔断。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeDataLabel">data.rs</span><button class="copy-btn" data-copy="#code-data" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-data"><span class="k">use</span> ecat_data_redis::{RedisCache, RedisConfig};
+<span class="k">use</span> ecat_data_sqlx::{SqlxClient, SqlxConfig};
+<span class="k">use</span> std::time::Duration;
+
+<span class="c" data-i18n="code.data.comment1">// 从 JSON 或 YAML 加载配置</span>
+<span class="k">let</span> config: serde_json::Value = serde_json::from_str(<span class="s">r#"{
+    "redis": {"url": "redis://localhost:6379"},
+    "sql":   {"url": "postgres://user:pass@localhost/db"}
+}"#</span>)?;
+
+<span class="c" data-i18n="code.data.comment2">// Redis</span>
+<span class="k">let</span> redis_cfg: RedisConfig = serde_json::from_value(config[<span class="s">"redis"</span>].clone())?;
+<span class="k">let</span> cache = RedisCache::from_config(redis_cfg).<span class="k">await</span>?;
+cache.set(<span class="s">"key"</span>, <span class="s">b"value"</span>, Duration::from_secs(<span class="n">60</span>)).<span class="k">await</span>?;
+
+<span class="c" data-i18n="code.data.comment3">// RDBMS</span>
+<span class="k">let</span> sql_cfg: SqlxConfig = serde_json::from_value(config[<span class="s">"sql"</span>].clone())?;
+<span class="k">let</span> db = SqlxClient::from_config(sql_cfg).<span class="k">await</span>?;
+<span class="k">let</span> rows = db.query(<span class="s">"SELECT * FROM users"</span>).<span class="k">await</span>?;</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-cli" aria-labelledby="tab-cli" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.cliTitle">CLI 工作流</h3>
+            <p data-i18n="usage.cliDesc">CLI 覆盖脚手架、proto 生成、开发运行、构建、升级与宠物导出。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.cliPoint1">ecat run --watch 在文件变更时重启。</li>
+              <li data-i18n="usage.cliPoint2">ecat upgrade 改写 ecat-* 依赖版本。</li>
+              <li data-i18n="usage.cliPoint3">ecat pet 导出全部 13 个矢量形态。</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeCliLabel">terminal</span><button class="copy-btn" data-copy="#code-cli" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-cli">ecat new helloworld
+ecat run --watch
+ecat build
+ecat upgrade
+
+<span class="c" data-i18n="code.cli.comment1"># 浏览形态</span>
+ecat pet list
+
+<span class="c" data-i18n="code.cli.comment2"># 输出单个 SVG</span>
+ecat pet show smile
+
+<span class="c" data-i18n="code.cli.comment3"># 导出全部 13 个</span>
+ecat pet export ./pet</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel" role="tabpanel" id="panel-orm" aria-labelledby="tab-orm" hidden>
+          <div class="tab-copy">
+            <h3 data-i18n="usage.ormTitle">ORM：实体、查询与迁移</h3>
+            <p data-i18n="usage.ormDesc">#[derive(Entity)] 生成表映射；类型状态查询构建器让没有过滤条件的删改无法通过编译；同一套 API 同时接受 &amp;db 与 &amp;tx。</p>
+            <ul class="check-list">
+              <li data-i18n="usage.ormPoint1">五套方言：SQLite、PostgreSQL、MySQL、SQL Server、ANSI。</li>
+              <li data-i18n="usage.ormPoint2">分页、关联预加载（IN 查询，杜绝 N+1）、软删除与乐观锁。</li>
+              <li data-i18n="usage.ormPoint3">Migrator 维护版本表，create_table 生成建表 SQL。</li>
+            </ul>
+            <p class="quickstart-note"><a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/docs/api.md" target="_blank" rel="noopener" data-i18n="usage.ormDocLink">完整 ORM API：实体属性、错误语义与方言差异</a></p>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span data-i18n="usage.codeOrmLabel">orm.rs</span><button class="copy-btn" data-copy="#code-orm" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+            <pre><code id="code-orm"><span class="k">use</span> ecat_orm::query::{Op, Order};
+<span class="k">use</span> ecat_orm::{Entity, Migrator, create_table};
+<span class="k">use</span> time::OffsetDateTime;
+
+#[derive(Entity, Debug, Clone)]
+#[entity(table = <span class="s">"users"</span>)]
+pub struct User {
+    #[entity(pk, auto_increment)]
+    pub id: i64,
+    pub name: String,
+    #[entity(created_at)]
+    pub created_at: Option&lt;OffsetDateTime&gt;,
+    #[entity(soft_delete)]
+    pub deleted_at: Option&lt;OffsetDateTime&gt;,
+    #[entity(version)]
+    pub version: i64,
+    #[entity(has_many = <span class="s">"Post"</span>, foreign_key = <span class="s">"user_id"</span>)]
+    pub posts: Vec&lt;Post&gt;,
+}
+
+<span class="c" data-i18n="code.orm.comment1">// 迁移建表；&amp;db 与 &amp;tx 共用同一套 CRUD</span>
+Migrator::new(&amp;db)
+    .add(<span class="s">"001_users"</span>, create_table::&lt;User&gt;())
+    .run().<span class="k">await</span>?;
+
+<span class="k">let</span> id = User::insert(&amp;db, &amp;user).<span class="k">await</span>?;
+<span class="k">let mut</span> got = User::find_by_id(&amp;db, id).<span class="k">await</span>?.unwrap();
+got.name = <span class="s">"alice-v2"</span>.into();
+User::update(&amp;db, &amp;got).<span class="k">await</span>?;
+
+<span class="c" data-i18n="code.orm.comment2">// 分页 + 预加载：每个关联一条 IN 查询</span>
+<span class="k">let</span> page = User::query()
+    .filter(<span class="s">"name"</span>, Op::Like, <span class="s">"ali%"</span>)?
+    .order_by(<span class="s">"id"</span>, Order::Desc)?
+    .with(&amp;[UserRelation::Posts])
+    .paginate(&amp;db, <span class="n">1</span>, <span class="n">20</span>)
+    .<span class="k">await</span>?;</code></pre>
+          </div>
+        </div>
+
+        <div class="tab-panel tab-panel--wide" role="tabpanel" id="panel-reference" aria-labelledby="tab-reference" hidden>
+          <div class="ref-panel">
+            <div class="ref-block">
+              <h3 data-i18n="ref.backendsTitle">支持的数据库（19 个）</h3>
+              <p data-i18n="ref.backendsLead">超时与熔断按 client 配置；Memcached 是内存实现，不能用于生产持久缓存。</p>
+              <ul class="ref-list">
+                <li><strong data-i18n="ref.groupRdbms">RDBMS</strong><span>SQLite · PostgreSQL · MySQL · TiDB · SQL Server</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupCache">缓存</strong><span>Redis</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupCache">缓存</strong><span data-i18n="ref.groupMemcached">Memcached</span><em>⚠️ <span data-i18n="ref.memcachedNote">内存实现（非生产）</span></em></li>
+                <li><strong data-i18n="ref.groupSearch">搜索</strong><span>OpenSearch · Elasticsearch</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupGraph">图</strong><span>Neo4j · NebulaGraph · ArangoDB</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupTsdb">时序</strong><span>InfluxDB · IoTDB · QuestDB · TDengine</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupDoc">文档 / 对象 / OLAP</strong><span>MongoDB · S3 / MinIO · ClickHouse</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+              </ul>
+              <p class="ref-note" data-i18n="ref.resilienceNote">默认查询超时 30 秒（0 = 禁用）；熔断阈值 0.5 / 窗口 30 秒 / 半开探测 3 / 打开 10 秒；HTTP 后端另有 max_concurrency（默认 32）。</p>
+              <p class="ref-note" data-i18n="ref.tlsNote">除 ecat-data-sqlx 与 ecat-data-memcached 外，各后端 Config 支持可选 tls；SqlxConfig 配 tls 会启动报错，Memcached 的 tls 字段静默无效。</p>
+              <p class="ref-note"><a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/docs/database-config-tutorial.md" target="_blank" rel="noopener" data-i18n="ref.configDocLink">数据库配置教程与字段速查</a></p>
+            </div>
+            <div class="ref-block">
+              <h3 data-i18n="ref.stackTitle">技术栈</h3>
+              <p class="ref-stack" data-i18n-html="ref.stackBody"><b>运行时</b> tokio · <b>HTTP</b> axum · <b>gRPC</b> tonic · <b>Protobuf</b> prost + tonic-build · <b>中间件</b> tower::Service / Layer · <b>日志/追踪</b> tracing · <b>指标</b> prometheus · <b>序列化</b> serde + prost · <b>攻击检测</b> security-rust · <b>RDBMS</b> sqlx · <b>Redis</b> redis-rs · <b>Redis pool</b> deadpool · <b>JWT</b> jsonwebtoken · <b>HTTP Client</b> reqwest · <b>CLI</b> clap</p>
+            </div>
+            <div class="ref-block">
+              <h3 data-i18n="ref.kratosTitle">Kratos 概念映射</h3>
+              <ul class="ref-list ref-list--map">
+                <li><code>kratos.New()</code><span><code>App::builder()</code></span><em data-i18n="ref.kratos1">Builder 模式</em></li>
+                <li><code>http.Handler</code><span><code>tower::Service</code></span><em data-i18n="ref.kratos2">Rust 生态标准 trait</em></li>
+                <li><code>http.Server</code><span><code>axum::Router</code></span><em data-i18n="ref.kratos3">社区主流 HTTP 框架</em></li>
+                <li><code>grpc.Server</code><span><code>tonic::transport::Server</code></span><em data-i18n="ref.kratos4">成熟的 gRPC 实现</em></li>
+                <li><code>proto generate</code><span><code>prost + tonic-build</code></span><em data-i18n="ref.kratos5">社区标准 protobuf</em></li>
+                <li><code>registry.Discovery</code><span><code>Registry</code> trait</span><em data-i18n="ref.kratos6">可插拔注册发现</em></li>
+                <li><code>config.Source</code><span><code>ConfigSource</code> trait</span><em data-i18n="ref.kratos7">多源配置加载</em></li>
+              </ul>
+            </div>
+            <div class="ref-block">
+              <h3 data-i18n="ref.limitsTitle">已知限制</h3>
+              <ul class="check-list">
+                <li data-i18n="ref.limit1">GraphQL 支持字段参数与嵌套 selection，但不支持别名、fragment 与多顶层字段，请勿暴露为通用 GraphQL 端点。</li>
+                <li data-i18n="ref.limit2">OAuth2 内省缓存 key 是 token 的 SHA-256；缓存值经白名单过滤，默认 TTL 300 秒。</li>
+                <li data-i18n="ref.limit3">Kafka 默认 auto_commit=false 且无手动 commit；重启从分区末尾（latest）重读，停机期间的消息会被跳过。</li>
+                <li data-i18n="ref.limit4">sqlite::memory: 不支持跨连接事务；需要多连接时改用文件路径。</li>
+                <li data-i18n="ref.limit5">join 的列清单不带表前缀；被连表与主体有同名列时真库报 ambiguous column name。</li>
+                <li data-i18n="ref.limit6">批量 update_many 的乐观锁冲突无法定位到行；只能比较返回行数，或逐行 update。</li>
+                <li data-i18n="ref.limit7">join 的表名与 ON 条件不做白名单校验，与 filter_raw 同一信任边界。</li>
+                <li data-i18n="ref.limit8">分片迁移只搬移标量列，BLOB/BYTEA 会按 base64 文本复制而损坏；hash 变更是“回填 + 调用方双写”，执行器不提供双写钩子。</li>
+                <li data-i18n="ref.limit9">opt-in 2PC 仅 MySQL/PostgreSQL；协调器数据库单点，生产需外部 HA；恢复未用 participant xa_recover 交叉核对。</li>
+                <li data-i18n="ref.limit10">ecat-tier 冷后端通过环境变量配置，当前无 ClickHouse 认证环境变量；归档滞后状态查询不受 probe_timeout 约束。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="scale-out">
+    <div class="shell">
+      <div class="section-head reveal">
+        <h2 data-i18n="scale.title">数据层横向扩展（Unreleased）</h2>
+        <p data-i18n="scale.lead">分库分表、冷热分层、迁移、Saga/2PC、fencing 与共享 Redis 池。全部通过新 crate / feature 接入，既有单机接口与配置不变。</p>
+      </div>
+      <div class="bento">
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-database"></use></svg></span><h3 data-i18n="scale.card1Title">分库分表</h3></div>
+          <p data-i18n="scale.card1Desc">ShardCatalog / ShardRouter 按请求绑定分片；scatter 跨分片归并；Snowflake 全局 ID；outbox/relay 幂等投递；代理与客户端直连两种模式。</p>
+          <div class="bento-list"><span class="chip chip--accent">ShardRouter</span><span class="chip chip--accent">for_key</span><span class="chip chip--accent">scatter</span><span class="chip chip--accent">Snowflake</span><span class="chip chip--accent">Outbox</span></div>
+        </article>
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-stack-2"></use></svg></span><h3 data-i18n="scale.card2Title">冷热分层</h3></div>
+          <p data-i18n="scale.card2Desc">MySQL 分区归档到 ClickHouse / S3；TieredQuery 跨边界合并去重分页；ecat-tier CLI 运行与校验；归档滞后接入 readiness。</p>
+          <div class="bento-list"><span class="chip chip--teal">ArchiveJob</span><span class="chip chip--teal">ColdSink</span><span class="chip chip--teal">TieredQuery</span><span class="chip chip--teal">ClickHouse</span><span class="chip chip--teal">S3</span></div>
+        </article>
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-shield"></use></svg></span><h3 data-i18n="scale.card3Title">分布式一致性</h3></div>
+          <p data-i18n="scale.card3Desc">FencedLock 单调 fencing；Saga 逆序补偿与 resume；opt-in XA 2PC（仅 MySQL/PostgreSQL）；分片迁移 backfill → verify → cutover → rollback。</p>
+          <div class="bento-list"><span class="chip">FencedLock</span><span class="chip">Saga</span><span class="chip">XA 2PC</span><span class="chip">Migration</span></div>
+        </article>
+        <article class="bento-cell span-6 reveal">
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-activity"></use></svg></span><h3 data-i18n="scale.card4Title">连接与运维</h3></div>
+          <p data-i18n="scale.card4Desc">RedisPool 共享 cache+lock 连接；Consul/etcd 远程拓扑 watch；AppBuilder background_worker；分片/冷层/outbox/归档健康探针与备份演练。</p>
+          <div class="bento-list"><span class="chip">RedisPool</span><span class="chip">Consul / etcd</span><span class="chip">Worker</span><span class="chip">Backup drill</span></div>
+        </article>
+      </div>
+      <div class="code-block reveal" style="margin-top:2rem">
+        <div class="code-head"><span data-i18n="scale.configLabel">config.yaml</span><button class="copy-btn" data-copy="#code-scale" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
+        <pre><code id="code-scale">sharding:
+  mode: proxy
+  catalog:
+    tables:
+      - name: orders
+        key: user_id
+        pk: id
+        algorithm: { hash_mod: { shards: 4 } }
+        shards: [{ name: s0 }, { name: s1 }, { name: s2 }, { name: s3 }]
+
+tiering:
+  enabled: true
+  hot_days: 180
+  tables:
+    - { name: orders, time_col: created_at, id_col: id, retention_days: 365, target: clickhouse }</code></pre>
+      </div>
+      <p class="quickstart-note"><a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/docs/data-layer-scaleout.md" target="_blank" rel="noopener" data-i18n="scale.guideLink">完整配置、API 与已知限制 →</a> · <a class="text-link" href="https://github.com/erikwang2013/e-cat/blob/main/docs/api.md" target="_blank" rel="noopener" data-i18n="scale.apiLink">API 参考</a></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="./"><img class="brand-pet" src="assets/img/e-cat.svg" alt="" width="32" height="32"><span class="brand-name">Ecat</span><span class="brand-cn" data-i18n="brand.cn">一只猫</span></a>
+      <p data-i18n="footer.tagline">对标 Kratos v3 的 Rust 微服务框架。</p>
+      <p class="footer-license"><span data-i18n="footer.codeLicense">代码遵循 Apache-2.0</span><span class="dot">·</span><a href="https://github.com/erikwang2013/e-cat/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener" data-i18n="footer.assetsLicense">视觉资产另附授权</a></p>
+    </div>
+    <div class="footer-links">
+      <h2 data-i18n="footer.project">项目</h2>
+      <a href="./#features" data-i18n="nav.features">功能</a>
+      <a href="changelog.html" data-i18n="nav.changelog">版本日志</a>
+      <a href="docs.html" data-i18n="nav.docs">文档</a>
+      <a href="pet.html" data-i18n="nav.pet">项目宠物</a>
+      <a href="./#faq" data-i18n="nav.faq">常见问题</a>
+      <a href="pet.html#support" data-i18n="footer.support">支持项目</a>
+    </div>
+    <div class="footer-links">
+      <h2 data-i18n="footer.resources">资源</h2>
+      <a href="https://github.com/erikwang2013/e-cat" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://crates.io/crates/ecat-cli" target="_blank" rel="noopener">crates.io</a>
+      <a href="https://docs.rs/ecat" target="_blank" rel="noopener">docs.rs</a>
+      <a href="https://github.com/erikwang2013/e-cat/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+    <div class="footer-meta">
+      <h2 data-i18n="footer.author">作者</h2>
+      <p><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik</a></p>
+      <p><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">粤ICP备2020136226号-6</a></p>
+      <div class="footer-info" id="busuanzi">
+        <span id="busuanzi_container_site_pv">本站总访问量 <b id="busuanzi_value_site_pv">0</b> 次 👀</span><span class="dot">·</span><span id="busuanzi_container_site_uv">访客数 <b id="busuanzi_value_site_uv">0</b> 人次 🧑‍🚀</span>
+      </div>
+    </div>
+  </div>
+  <div class="shell footer-bottom">
+    <p>© 2026 Ecat. <span data-i18n="footer.rights">保留所有权利。</span></p>
+    <p data-i18n="footer.builtWith">用 Rust 构建</p>
+  </div>
+</footer>
+
+<button class="back-top" id="back-top" type="button" aria-label="回到顶部" data-i18n-aria="a11y.backTop"><img id="back-top-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480" loading="lazy" fetchpriority="low"></button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

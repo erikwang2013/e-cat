@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Ecat 数据层横向扩展</title>
+  <desc id="desc">分库分表、冷热分层、分布式一致性与连接运维四组能力，以 additive、feature-gated 方式接入 Ecat。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080c11"/>
+      <stop offset="0.55" stop-color="#0a1119"/>
+      <stop offset="1" stop-color="#0c151d"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#20d6b7" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#20d6b7" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#20d6b7" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .bg{fill:url(#bg)}
+      .grid{stroke:#16323a;stroke-width:1;opacity:.34}
+      .title{fill:#eef7f4;font:700 46px "Noto Sans CJK SC","Noto Sans",sans-serif}
+      .sub{fill:#8fa8a5;font:400 21px "Noto Sans CJK SC","Noto Sans",sans-serif}
+      .kicker{fill:#20d6b7;font:600 16px "JetBrains Mono","Noto Sans",monospace;letter-spacing:3px}
+      .card{fill:#0d1a22;stroke:#1d3a43;stroke-width:1.5}
+      .card-title{font:700 27px "Noto Sans CJK SC","Noto Sans",sans-serif}
+      .card-sub{fill:#80969a;font:400 15px "Noto Sans CJK SC","Noto Sans",sans-serif}
+      .chip-text{font:500 16px "JetBrains Mono","Noto Sans",monospace}
+      .foot{fill:#9ab0b2;font:400 18px "Noto Sans CJK SC","Noto Sans",sans-serif}
+      .foot-mono{fill:#6f8b8f;font:500 15px "JetBrains Mono","Noto Sans",monospace}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <g opacity=".8">
+    <path class="grid" d="M0 80H1280M0 160H1280M0 240H1280M0 320H1280M0 400H1280M0 480H1280M0 560H1280M0 640H1280"/>
+    <path class="grid" d="M80 0V720M160 0V720M240 0V720M320 0V720M400 0V720M480 0V720M560 0V720M640 0V720M720 0V720M800 0V720M880 0V720M960 0V720M1040 0V720M1120 0V720M1200 0V720"/>
+  </g>
+  <rect x="40" y="34" width="1200" height="3" rx="1.5" fill="url(#line)"/>
+  <text class="kicker" x="64" y="86">ECAT · DATA LAYER</text>
+  <text class="title" x="64" y="142">数据层横向扩展</text>
+  <text class="sub" x="64" y="184">分库分表 · 冷热分层 · 分布式一致性 · 连接与运维</text>
+  <text class="sub" x="64" y="214">Additive APIs · feature-gated · MySQL 8.4 / 9 compatible · existing calls stay unchanged</text>
+
+  <!-- Cards -->
+  <g>
+    <rect class="card" x="64" y="258" width="272" height="322" rx="16"/>
+    <rect x="64" y="258" width="272" height="6" rx="3" fill="#20d6b7"/>
+    <text class="card-title" x="88" y="302" fill="#20d6b7">分库分表</text>
+    <text class="card-sub" x="88" y="330">A 阶段客户端 · B 阶段代理</text>
+    <g class="chip-text" fill="#c7ece5">
+      <text x="88" y="368">ShardCatalog / ShardRouter</text>
+      <text x="88" y="398">for_key → KeyedClient</text>
+      <text x="88" y="428">scatter + Snowflake</text>
+      <text x="88" y="458">outbox / relay</text>
+      <text x="88" y="488">ShardingSphere-Proxy 校验</text>
+      <text x="88" y="518">迁移 plan / verify / cutover</text>
+    </g>
+    <text class="card-sub" x="88" y="552">ecat-data-sharding</text>
+  </g>
+
+  <g>
+    <rect class="card" x="360" y="258" width="272" height="322" rx="16"/>
+    <rect x="360" y="258" width="272" height="6" rx="3" fill="#e2a35e"/>
+    <text class="card-title" x="384" y="302" fill="#f2bd7b">冷热分层</text>
+    <text class="card-sub" x="384" y="330">热层 MySQL · 冷层 ClickHouse / S3</text>
+    <g class="chip-text" fill="#f3dfc4">
+      <text x="384" y="368">TieringConfig / ArchiveJob</text>
+      <text x="384" y="398">ColdSink: ClickHouse / S3</text>
+      <text x="384" y="428">TieredQuery 跨边界归并</text>
+      <text x="384" y="458">ecat-tier run / verify</text>
+      <text x="384" y="488">分区 DDL / restore</text>
+      <text x="384" y="518">archive-lag readiness</text>
+    </g>
+    <text class="card-sub" x="384" y="552">ecat-data-tiering</text>
+  </g>
+
+  <g>
+    <rect class="card" x="656" y="258" width="272" height="322" rx="16"/>
+    <rect x="656" y="258" width="272" height="6" rx="3" fill="#9c8cff"/>
+    <text class="card-title" x="680" y="302" fill="#b9adff">分布式一致性</text>
+    <text class="card-sub" x="680" y="330">显式 API · 默认关闭 · 可恢复</text>
+    <g class="chip-text" fill="#ddd7ff">
+      <text x="680" y="368">FencedLock / fencing token</text>
+      <text x="680" y="398">Saga 逆序补偿 / resume</text>
+      <text x="680" y="428">opt-in XA 2PC coordinator</text>
+      <text x="680" y="458">shard migration / rollback</text>
+      <text x="680" y="488">outbox claim / relay</text>
+      <text x="680" y="518">Consul / etcd topology</text>
+    </g>
+    <text class="card-sub" x="680" y="552">ecat-lock · ecat-saga · 2pc</text>
+  </g>
+
+  <g>
+    <rect class="card" x="952" y="258" width="264" height="322" rx="16"/>
+    <rect x="952" y="258" width="264" height="6" rx="3" fill="#6cc7ff"/>
+    <text class="card-title" x="976" y="302" fill="#8ed6ff">连接与运维</text>
+    <text class="card-sub" x="976" y="330">共享池 · 生命周期 · 可观测</text>
+    <g class="chip-text" fill="#ccecff">
+      <text x="976" y="368">RedisPool cache + lock</text>
+      <text x="976" y="398">AppBuilder worker hook</text>
+      <text x="976" y="428">ShardHealthCheck</text>
+      <text x="976" y="458">Tiering archive lag</text>
+      <text x="976" y="488">Outbox backlog probe</text>
+      <text x="976" y="518">sharded backup drill</text>
+    </g>
+    <text class="card-sub" x="976" y="552">ecat · ecat-data-redis · scripts</text>
+  </g>
+
+  <!-- Footer -->
+  <rect x="64" y="620" width="1152" height="1" fill="#1d3a43"/>
+  <text class="foot" x="64" y="660">兼容性：既有 trait / 配置 / 方言未改；新能力通过新 crate 与默认关闭的 feature 接入。</text>
+  <text class="foot-mono" x="64" y="690">LIVE GATES: MySQL 8.4/9 auth &amp; partition · Redis · ClickHouse/S3 · Consul/etcd · Helm · backup drill</text>
+  <text class="foot-mono" x="1216" y="690" text-anchor="end">60 crates · 19 backends</text>
+</svg>

@@ -3,7 +3,7 @@
 
 [简体中文](README.md) | English | [日本語](docs/i18n/ja/README.md) | [한국어](docs/i18n/ko/README.md) | [Русский](docs/i18n/ru/README.md) | [Deutsch](docs/i18n/de/README.md) | [Français](docs/i18n/fr/README.md) | [Español](docs/i18n/es/README.md) | [Português](docs/i18n/pt/README.md) | [हिन्दी](docs/i18n/hi/README.md) | [العربية](docs/i18n/ar/README.md) | [বাংলা](docs/i18n/bn/README.md) | [Bahasa Indonesia](docs/i18n/id/README.md)
 
-**Ecat** is a Rust microservices framework (v7.1.1 · 56 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
+**Ecat** is a Rust microservices framework (v7.1.1 · 60 crates) inspired by [go-kratos/kratos](https://github.com/go-kratos/kratos) v3.
 
 It provides an API-first development experience, pluggable component architecture, unified HTTP/gRPC middleware abstraction, and a complete CLI toolchain. Developers familiar with Kratos can get started immediately, while also leveraging Rust's type safety, zero-cost abstractions, and exceptional performance.
 
@@ -36,7 +36,10 @@ It provides an API-first development experience, pluggable component architectur
 │                         data layer                            │
 │     ────────────────────────────────────────────────          │
 │     rdbms:   SQLite / PostgreSQL / MySQL / TiDB              │
-│     cache:   Redis / Memcached                               │
+│     sharding: ShardRouter / scatter / Snowflake / outbox     │
+│     tiering:  TieredQuery / ClickHouse / S3                  │
+│     distributed: Saga / opt-in 2PC / fencing lock            │
+│     cache:   Redis (single / shared pool) / Memcached        │
 │     olap:    ClickHouse                                      │
 │     search:  OpenSearch / Elasticsearch                      │
 │     graph:   Neo4j / NebulaGraph / ArangoDB                  │
@@ -95,6 +98,7 @@ Client Request
 - **Messaging**: MessageQueue trait + EventBus local/remote Pub/Sub
 - **Multi-protocol**: HTTP, gRPC, WebSocket, GraphQL unified routing
 - **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
+- **Data-layer scale-out**: sharding (ShardRouter / scatter / Snowflake / outbox), hot/cold tiering (ArchiveJob / TieredQuery / ClickHouse / S3), shard migration, Saga, opt-in XA 2PC, fencing lock, Consul/etcd topology, and a shared Redis pool; feature-gated and default-off (see the [data-layer scale-out guide](docs/data-layer-scaleout.en.md))
 
 ### Kratos Concept Mapping
 
@@ -123,6 +127,7 @@ Client Request
 | Attack detection | **security-rust** |
 | RDBMS | **sqlx** |
 | Redis | **redis-rs** |
+| Redis pool | **deadpool** |
 | JWT | **jsonwebtoken** |
 | HTTP Client | **reqwest** |
 | CLI | **clap** |
@@ -167,6 +172,28 @@ Client Request
 | NATS | `ecat-mq-nats` | `async` |
 
 Also: service registry (Consul / etcd), distributed lock (Redis), scheduler (tokio), OTLP tracing export, API versioning, OpenAPI spec generation.
+
+### Data-layer scale-out (Unreleased)
+
+![Ecat data-layer scale-out architecture](docs/data-layer-scaleout.svg)
+
+`ecat-data-sharding`, `ecat-data-tiering`, `ecat-saga`, `ecat-data-2pc`, and the `worker`
+feature of `ecat` add scale-out capabilities on top of the existing single-node data layer.
+They **do not change** existing traits, config fields, or default behavior; features are
+default-off and opt-in.
+
+| Capability | Entry point | Key API / notes |
+|---|---|---|
+| Sharding | `ecat-data-sharding` | `ShardRouter::for_key` binds a shard; `scatter` merges across shards; Snowflake IDs; outbox/relay |
+| Hot/cold tiering | `ecat-data-tiering` | `ArchiveJob` + `ColdSink` (ClickHouse/S3); `TieredQuery` crosses the boundary; `ecat-tier` CLI |
+| Shard migration | `migrate` feature | `ShardPlan::diff` → backfill → verify → cutover → rollback; a checksum mismatch blocks cutover |
+| Distributed consistency | `ecat-lock` / `ecat-saga` / `ecat-data-2pc` | fencing token, reverse-compensating Saga, opt-in XA 2PC (MySQL/PostgreSQL only) |
+| Topology and connections | `consul` / `etcd` / `redis` | Consul/etcd topology watch; `RedisPool` shares cache+lock connections |
+| Lifecycle | `ecat` `worker` feature | `AppBuilder::background_worker` startup/shutdown wiring |
+
+The target MySQL line is 8.4 LTS / 9.x; both proxy and client-direct modes are supported.
+See the [data-layer scale-out guide](docs/data-layer-scaleout.en.md) for configuration,
+examples, live gates, and known limitations.
 
 ### Database Configuration
 
@@ -293,7 +320,11 @@ e-cat/
 ├── ecat-config-remote/         # Consul KV remote config
 ├── ecat-metrics/               # Prometheus integration
 ├── ecat-data/                  # Data access traits
-├── ecat-data-*/                # 18 database backend crates
+├── ecat-data-*/                # database backends (19 products) plus sharding/tiering/2PC
+├── ecat-data-sharding/         # sharding: catalog/router/scatter/outbox/migration
+├── ecat-data-tiering/          # hot/cold tiering: archive/sinks/cross-boundary query/CLI
+├── ecat-saga/                  # Saga engine (reverse compensation + persisted resume)
+├── ecat-data-2pc/              # opt-in XA 2PC coordinator (MySQL/PostgreSQL)
 ├── ecat-orm/                   # ORM: entity macro, query builder, migrations
 ├── ecat-orm-derive/            # #[derive(Entity)] derive macro
 ├── ecat-security/              # Attack detection (security-rust)
@@ -317,6 +348,7 @@ e-cat/
 ├── ecat-lock/                  # Distributed lock (Redis)
 ├── ecat-scheduler/             # tokio scheduled tasks
 ├── ecat-deploy/                # Docker / K8s / Helm / CI/CD
+├── site/                       # Static site (index/docs/changelog/pet)
 ├── config/                     # Example config files
 ├── docs/                       # Design docs & ecosystem plans
 └── examples/                   # Example projects
@@ -505,6 +537,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 | Phase 14 | ✅ Done | Ops & UX (WebSocket / API versioning / GraphQL / Helm / CI/CD) |
 | Phase 15 | ✅ Done | Ecosystem v2 (real Kafka / RabbitMQ / MQTT / NATS / MongoDB / S3 / TDengine / OTLP / distributed lock / scheduler / CLI watch+upgrade) |
 | Phase 16 | ✅ Done | Maintenance v2.4 (M1 MetricsLayer / M2 RetryLayer / M3 ValidateLayer / M4 CORS / U1 aggregation crate ecat / U2 examples / OAuth2 token hash / CVE tracking) |
+| Phase 17 | 🚧 Branch preview | Data-layer scale-out (sharding / hot-cold tiering / migration / Saga / 2PC / fencing / shared Redis pool / remote topology / worker wiring; live gates pending) |
 
 ## Known Limitations
 
@@ -515,6 +548,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **`join` column lists carry no table prefix (ecat-orm)**: when the joined table and the main table share a column name, real databases report `ambiguous column name`.
 - **Batch `update_many` optimistic-lock conflicts cannot be traced to a row (ecat-orm)**: you can only detect them via "rows returned < rows passed"; use per-row `update` when you need to locate the row.
 - **`join` table names and ON conditions are not whitelist-validated (ecat-orm)**: `join(table, on)` takes strings, and strings carry no type information; same trust boundary as `filter_raw`.
+- **Shard migration (ecat-data-sharding)**: scalar columns only; BLOB/BYTEA would be copied as base64 text and corrupted. Hash re-sharding is "backfill + caller-side dual write"; the executor has no dual-write hook. `rollback` restores routing only and does not copy data back.
+- **opt-in 2PC (ecat-data-2pc)**: MySQL/PostgreSQL only. The coordinator DB is a single point; production needs external HA. Recovery does not cross-check participant `xa_recover`.
+- **Cold-tier CLI (ecat-data-tiering)**: cold backends are configured by environment variables; there is no ClickHouse auth environment pair yet. Archive-lag state queries are not bounded by `probe_timeout`.
 
 ## Design Goals
 
@@ -550,12 +586,14 @@ prost is the most widely used protobuf implementation in the Rust community, gen
 - [Ecosystem Plan v1](docs/ecosystem-plan.md) (completed)
 - [Ecosystem Plan v2](docs/ecosystem-plan-v2.md) (completed)
 - [Ecosystem Plan v3](docs/ecosystem-plan-v3.md) (final evaluation)
+- [Data-layer scale-out guide](docs/data-layer-scaleout.en.md)
+- [Data-layer scale-out design](docs/superpowers/specs/2026-10-24-data-layer-scaleout-design.md)
 - [API Reference](docs/api.md)
 - [Audit Report r5](docs/audit-report-2026-08-01-r5.md) (2026-08-01)
 - [Database Config Tutorial](docs/database-config-tutorial.md)
 - [Dependency CVE Tracking](docs/dependency-cve-tracking.md)
 - [TLS Certificate Tutorial](docs/tls-certificate-tutorial.md)
-- [Config Example](config/databases.example.yaml)
+- [Config Example](config/databases.example.yaml) / [Sharding and tiering example](config/sharding-tiering.example.yaml)
 
 ## Support
 

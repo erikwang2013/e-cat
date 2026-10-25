@@ -71,6 +71,67 @@ Error::new(ErrorCode::InvalidArgument, "bad_request", "user id must be positive"
 
 所有数据后端（`ecat-data-*`）通过统一 trait（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）抽象；REST 类后端（Neo4j / NebulaGraph / ArangoDB / InfluxDB / IoTDB / QuestDB / TDengine / OpenSearch / Elasticsearch / S3）基于 `base_url` 访问对应 HTTP 接口。连接配置见 [数据库配置教程](database-config-tutorial.md)。
 
+## 数据层横向扩展接口（Unreleased）
+
+> 这些接口位于独立 crate，默认关闭；既有数据后端 trait 不变。完整配置与运维说明见
+> [数据层横向扩展指南](data-layer-scaleout.md)。
+
+### 分库分表（ecat-data-sharding）
+
+| 接口 | 说明 |
+|---|---|
+| `ShardCatalog` / `ShardingConfig` | 表拓扑、哈希/区间算法、部署模式校验 |
+| `ShardRouter::new(catalog, clients)` | 校验目录与客户端；`reload` 热替换，旧 `KeyedClient` 保留旧快照 |
+| `ShardRouter::for_key(table, key) -> KeyedClient` | 按请求绑定分片；六个执行方法同分片，无键报错 |
+| `ShardRouter::scatter(&ScatterRequest)` | 跨分片扇出、总超时、按主键归并去重分页；部分失败整体报错 |
+| `Snowflake` | 全局 ID；并发唯一、时钟回拨报错 |
+| `OutboxStore` / `OutboxRelay` | 租约 claim、幂等完成、退避重试、积压探针 |
+| `ShardPlan::diff(old, new)` | 生成 range 区间搬移或 hash 全表复制计划 |
+| `ShardMigrator::{backfill, verify, cutover, rollback}` | 游标回填、XOR checksum 校验、verified 才切流、只切回旧拓扑 |
+
+```rust
+let keyed = router.for_key("orders", &json!(42))?;
+let tx = keyed.transaction().await?;
+let page = router.scatter(&ScatterRequest {
+    table: "orders".into(),
+    sql: "SELECT * FROM orders WHERE status = ?".into(),
+    params: vec![json!("paid")],
+    order_by: "id".into(),
+    limit: 100,
+    offset: 0,
+    timeout: Duration::from_secs(5),
+    max_concurrency: 8,
+}).await?;
+```
+
+### 冷热分层（ecat-data-tiering）
+
+| 接口 | 说明 |
+|---|---|
+| `TieringConfig` / `TableTieringConfig` | 热窗口、分区粒度、冷层 target（`clickhouse` / `s3`）、保留与过滤 |
+| `ArchiveJob::{run_once, run_until}` | chunk 级幂等归档；窗口/锁/限速；verified 前不 DROP |
+| `ColdSink` | `write_chunk` / `verify_chunk` / `health_check`；`ClickhouseSink` / `S3Sink` 实现 |
+| `TieredQuery::query_range` | 全热/全冷/跨边界查询；冷层失败直接报错 |
+| `ClickhouseColdQuery` | ClickHouse 冷读；标识符白名单、值转义、PK 升序先于 limit/offset |
+| `TieringHealthCheck::with_archive_lag` | 冷层可达性 + 状态表最新 `updated_at` 滞后检查 |
+| `ecat-tier run/verify` | CLI 接线；`restore` 仍要求先装载 staging |
+
+### 分布式一致性
+
+| 接口 | 说明 |
+|---|---|
+| `FencedLock::{acquire_fenced, validate_fence}` | 单调 fence；失败获取也递增；`FenceGuard { token, fence }` |
+| `Saga::{run, resume}` + `SagaStateStore` | 顺序执行、逆序补偿、状态持久化续跑；`Failed` 不自动重试 |
+| `TwoPhaseCoordinator::{begin, recover}` / `DistributedTx::{execute, commit, rollback}` | 仅 MySQL/PostgreSQL；协调日志 `distributed_tx`；XA 连接固定 |
+| `RedisPool::{connect, cache, lock, status}` / `RedisPoolConfig` | cache 与 lock 共享 `Arc<Pool>`；旧单连接构造器保留 |
+| `ConsulTopologySource` / `EtcdTopologySource` | `load`/`watch`；坏 JSON fail-closed 或保留最后已知 |
+| `AppBuilder::background_worker` | `Deps: FnOnce(Shutdown) -> Future`；启动 spawn、停机等待 |
+
+### 不接入自动路由的能力
+
+2PC 不被 `KeyedClient` / `scatter` 自动使用；迁移、归档与 Saga 都是显式 API。这样默认路径
+不会因为引入 feature 而改变事务边界或重试语义。
+
 ## ORM（ecat-orm）
 
 `ecat-orm` 提供实体派生宏、类型安全的查询构建器、CRUD、关联预加载与迁移。数据操作统一取

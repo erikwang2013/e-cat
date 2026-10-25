@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480" role="img" aria-label="E-Cat · 欢乐 Joy">
+<title>E-Cat · 欢乐 Joy</title>
+<desc>E-Cat 的 欢乐 表情形态 · pure vector expression</desc>
+<style>
+@keyframes breathe { 0%,100% { transform: scaleY(1) translateY(0); } 50% { transform: scaleY(1.012) translateY(-2px); } }
+@keyframes tail-sway { 0%,100% { transform: rotate(-2deg); } 50% { transform: rotate(2.5deg); } }
+@keyframes blink { 0%,94%,100% { transform: scaleY(0); } 96%,98% { transform: scaleY(1); } }
+@keyframes fx-float { 0%,100% { transform: translateY(0) scale(1); opacity: .85; } 50% { transform: translateY(-10px) scale(1.08); opacity: 1; } }
+@keyframes fx-fall { 0% { transform: translateY(-6px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(34px); opacity: 0; } }
+@keyframes fx-rain { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: .9; } 100% { transform: translateY(42px); opacity: 0; } }
+@keyframes fx-confetti { 0% { transform: translateY(-8px) rotate(0deg); opacity: 1; } 100% { transform: translateY(56px) rotate(220deg); opacity: 0; } }
+@keyframes fx-pulse { 0%,100% { transform: scale(.9); opacity: .35; } 50% { transform: scale(1.12); opacity: 1; } }
+@keyframes fx-rise { 0% { transform: translateY(6px) scale(.85); opacity: 0; } 35% { opacity: .9; } 100% { transform: translateY(-26px) scale(1.1); opacity: 0; } }
+@keyframes fx-knock { 0%,100% { transform: rotate(0deg); } 35% { transform: rotate(-16deg); } 55% { transform: rotate(4deg); } }
+@keyframes fx-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+@keyframes fx-wiggle { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+@keyframes head-tilt { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
+.breathe { transform-box: view-box; transform-origin: 240px 402px; animation: breathe 4.2s ease-in-out infinite; }
+.tail-sway { transform-box: view-box; transform-origin: 318px 372px; animation: tail-sway 4.6s ease-in-out infinite; }
+.blink { transform-box: view-box; transform-origin: 240px 172px; animation: blink 5.6s infinite; }
+.head-tilt { transform-box: view-box; transform-origin: 240px 250px; animation: head-tilt 5s ease-in-out infinite; }
+.fx-float { transform-box: fill-box; transform-origin: center; animation: fx-float 2.6s ease-in-out infinite; }
+.fx-fall { transform-box: fill-box; transform-origin: center; animation: fx-fall 1.9s ease-in infinite; }
+.fx-rain { transform-box: fill-box; transform-origin: center; animation: fx-rain 1.5s linear infinite; }
+.fx-confetti { transform-box: fill-box; transform-origin: center; animation: fx-confetti 2.6s linear infinite; }
+.fx-pulse { transform-box: fill-box; transform-origin: center; animation: fx-pulse 1.5s ease-in-out infinite; }
+.fx-rise { transform-box: fill-box; transform-origin: center; animation: fx-rise 2.2s ease-out infinite; }
+.fx-knock { transform-box: view-box; transform-origin: 282px 330px; animation: fx-knock .6s ease-in-out infinite; }
+.fx-shake { transform-box: fill-box; transform-origin: center; animation: fx-shake .22s linear infinite; }
+.fx-wiggle { transform-box: fill-box; transform-origin: top center; animation: fx-wiggle 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .breathe, .tail-sway, .blink, .head-tilt, .fx-float, .fx-fall, .fx-rain,
+  .fx-confetti, .fx-pulse, .fx-rise, .fx-knock, .fx-shake, .fx-wiggle { animation: none; }
+}
+</style>
+<g class="badge">
+<polygon points="444,240 342,52 138,52 36,240 138,428 342,428" fill="#FFF8EE"
+         stroke="#EAD9C6" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="416,240 326,84 154,84 64,240 154,396 326,396" fill="none"
+         stroke="#E8743B" stroke-width="2" stroke-dasharray="2 10" opacity=".22"/>
+<g class="nodes">
+  <polygon points="398.00,111.00 407.53,116.50 407.53,127.50 398.00,133.00 388.47,127.50 388.47,116.50" fill="none" stroke="#2F8F8A" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="424.00,140.00 429.20,143.00 429.20,149.00 424.00,152.00 418.80,149.00 418.80,143.00" fill="#E8743B" opacity=".85"/>
+  <path d="M 406 131 L 419 140" stroke="#2F8F8A" stroke-width="2" stroke-dasharray="3 4" opacity=".6"/>
+</g></g>
+<g class="pet breathe" transform="translate(0,6)">
+  
+<g class="tail-sway">
+  <path d="M 316 376 C 368 392 416 360 416 314 C 416 284 402 264 384 256"
+        fill="none" stroke="#3A2E28" stroke-width="34" stroke-linecap="round"/>
+  <path d="M 316 376 C 368 392 416 360 416 314 C 416 284 402 264 384 256"
+        fill="none" stroke="#E8743B" stroke-width="26" stroke-linecap="round"/>
+  <circle cx="384" cy="256" r="13" fill="#FFF1DC"/>
+  <path d="M 352 369 L 355 390 M 384 356 L 398 373 M 400 335 L 421 344 M 400 286 L 420 289"
+        fill="none" stroke="#3A2E28" stroke-width="7" stroke-linecap="round" opacity=".85"/>
+</g>
+  
+<g class="body">
+  <ellipse cx="240" cy="407" rx="114" ry="11" fill="#3A2E28" opacity=".07"/>
+  <path d="M 240 230 C 205 230 182 250 175 284 C 166 324 152 362 156 386
+           Q 160 400 178 400 L 302 400 Q 320 400 324 386
+           C 328 362 314 324 305 284 C 298 250 275 230 240 230 Z"
+        fill="#E8743B" stroke="#3A2E28" stroke-width="5"/>
+  <path d="M 190 330 Q 206 360 190 392 M 290 330 Q 274 360 290 392"
+        fill="none" stroke="#3A2E28" stroke-width="3" stroke-linecap="round" opacity=".22"/>
+  <path d="M 240 258 C 220 258 208 272 206 296 C 204 322 202 348 208 368
+           Q 214 378 222 370 Q 231 380 240 372 Q 249 380 258 370
+           Q 266 378 272 368 C 278 348 276 322 274 296 C 272 272 260 258 240 258 Z"
+        fill="#FFF1DC" stroke="#3A2E28" stroke-width="4"/>
+  
+<path d="M 200 318 C 195 344 195 374 197 389 Q 199 400 214 400 Q 229 400 231 389
+         C 233 374 233 344 228 318 Z" fill="#E8743B" stroke="#3A2E28" stroke-width="5"/>
+<path d="M 197 382 Q 197 400 214 400 Q 231 400 231 382 Q 222 388 214 388 Q 206 388 197 382 Z"
+      fill="#FFF1DC" stroke="#3A2E28" stroke-width="4"/>
+<path d="M 208 391 L 208 398 M 220 391 L 220 398"
+      stroke="#3A2E28" stroke-width="2.4" stroke-linecap="round" opacity=".5"/>
+<path d="M 280 318 C 285 344 285 374 283 389 Q 281 400 266 400 Q 251 400 249 389
+         C 247 374 247 344 252 318 Z" fill="#E8743B" stroke="#3A2E28" stroke-width="5"/>
+<path d="M 283 382 Q 283 400 266 400 Q 249 400 249 382 Q 258 388 266 388 Q 274 388 283 382 Z"
+      fill="#FFF1DC" stroke="#3A2E28" stroke-width="4"/>
+<path d="M 260 391 L 260 398 M 272 391 L 272 398"
+      stroke="#3A2E28" stroke-width="2.4" stroke-linecap="round" opacity=".5"/>
+</g>
+  
+<path d="M 180 250 Q 240 274 300 250 L 298 268 Q 240 292 182 268 Z"
+      fill="#2F8F8A" stroke="#3A2E28" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="240" cy="277" r="4.5" fill="none" stroke="#3A2E28" stroke-width="3"/>
+<polygon points="240.00,280.00 255.59,289.00 255.59,307.00 240.00,316.00 224.41,307.00 224.41,289.00" fill="#FFF1DC" stroke="#2F8F8A" stroke-width="4" stroke-linejoin="round"/>
+<ellipse cx="240" cy="304" rx="5.6" ry="4.6" fill="#2F8F8A"/>
+<circle cx="233" cy="296" r="2.5" fill="#2F8F8A"/>
+<circle cx="240" cy="293" r="2.7" fill="#2F8F8A"/>
+<circle cx="247" cy="296" r="2.5" fill="#2F8F8A"/>
+  
+<g class="head">
+  <path d="M 168 140 L 152 54 Q 150 45 159 50 L 236 92 Z" fill="#E8743B" stroke="#3A2E28" stroke-width="5" stroke-linejoin="round"/><path d="M 312 140 L 328 54 Q 330 45 321 50 L 244 92 Z" fill="#E8743B" stroke="#3A2E28" stroke-width="5" stroke-linejoin="round"/><path d="M 170 126 L 160 68 Q 159 63 165 66 L 220 94 Z" fill="#F29A9E"/><path d="M 310 126 L 320 68 Q 321 63 315 66 L 260 94 Z" fill="#F29A9E"/>
+  <path d="M 240 84 C 292 84 332 114 334 160 C 336 186 328 208 310 224
+           C 294 238 272 248 240 248 C 208 248 186 238 170 224
+           C 152 208 144 186 146 160 C 148 114 188 84 240 84 Z"
+        fill="#E8743B" stroke="#3A2E28" stroke-width="5"/>
+  <path d="M 222 92 C 219 103 219 112 222 121 M 240 88 C 240 100 240 111 240 123
+           M 258 92 C 261 103 261 112 258 121" fill="none" stroke="#3A2E28"
+        stroke-width="7" stroke-linecap="round"/>
+  <path d="M 152 186 L 172 190 M 150 202 L 170 204 M 328 186 L 308 190 M 330 202 L 310 204"
+        fill="none" stroke="#3A2E28" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="221" cy="209" r="21" fill="#FFF1DC"/>
+  <circle cx="259" cy="209" r="21" fill="#FFF1DC"/>
+  <ellipse cx="240" cy="228" rx="27" ry="15" fill="#FFF1DC"/>
+  <g class="face"><path d="M 184 178 Q 202 158 220 178" fill="none" stroke="#3A2E28" stroke-width="6" stroke-linecap="round"/><path d="M 260 178 Q 278 158 296 178" fill="none" stroke="#3A2E28" stroke-width="6" stroke-linecap="round"/><ellipse cx="186" cy="211" rx="15" ry="8" fill="#F29A9E" opacity=".4"/><ellipse cx="294" cy="211" rx="15" ry="8" fill="#F29A9E" opacity=".4"/><path d="M 221 209 Q 240 240 259 209 Q 240 217 221 209 Z" fill="#7A3B36" stroke="#3A2E28" stroke-width="3"/><ellipse cx="240" cy="228" rx="9" ry="6" fill="#F29A9E"/></g>
+  <path d="M 232 196 Q 240 190 248 196 Q 245 205 240 207 Q 235 205 232 196 Z"
+        fill="#F29A9E" stroke="#3A2E28" stroke-width="3"/>
+  <path d="M 204 206 L 170 198 M 202 214 L 168 214 M 204 222 L 172 230
+           M 276 206 L 310 198 M 278 214 L 312 214 M 276 222 L 308 230"
+        fill="none" stroke="#3A2E28" stroke-width="2.5" stroke-linecap="round" opacity=".5"/>
+</g>
+  <g transform="translate(118,96) rotate(18)"><rect x="-4" y="-6" width="8" height="12" rx="2" fill="#F26D7D" class="fx-confetti" style="animation-delay:0.0s"/></g><g transform="translate(156,76) rotate(-24)"><circle r="4" fill="#F2C94C" class="fx-confetti" style="animation-delay:0.35s"/></g><g transform="translate(202,96) rotate(40)"><rect x="-4" y="-6" width="8" height="12" rx="2" fill="#2F8F8A" class="fx-confetti" style="animation-delay:0.6s"/></g><g transform="translate(272,82) rotate(12)"><circle r="4" fill="#7EC8F2" class="fx-confetti" style="animation-delay:0.15s"/></g><g transform="translate(318,100) rotate(-30)"><rect x="-4" y="-6" width="8" height="12" rx="2" fill="#F26D7D" class="fx-confetti" style="animation-delay:0.45s"/></g><g transform="translate(352,78) rotate(25)"><circle r="4" fill="#F2C94C" class="fx-confetti" style="animation-delay:0.8s"/></g><g transform="translate(360,128) rotate(-15)"><rect x="-4" y="-6" width="8" height="12" rx="2" fill="#2F8F8A" class="fx-confetti" style="animation-delay:0.2s"/></g><g transform="translate(98,148) rotate(50)"><circle r="4" fill="#7EC8F2" class="fx-confetti" style="animation-delay:0.95s"/></g><path class="fx-float" style="animation-delay:0.5s" d="M 112 205 Q 113.26 210.74 119 212 Q 113.26 213.26 112 219 Q 110.74 213.26 105 212 Q 110.74 210.74 112 205 Z" fill="#FFD166"/><path class="fx-float" style="animation-delay:0.2s" d="M 370 189 Q 371.26 194.74 377 196 Q 371.26 197.26 370 203 Q 368.74 197.26 363 196 Q 368.74 194.74 370 189 Z" fill="#FFD166"/>
+</g>
+<text x="470" y="474" text-anchor="end" font-size="11" fill="#3A2E28" opacity=".28" font-family="sans-serif">erik.xyz</text>
+</svg>
