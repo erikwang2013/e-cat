@@ -28,12 +28,16 @@ tracing.workspace = true
 ecat-health = { workspace = true, optional = true }
 # 可选：远程拓扑源复用 ConsulConfigSource / EtcdConfigSource。
 ecat-config-remote = { version = "7.1.1", path = "../ecat-config-remote", optional = true }
+# 可选：迁移单执行者的 fencing token。ecat-lock 不在 workspace.dependencies 表内。
+ecat-lock = { version = "7.1.1", path = "../ecat-lock", optional = true }
 
 [features]
 health = ["dep:ecat-health"]
 # Consul 阻塞查询 watch；etcd 首版轮询（`/v3/kv/range`）。
 consul = ["dep:ecat-config-remote"]
 etcd = ["dep:ecat-config-remote", "ecat-config-remote/etcd"]
+# 分片迁移/扩缩容执行器（A 阶段）；默认关。
+migrate = ["dep:ecat-lock"]
 
 [dev-dependencies]
 # outbox 测试跑在 SQLite 内存库上。
