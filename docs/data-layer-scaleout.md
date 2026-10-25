@@ -97,12 +97,16 @@ dual.for_key("orders", &json!(id))?
 
 - hash 变更按全表复制并逐行按新拓扑路由；range 变更按区间搬移。
 - 回填/校验/切流前会检查源表结构（MySQL/PostgreSQL 用 `information_schema`，SQLite 用
-  `pragma_table_info`）；BLOB/BYTEA 等二进制列直接报错，绝不把 base64 文本写进目标表。
+  `pragma_table_info`）；`schema.table` 形式会拆成 schema + 表名查询元数据。BLOB/BYTEA
+  等二进制列直接报错，绝不把 base64 文本写进目标表。
 - hash 重分片期间用 `DualWrite`：切流前 `before_cutover(&old_router, &new_router)`（旧为主、
   新为镜像），切流后 `after_cutover(&new_router, &old_router)`（新为主、旧为镜像，便于
-  `rollback`）。仅当两侧端点都有非空 URL 且相等，或底层客户端是同一 `Arc` 时才去重；
-  分片名相同不算同一物理目标。proxy 模式端点无 URL，不同客户端实例会各写一次（宁可重复
-  写，也不丢镜像写）；镜像写失败返回 `dual-write mirror failed` 错误。
+  `rollback`）。物理同一性只认底层客户端的同一 `Arc`；URL 与分片名都不是证据。两侧同名
+  但客户端不同时默认报错，调用方须显式选择：`assume_distinct()` 两边都写（要求 SQL
+  幂等/可重放），`assume_same()` 只写主拓扑（显式断言同一物理分片）；物理相同的分片应
+  复用同一个客户端 `Arc`。镜像写失败返回 `dual-write mirror failed`，此时主写已提交：
+  不要用 `DualWriteClient` 重试（会重复主写），应通过 `mirror_client()` 重放同一语句；
+  切流前务必用 `verify()` 对账，主写与镜像写之间的崩溃窗口仍然存在。
 - 状态表 `shard_migration_jobs` 记录 phase/cursor/rows/checksum；迁移可用 `FencedLock` 保证单执行。
 - 回滚后再次迁移会重新进入回填/校验流程。
 - B 阶段直接使用 ShardingSphere-Scaling；本执行器覆盖 A 阶段。
@@ -260,8 +264,9 @@ App::builder()
 
 - 迁移执行器只搬移标量列：回填/校验/切流前发现 BLOB/BYTEA 等二进制列即拒绝。SQLite
   只能按声明类型判断，声明为非 BLOB affinity 的列里若实际存了 blob 值仍可能漏检。
-- `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内（镜像失败会报错，调用方需重试），
-  `transaction()` 只在主拓扑执行，跨库事务内的双写需调用方自行拆分。
+- `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内。镜像失败时主写已提交，
+  调用方须通过 `mirror_client()` 重放（不能重试 `DualWriteClient`）；`transaction()` 只在
+  主拓扑执行，跨库事务内的双写需调用方自行拆分。
 - `rollback` 只恢复路由并保留旧分片，不做反向数据搬移。
 - 2PC 协调器数据库单点；`xa_recover` 交叉核对只覆盖 prepare 之后的阶段，`started`
   的 active 事务仍按日志直接回滚（连接断开时数据库自行回滚）。

@@ -30,25 +30,71 @@ impl ShardMigrator {
 }
 
 /// 源表列清单 `(列名, 声明类型)`；拿不到结构时也 fail closed。
+/// `schema.table` 会拆成两个元数据参数；未限定则沿用各数据库的默认 schema。
 async fn source_columns(
     client: &Arc<dyn RdbmsClient>,
     table: &str,
 ) -> Result<Vec<(String, String)>, ShardError> {
     let dialect = client.dialect();
-    let sql = match dialect {
-        Dialect::MySql => concat!(
-            "SELECT COLUMN_NAME AS name, DATA_TYPE AS data_type ",
-            "FROM information_schema.COLUMNS ",
-            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
-        ),
-        Dialect::Postgres => concat!(
-            "SELECT column_name AS name, data_type AS data_type ",
-            "FROM information_schema.columns ",
-            "WHERE table_name = $1 ",
-            "AND table_schema = ANY (current_schemas(false))"
-        ),
-        // SQLite 没有 information_schema；表值 pragma 支持参数绑定，避免拼接表名。
-        Dialect::Sqlite => "SELECT name, type AS data_type FROM pragma_table_info(?)",
+    let (schema, table_name) = split_table(table);
+    let (sql, params) = match dialect {
+        Dialect::MySql => match schema {
+            Some(schema) => (
+                concat!(
+                    "SELECT COLUMN_NAME AS name, DATA_TYPE AS data_type ",
+                    "FROM information_schema.COLUMNS ",
+                    "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+                ),
+                vec![
+                    Value::String(schema.to_owned()),
+                    Value::String(table_name.to_owned()),
+                ],
+            ),
+            None => (
+                concat!(
+                    "SELECT COLUMN_NAME AS name, DATA_TYPE AS data_type ",
+                    "FROM information_schema.COLUMNS ",
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+                ),
+                vec![Value::String(table_name.to_owned())],
+            ),
+        },
+        Dialect::Postgres => match schema {
+            Some(schema) => (
+                concat!(
+                    "SELECT column_name AS name, data_type AS data_type ",
+                    "FROM information_schema.columns ",
+                    "WHERE table_schema = $1 AND table_name = $2"
+                ),
+                vec![
+                    Value::String(schema.to_owned()),
+                    Value::String(table_name.to_owned()),
+                ],
+            ),
+            None => (
+                concat!(
+                    "SELECT column_name AS name, data_type AS data_type ",
+                    "FROM information_schema.columns ",
+                    "WHERE table_name = $1 ",
+                    "AND table_schema = ANY (current_schemas(false))"
+                ),
+                vec![Value::String(table_name.to_owned())],
+            ),
+        },
+        // SQLite 没有 information_schema；表值 pragma 参数顺序是 (表, schema)。
+        Dialect::Sqlite => match schema {
+            Some(schema) => (
+                "SELECT name, type AS data_type FROM pragma_table_info(?, ?)",
+                vec![
+                    Value::String(table_name.to_owned()),
+                    Value::String(schema.to_owned()),
+                ],
+            ),
+            None => (
+                "SELECT name, type AS data_type FROM pragma_table_info(?)",
+                vec![Value::String(table_name.to_owned())],
+            ),
+        },
         Dialect::Mssql | Dialect::Standard => {
             return Err(ShardError::Config(format!(
                 "migration preflight: dialect `{dialect:?}` cannot be inspected for binary \
@@ -56,9 +102,7 @@ async fn source_columns(
             )));
         }
     };
-    let rows = client
-        .query_with(sql, &[Value::String(table.to_owned())])
-        .await?;
+    let rows = client.query_with(sql, &params).await?;
     if rows.is_empty() {
         return Err(ShardError::Config(format!(
             "migration preflight: cannot inspect source schema for table `{table}`; \
@@ -73,6 +117,14 @@ async fn source_columns(
             ))
         })
         .collect()
+}
+
+/// `schema.table` → `(Some("schema"), "table")`；不处理引号（配置约定不写引号）。
+fn split_table(table: &str) -> (Option<&str>, &str) {
+    match table.rsplit_once('.') {
+        Some((schema, name)) => (Some(schema), name),
+        None => (None, table),
+    }
 }
 
 /// 会以二进制形式取回的列类型；MySQL 的几何类型同样经 `Vec<u8>` 解码。
@@ -113,8 +165,19 @@ fn is_binary_type(dialect: Dialect, type_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_binary_type;
+    use super::{is_binary_type, split_table};
     use ecat_data::Dialect;
+
+    #[test]
+    fn table_names_split_on_last_dot() {
+        assert_eq!(split_table("orders"), (None, "orders"));
+        assert_eq!(split_table("main.orders"), (Some("main"), "orders"));
+        assert_eq!(split_table("db.orders"), (Some("db"), "orders"));
+        assert_eq!(
+            split_table("catalog.main.orders"),
+            (Some("catalog.main"), "orders")
+        );
+    }
 
     #[test]
     fn mysql_binary_types_are_detected() {

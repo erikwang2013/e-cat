@@ -6,11 +6,13 @@
 //!   这样 `rollback` 切回旧拓扑时数据仍是最新的。
 //!
 //! 主拓扑先写，成功后才写镜像：主写失败时两侧都未半写；镜像失败返回
-//! `dual-write mirror failed` 错误，不静默吞掉。两次写不在同一事务内，调用方
-//! 需重试失败的镜像写。去重只认同一物理目标的证据：两侧端点都有非空 `url` 时
-//! 按 URL 相等去重，否则按底层客户端 `Arc` 指针相同去重；分片名相同不构成证明。
-//! proxy 模式端点没有 URL，不同客户端实例即使指向同一代理也会各写一次 ——
-//! 这是安全方向（宁可重复写，也不丢镜像写）。
+//! `dual-write mirror failed` 错误，不静默吞掉。物理同一性只认底层客户端
+//! `Arc` 指针相同；URL 和分片名都不是证据。两侧同名但客户端不同时默认报错，
+//! 调用方确认后可用 [`DualWrite::assume_distinct`]（两边都写，要求 SQL 幂等/
+//! 可重放）或 [`DualWrite::assume_same`]（只写主拓扑）显式选择。
+//! 两次写不在同一事务内：镜像失败时主写已提交，不要用 [`DualWriteClient`] 重试
+//! （会重复主写）；应通过 [`DualWriteClient::mirror_client`] 重放同一语句，或
+//! 在切流前用 `verify()` 对账。主写与镜像写之间的崩溃窗口仍然存在。
 //! `transaction()` 只在主拓扑开启 —— 跨库事务不在本 helper 的范围内，需要
 //! 事务内双写的调用方必须自行拆分。
 use async_trait::async_trait;
@@ -20,10 +22,22 @@ use super::*;
 use crate::ShardRouter;
 use crate::client::KeyedClient;
 
+/// 同名分片两侧客户端不同时的处理策略。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SameNamePolicy {
+    /// 默认：无法证明同一物理目标，拒绝双写。
+    Error,
+    /// 调用方断言两侧是不同物理分片：两边都写。
+    WriteBoth,
+    /// 调用方断言两侧是同一物理分片：只写主拓扑。
+    PrimaryOnly,
+}
+
 /// 旧/新拓扑的双写入口；只为分片键绑定的单次工作单元负责。
 pub struct DualWrite<'a> {
     primary: &'a ShardRouter,
     mirror: &'a ShardRouter,
+    same_name: SameNamePolicy,
 }
 
 impl<'a> DualWrite<'a> {
@@ -32,6 +46,7 @@ impl<'a> DualWrite<'a> {
         Self {
             primary: old,
             mirror: new,
+            same_name: SameNamePolicy::Error,
         }
     }
 
@@ -40,35 +55,49 @@ impl<'a> DualWrite<'a> {
         Self {
             primary: new,
             mirror: old,
+            same_name: SameNamePolicy::Error,
         }
     }
 
-    /// 按 `table` 的 `key` 同时绑定两侧目标分片；仅对已证明的同一物理目标去重。
-    pub fn for_key(&self, table: &str, key: &Value) -> Result<DualWriteClient, ShardError> {
-        let (primary_url, primary) = self.primary.for_key_with_shard(table, key)?;
-        let (mirror_url, mirror) = self.mirror.for_key_with_shard(table, key)?;
-        let mirror = (!same_physical_target(
-            primary_url.as_deref(),
-            &primary,
-            mirror_url.as_deref(),
-            &mirror,
-        ))
-        .then_some(mirror);
-        Ok(DualWriteClient { primary, mirror })
+    /// 断言同名但客户端不同的分片是不同物理分片：两侧都写。
+    /// SQL 必须幂等或可安全重放，否则同一逻辑写会执行两次。
+    pub fn assume_distinct(mut self) -> Self {
+        self.same_name = SameNamePolicy::WriteBoth;
+        self
     }
-}
 
-/// 两侧端点有非空 URL 时按 URL 判定；没有 URL 时只认同一客户端 `Arc`。
-/// 分片名相同不是物理同一性证明（proxy 模式可复用名字指向不同集群）。
-fn same_physical_target(
-    primary_url: Option<&str>,
-    primary: &KeyedClient,
-    mirror_url: Option<&str>,
-    mirror: &KeyedClient,
-) -> bool {
-    match (primary_url, mirror_url) {
-        (Some(a), Some(b)) if !a.trim().is_empty() && !b.trim().is_empty() => a == b,
-        _ => std::sync::Arc::ptr_eq(primary.client(), mirror.client()),
+    /// 断言同名但客户端不同的分片是同一物理分片：只写主拓扑。
+    pub fn assume_same(mut self) -> Self {
+        self.same_name = SameNamePolicy::PrimaryOnly;
+        self
+    }
+
+    /// 按 `table` 的 `key` 同时绑定两侧目标分片。
+    pub fn for_key(&self, table: &str, key: &Value) -> Result<DualWriteClient, ShardError> {
+        let (primary_shard, primary) = self.primary.for_key_with_shard(table, key)?;
+        let (mirror_shard, mirror) = self.mirror.for_key_with_shard(table, key)?;
+        let mirror = if std::sync::Arc::ptr_eq(primary.client(), mirror.client()) {
+            // 同一个客户端实例就是同一物理目标；名字不同也一样。
+            None
+        } else if primary_shard != mirror_shard {
+            // 正常的 hash 重分片：旧、新拓扑落不同分片，必须双写。
+            Some(mirror)
+        } else {
+            match self.same_name {
+                SameNamePolicy::Error => {
+                    return Err(ShardError::Config(format!(
+                        "dual-write: shard `{primary_shard}` has different clients in the old and \
+                         new topologies; physical identity is unproven. Call \
+                         DualWrite::assume_same() if they are the same physical shard, or \
+                         DualWrite::assume_distinct() (requires idempotent/replay-safe SQL) to \
+                         write both."
+                    )));
+                }
+                SameNamePolicy::WriteBoth => Some(mirror),
+                SameNamePolicy::PrimaryOnly => None,
+            }
+        };
+        Ok(DualWriteClient { primary, mirror })
     }
 }
 
@@ -79,9 +108,19 @@ pub struct DualWriteClient {
 }
 
 impl DualWriteClient {
+    /// 镜像分片；`None` 表示已证明同一物理目标或调用方 `assume_same()`。
+    ///
+    /// 写返回 `dual-write mirror failed` 时主写已提交：不要重试 [`DualWriteClient`]
+    /// （会再次执行主写）；在这里取回镜像客户端并重放同一条语句，或切流前
+    /// 用 `verify()` 对账。
+    pub fn mirror_client(&self) -> Option<&KeyedClient> {
+        self.mirror.as_ref()
+    }
+
     fn mirror_failure(&self, error: RdbmsError) -> RdbmsError {
         RdbmsError::Database(format!(
-            "dual-write mirror failed for table `{}` after the primary write committed: {error}",
+            "dual-write mirror failed for table `{}` after the primary write committed; do not \
+             retry through DualWriteClient, replay the same statement on mirror_client(): {error}",
             self.primary.table()
         ))
     }
