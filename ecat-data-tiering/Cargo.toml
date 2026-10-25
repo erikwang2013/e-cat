@@ -14,13 +14,13 @@ name = "ecat-tier"
 path = "src/bin/ecat-tier.rs"
 
 [dependencies]
-ecat-data = { version = "7.2.0", path = "../ecat-data" }
+ecat-data = { version = "7.2.1", path = "../ecat-data" }
 ecat-errors.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
 # 分布式锁 trait 在 ecat-lock；本 crate 只依赖抽象，不引入 Redis 客户端。
-ecat-lock = { version = "7.2.0", path = "../ecat-lock" }
+ecat-lock = { version = "7.2.1", path = "../ecat-lock" }
 # 单次运行预算：默认 pacer 的限速等待用 tokio::time::sleep；`run_until` 的 select! 需要 macros。
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 # DROP 前行数对账失败时告警（仓库统一日志门面）。
@@ -33,8 +33,8 @@ clap = { version = "4", features = ["derive"] }
 # 读取应用 YAML 配置的 `tiering:` 段（与 ecat-config 同一解析器）。
 yaml_serde = "0.10"
 # 冷层 sink 可选后端；默认不把 reqwest/ecat-tls 拖进默认依赖树。
-ecat-data-clickhouse = { version = "7.2.0", path = "../ecat-data-clickhouse", optional = true }
-ecat-data-s3 = { version = "7.2.0", path = "../ecat-data-s3", optional = true }
+ecat-data-clickhouse = { version = "7.2.1", path = "../ecat-data-clickhouse", optional = true }
+ecat-data-s3 = { version = "7.2.1", path = "../ecat-data-s3", optional = true }
 # 冷 chunk NDJSON 的 SHA-256（clickhouse / s3 feature 用）。
 sha2 = { workspace = true, optional = true }
 # 可选：`health` feature 的 readyz 探针；默认不进依赖树。

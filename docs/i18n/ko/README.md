@@ -5,11 +5,11 @@
 
 Ecat 한국어 이름: 한 마리 고양이
 
-**한 마리 고양이**는 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3를 벤치마킹한 Rust 마이크로서비스 프레임워크입니다 (v7.2.0 · 60 crates).
+**한 마리 고양이**는 [go-kratos/kratos](https://github.com/go-kratos/kratos) v3를 벤치마킹한 Rust 마이크로서비스 프레임워크입니다 (v7.2.1 · 60 crates).
 
 API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합된 HTTP/gRPC 미들웨어 추상화, 그리고 완비된 CLI 도구 체인을 제공합니다. Kratos에 익숙한 개발자가 매끄럽게 적응할 수 있으면서도, Rust의 타입 안전성, 제로 비용 추상화, 극한의 성능을 충분히 활용할 수 있습니다.
 
-> **데이터 계층 확장(7.2.0)**：샤딩, 핫/콜드 계층화, Saga/2PC, fencing, Redis 공유 풀. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **데이터 계층 확장(7.2.1)**：샤딩, 핫/콜드 계층화, Saga/2PC, fencing, Redis 공유 풀. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 <p align="center">
   <img src="e-cat.svg" alt="Ecat 프로젝트 펫(동적)" width="220" />
@@ -552,7 +552,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### 왜 Cargo Workspace인가
 
-Kratos의 모듈식 설계와 일치합니다. 모든 `ecat-*` crate는 workspace 잠금 단계로 함께 버전 출시(현재 7.2.0)되며, 각자 독립 컴파일되고 사용자가 필요에 따라 가져옵니다. 핵심 crate는 최소 의존성을 유지하고, contrib crate는 선택적 통합을 제공합니다.
+Kratos의 모듈식 설계와 일치합니다. 모든 `ecat-*` crate는 workspace 잠금 단계로 함께 버전 출시(현재 7.2.1)되며, 각자 독립 컴파일되고 사용자가 필요에 따라 가져옵니다. 핵심 crate는 최소 의존성을 유지하고, contrib crate는 선택적 통합을 제공합니다.
 
 ### 왜 prost (protobuf-rs 아님)인가
 
