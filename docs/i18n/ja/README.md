@@ -353,7 +353,7 @@ e-cat/
 
 ### 前提条件
 
-- Rust 1.85+（stable ツールチェーン、edition 2024 必須）
+- Rust 1.88+（stable ツールチェーン、edition 2024 必須）
 - [protoc](https://github.com/protocolbuffers/protobuf)（Protocol Buffers コンパイラ）
 
 ### CLI のインストール

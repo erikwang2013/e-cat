@@ -358,7 +358,7 @@ e-cat/
 
 ### Prerequisites
 
-- Rust 1.85+ (stable toolchain, required for edition 2024)
+- Rust 1.88+ (stable toolchain, required for edition 2024)
 - [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers compiler)
 
 ### Install the CLI
@@ -548,9 +548,9 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **`join` column lists carry no table prefix (ecat-orm)**: when the joined table and the main table share a column name, real databases report `ambiguous column name`.
 - **Batch `update_many` optimistic-lock conflicts cannot be traced to a row (ecat-orm)**: you can only detect them via "rows returned < rows passed"; use per-row `update` when you need to locate the row.
 - **`join` table names and ON conditions are not whitelist-validated (ecat-orm)**: `join(table, on)` takes strings, and strings carry no type information; same trust boundary as `filter_raw`.
-- **Shard migration (ecat-data-sharding)**: scalar columns only; BLOB/BYTEA would be copied as base64 text and corrupted. Hash re-sharding is "backfill + caller-side dual write"; the executor has no dual-write hook. `rollback` restores routing only and does not copy data back.
-- **opt-in 2PC (ecat-data-2pc)**: MySQL/PostgreSQL only. The coordinator DB is a single point; production needs external HA. Recovery cross-checks each participant's `xa_recover` in-doubt list for the post-prepare phases and falls back to log replay when `xa_recover` fails.
-- **Cold-tier CLI (ecat-data-tiering)**: cold backends are configured by environment variables; ClickHouse supports a Basic Auth environment pair. Archive-lag state queries share the `probe_timeout` budget with the cold probe.
+- **Shard migration (ecat-data-sharding)**: scalar columns only; BLOB/BYTEA is rejected before backfill/verify/cutover (unreadable metadata is also refused). Hash re-sharding is "backfill + `DualWrite`"; mirror writes are not atomic with the primary write and failed mirrors must be retried by the caller. `rollback` restores routing only and does not copy data back.
+- **opt-in 2PC (ecat-data-2pc)**: MySQL/PostgreSQL only. The coordinator DB is a single point; production needs external HA. Recovery cross-checks each participant's `xa_recover` in-doubt list for the post-prepare phases and falls back to log replay when `xa_recover` fails; `started` rows still roll back directly.
+- **Cold-tier CLI (ecat-data-tiering)**: cold backends are configured by environment variables; ClickHouse Basic Auth requires both `ECAT_CLICKHOUSE_USERNAME` and `ECAT_CLICKHOUSE_PASSWORD`, and setting only one is a config error. Archive-lag state queries share the `probe_timeout` budget with the cold probe.
 
 ## Design Goals
 

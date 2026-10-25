@@ -354,7 +354,7 @@ e-cat/
 
 ### Prerequisites
 
-- Rust 1.85+ (stable toolchain, edition 2024 required)
+- Rust 1.88+ (stable toolchain, edition 2024 required)
 - [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers compiler)
 
 ### Install the CLI

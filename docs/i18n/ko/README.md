@@ -352,7 +352,7 @@ e-cat/
 
 ### 사전 요구 사항
 
-- Rust 1.85+ (stable 툴체인, edition 2024 요구)
+- Rust 1.88+ (stable 툴체인, edition 2024 요구)
 - [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers 컴파일러)
 
 ### CLI 설치

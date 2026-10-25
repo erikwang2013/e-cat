@@ -1,5 +1,48 @@
 # Changelog
 
+## [7.2.1] — 2026-10-25
+
+> 7.2.0 的修复与安全版本：CI 全绿、RustSec 清零、迁移 fail-closed、P3 限制收敛。
+> 无破坏性变更。
+
+### Security
+
+- 升级 `async-nats` 0.38 → 0.47、`tokio` 1.53.3、`ctutils` 0.4.4、
+  `rustls-webpki` 0.103.16、`webpki-roots` 1.0.10，`cargo audit --deny warnings`
+  通过（RUSTSEC-2026-0385 / 0382 / 0381 / 0386）。
+- 剩余 `rustls-webpki` 0.102.8 仅经 `rumqttc` 0.25.1 传递引入；rumqttc 只把它用于
+  一个从未构造的 `Error` 变体，实际证书校验走 rustls 0.23 + webpki 0.103.16，
+  已在 `.cargo/audit.toml` 记录零暴露评估。
+- MSRV 从 1.85 升至 1.88（`async-nats` 0.47 要求），README 与站点同步。
+
+### Fixed
+
+- **CI（MySQL 8.4 / 9）** —— `ecat-data-sqlx` 启用 `tls-rustls-ring`，修复
+  `ssl-mode=REQUIRED` 在连接前报「built without TLS support」；live 测试与版本门
+  改为先捕获 cargo 退出码再打印输出，失败时不再吞掉真实错误。
+- **分片迁移** —— 回填/校验/切流前检查源表结构，发现 BLOB/BYTEA 等二进制列即
+  `ShardError::Config` fail-closed，避免 base64 文本写坏目标表；MySQL/PostgreSQL
+  用 `information_schema`，SQLite 用 `pragma_table_info`，元数据不可读同样拒绝。
+- **双写** —— 新增 `DualWrite` / `DualWriteClient`：切流前旧为主、新为镜像，切流后
+  新为主、旧为镜像；读只走主拓扑，镜像失败显式报错。仅当两侧端点 URL 相等或底层
+  客户端为同一 `Arc` 时去重，分片名相同不再视为同一物理目标。
+- **2PC 恢复** —— `prepared` / `committing` / `rolling_back` 行先按 participant
+  的 `xa_recover` in-doubt 列表交叉核对；XID 已不在列表则不重发 COMMIT/ROLLBACK，
+  `xa_recover` 失败仍回退到日志重放。`started` 阶段保持直接回滚。
+- **冷热分层** —— 归档滞后状态查询受 `probe_timeout` 约束，协调库挂起不再拖住
+  `/ready`；`ecat-tier` 支持 `ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`
+  Basic Auth，只设置其中一个直接报配置错误。
+- **后台 worker** —— 新增 `AppBuilder::background_worker_with_handle`，返回可克隆的
+  `WorkerHandle`；`wait()` 串行化并发等待，只有 worker 真正退出后才返回。
+
+### Changed / Notes
+
+- 新增公开 API 均为增量：`DualWrite` / `DualWriteClient`、
+  `background_worker_with_handle`、`WorkerHandle: Clone`；既有签名与默认行为不变。
+- 验证：`cargo check/test --workspace`、`--no-default-features`、`cargo clippy
+  -- -D warnings`、`cargo fmt --check`、`cargo audit --no-fetch --deny warnings`
+  全绿；MySQL 8.4/9 真实 TLS、XA、ClickHouse 等 live gate 仍需按环境复核。
+
 ## [7.2.0] — 2026-10-25
 
 > 数据层横向扩展版本。补齐 60 个 crate；既有单机 API 与默认行为不变。

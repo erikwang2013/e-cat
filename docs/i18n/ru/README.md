@@ -354,7 +354,7 @@ e-cat/
 
 ### Предварительные требования
 
-- Rust 1.85+ (stable toolchain, требование edition 2024)
+- Rust 1.88+ (stable toolchain, требование edition 2024)
 - [protoc](https://github.com/protocolbuffers/protobuf) (компилятор Protocol Buffers)
 
 ### Установка CLI

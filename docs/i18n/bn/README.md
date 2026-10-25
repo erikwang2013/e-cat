@@ -354,7 +354,7 @@ e-cat/
 
 ### পূর্বশর্ত
 
-- Rust 1.85+ (stable টুলচেইন, edition 2024 প্রয়োজন)
+- Rust 1.88+ (stable টুলচেইন, edition 2024 প্রয়োজন)
 - [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers কম্পাইলার)
 
 ### CLI ইনস্টল

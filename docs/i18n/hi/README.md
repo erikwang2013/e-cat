@@ -354,7 +354,7 @@ e-cat/
 
 ### पूर्वापेक्षाएँ
 
-- Rust 1.85+ (stable टूलचेन, edition 2024 आवश्यक)
+- Rust 1.88+ (stable टूलचेन, edition 2024 आवश्यक)
 - [protoc](https://github.com/protocolbuffers/protobuf) (Protocol Buffers कंपाइलर)
 
 ### CLI इंस्टॉल करें

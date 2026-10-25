@@ -354,7 +354,7 @@ e-cat/
 
 ### Prasyarat
 
-- Rust 1.85+ (toolchain stable, syarat edition 2024)
+- Rust 1.88+ (toolchain stable, syarat edition 2024)
 - [protoc](https://github.com/protocolbuffers/protobuf) (kompiler Protocol Buffers)
 
 ### Instalasi CLI

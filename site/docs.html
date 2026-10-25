@@ -48,7 +48,7 @@
   "@graph": [
     {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
     {"@type":"Person","@id":"https://e-cat.erik.xyz/#person","name":"erik","url":"https://erik.xyz","email":"erik@erik.xyz","sameAs":["https://github.com/erikwang2013"]},
-    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.2.0","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
+    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.2.1","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
     {"@type":"WebPage","@id":"https://e-cat.erik.xyz/docs.html#webpage","url":"https://e-cat.erik.xyz/docs.html","name":"Ecat 安装与使用 | Rust 微服务框架文档","description":"安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、技术栈、Kratos 映射与已知限制。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-25","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"breadcrumb":{"@id":"https://e-cat.erik.xyz/docs.html#breadcrumb"}},
     {"@type":"BreadcrumbList","@id":"https://e-cat.erik.xyz/docs.html#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"概览","item":"https://e-cat.erik.xyz/"},{"@type":"ListItem","position":2,"name":"文档","item":"https://e-cat.erik.xyz/docs.html"}]}
   ]
@@ -107,7 +107,7 @@
         <div class="install-steps">
           <div class="step reveal">
             <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-rocket"></use></svg><h3 data-i18n="docs.step1Title">准备 Rust 与 protoc</h3></div>
-            <p data-i18n="docs.step1Desc">Ecat 使用 edition 2024，需要 Rust 1.85 或更新版本。CLI 和生成的代码还需要 protoc。</p>
+            <p data-i18n="docs.step1Desc">Ecat 使用 edition 2024，需要 Rust 1.88 或更新版本。CLI 和生成的代码还需要 protoc。</p>
             <div class="code-block">
               <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-prereq" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
               <pre><code id="code-prereq"><span class="c" data-i18n="code.install.comment1"># Ubuntu / Debian</span>
@@ -439,9 +439,9 @@ User::update(&amp;db, &amp;got).<span class="k">await</span>?;
                 <li data-i18n="ref.limit5">join 的列清单不带表前缀；被连表与主体有同名列时真库报 ambiguous column name。</li>
                 <li data-i18n="ref.limit6">批量 update_many 的乐观锁冲突无法定位到行；只能比较返回行数，或逐行 update。</li>
                 <li data-i18n="ref.limit7">join 的表名与 ON 条件不做白名单校验，与 filter_raw 同一信任边界。</li>
-                <li data-i18n="ref.limit8">分片迁移只搬移标量列，BLOB/BYTEA 会按 base64 文本复制而损坏；hash 变更是“回填 + 调用方双写”，执行器不提供双写钩子。</li>
-                <li data-i18n="ref.limit9">opt-in 2PC 仅 MySQL/PostgreSQL；协调器数据库单点，生产需外部 HA；恢复未用 participant xa_recover 交叉核对。</li>
-                <li data-i18n="ref.limit10">ecat-tier 冷后端通过环境变量配置，当前无 ClickHouse 认证环境变量；归档滞后状态查询不受 probe_timeout 约束。</li>
+                <li data-i18n="ref.limit8">分片迁移只搬移标量列，BLOB/BYTEA 在复制前即 fail-closed；hash 变更用“回填 + <code>DualWrite</code>”，镜像写与主写不在同一事务内。</li>
+                <li data-i18n="ref.limit9">opt-in 2PC 仅 MySQL/PostgreSQL；协调器数据库单点，生产需外部 HA；恢复用 participant <code>xa_recover</code> 交叉核对 prepare 之后的阶段。</li>
+                <li data-i18n="ref.limit10">ecat-tier 冷后端通过环境变量配置，ClickHouse Basic Auth 需同时设置用户名与密码；归档滞后查询受 probe_timeout 约束。</li>
               </ul>
             </div>
           </div>
