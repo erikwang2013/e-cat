@@ -94,9 +94,15 @@ jobs:
           # ECAT_REQUIRE_LIVE_DB 是 crate 级开关：整包 cargo test 会因缺
           # ECAT_TEST_PG_URL 让 PG 用例 panic，故只按名字挑 MySQL 用例；
           # 再断言确实跑了 1 个（过滤到 0 个时 cargo 仍退出 0）。
+          # set +e：命令替换失败会让启用 -e 的 shell 在赋值处直接退出，
+          # 吞掉 cargo 的真实错误；必须先存 rc、打全文，再显式断言。
+          set +e
           out=$(/usr/bin/time -f 'mysql connect+query wall: %e s' \
             cargo test -p ecat-data-sqlx --lib mysql_unsigned_columns_decode_and_unsupported_type_errors 2>&1)
+          rc=$?
+          set -e
           echo "$out"
+          test "$rc" -eq 0
           grep -q "test result: ok. 1 passed" <<< "$out"
       # 「日志里没有 X」必须配正控：先证明检测器看得见日志，否则日志没记也会
       # 「通过」。注意现有 live 用例不调用 replica_lag，驱动层真正发哪条语句
@@ -116,8 +122,12 @@ jobs:
       # 版本选择器本身也钉住：8.4/9 必须映射到 SHOW REPLICA STATUS。
       - name: Assert version gate picks SHOW REPLICA STATUS
         run: |
+          set +e
           out=$(cargo test -p ecat-data-sqlx --lib mysql_replica_status_sql 2>&1)
+          rc=$?
+          set -e
           echo "$out"
+          test "$rc" -eq 0
           grep -q "test result: ok. 2 passed" <<< "$out"
       - name: Stop MySQL
         if: always()

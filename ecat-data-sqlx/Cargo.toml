@@ -11,7 +11,10 @@ categories.workspace = true
 
 [dependencies]
 ecat-data = { version = "7.2.0", path = "../ecat-data" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "time"] }
+# tls-rustls-ring：MySQL/PostgreSQL 的 `ssl-mode=REQUIRED` 需要编译期 TLS 后端；
+# 缺失时 sqlx 直接报「built without TLS support」，REQUIRED 真机门必挂（复用
+# ecat-tls 已引入的 rustls 0.23 + ring，不新增 TLS 栈）。
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "time", "tls-rustls-ring"] }
 time = { workspace = true }
 base64 = "0.22"
 async-trait.workspace = true
