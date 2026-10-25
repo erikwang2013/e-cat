@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 双写路由/回滚语义：物理同一性只认客户端 `Arc`，同名未证明需要显式策略；
+//! 双写路由/回滚语义：物理同一性只认客户端 `Arc`，客户端不同时默认要求显式策略；
 //! 镜像失败只能通过 `mirror_client()` 重放，不能整体重试。
 #![cfg(feature = "migrate")]
 
