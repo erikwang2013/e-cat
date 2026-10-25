@@ -7,7 +7,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use ecat_health::HealthCheck;
 
-use crate::ColdSink;
+use crate::{ArchiveStateStore, ColdSink};
 
 #[cfg(test)]
 mod tests;
@@ -16,6 +16,12 @@ mod tests;
 pub struct TieringHealthCheck {
     cold: Arc<dyn ColdSink>,
     probe_timeout: Duration,
+    archive_lag: Option<ArchiveLag>,
+}
+
+struct ArchiveLag {
+    store: Arc<ArchiveStateStore>,
+    max_lag: time::Duration,
 }
 
 impl TieringHealthCheck {
@@ -25,7 +31,19 @@ impl TieringHealthCheck {
         Self {
             cold,
             probe_timeout,
+            archive_lag: None,
         }
+    }
+
+    /// 追加归档滞后检查：按状态表里出现过的表，最新 `updated_at` 超过
+    /// `max_lag` 即不健康；没有状态行视为「尚无归档历史」，保持健康。
+    pub fn with_archive_lag(
+        mut self,
+        store: Arc<ArchiveStateStore>,
+        max_lag: time::Duration,
+    ) -> Self {
+        self.archive_lag = Some(ArchiveLag { store, max_lag });
+        self
     }
 }
 
@@ -37,12 +55,48 @@ impl HealthCheck for TieringHealthCheck {
 
     async fn check(&self) -> Result<(), String> {
         match tokio::time::timeout(self.probe_timeout, self.cold.health_check()).await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(format!("cold sink: {e}")),
-            Err(_) => Err(format!(
-                "cold sink did not answer within {:?}",
-                self.probe_timeout
-            )),
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(format!("cold sink: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "cold sink did not answer within {:?}",
+                    self.probe_timeout
+                ));
+            }
+        }
+        if let Some(lag) = &self.archive_lag {
+            check_archive_lag(lag).await?;
+        }
+        Ok(())
+    }
+}
+
+async fn check_archive_lag(lag: &ArchiveLag) -> Result<(), String> {
+    let rows = lag
+        .store
+        .list(None)
+        .await
+        .map_err(|e| format!("archive state: {e}"))?;
+    let mut tables: Vec<String> = rows.into_iter().map(|row| row.table).collect();
+    tables.sort();
+    tables.dedup();
+    let now = time::OffsetDateTime::now_utc();
+    for table in tables {
+        let latest = lag
+            .store
+            .latest_updated_at(&table)
+            .await
+            .map_err(|e| format!("archive state for `{table}`: {e}"))?;
+        let Some(latest) = latest else {
+            continue;
+        };
+        let age = now - latest;
+        if age > lag.max_lag {
+            return Err(format!(
+                "archive lag for `{table}` is {age:?}, exceeds {:?}",
+                lag.max_lag
+            ));
         }
     }
+    Ok(())
 }

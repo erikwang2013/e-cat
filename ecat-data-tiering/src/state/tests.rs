@@ -208,3 +208,35 @@ async fn state_mssql_is_unsupported() {
         Err(TieringError::UnsupportedDialect)
     ));
 }
+
+#[tokio::test]
+async fn state_latest_updated_at_none_when_empty() {
+    let store = fresh_store().await;
+    assert_eq!(store.latest_updated_at("events").await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn state_latest_updated_at_returns_max_for_table() {
+    let store = fresh_store().await;
+    let base = OffsetDateTime::from_unix_timestamp(1_767_225_600).unwrap();
+    let mut first = job(ArchivePhase::Copied);
+    first.updated_at = base;
+    let mut second = job(ArchivePhase::Copied);
+    second.partition = "2026_02".into();
+    second.updated_at = base + Duration::hours(2);
+    let mut other = job(ArchivePhase::Copied);
+    other.table = "other".into();
+    other.updated_at = base + Duration::hours(5);
+    store.upsert(&first).await.unwrap();
+    store.upsert(&second).await.unwrap();
+    store.upsert(&other).await.unwrap();
+
+    assert_eq!(
+        store.latest_updated_at("events").await.unwrap(),
+        Some(second.updated_at)
+    );
+    assert_eq!(
+        store.latest_updated_at("other").await.unwrap(),
+        Some(other.updated_at)
+    );
+}

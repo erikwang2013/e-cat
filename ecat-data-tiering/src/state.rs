@@ -145,6 +145,32 @@ impl ArchiveStateStore {
         Ok(())
     }
 
+    /// 表的最新状态更新时间；没有状态行时为 `None`。
+    pub async fn latest_updated_at(
+        &self,
+        table: &str,
+    ) -> Result<Option<OffsetDateTime>, TieringError> {
+        let dialect = self.dialect()?;
+        let sql = format!(
+            "SELECT MAX(updated_at) AS latest FROM {TABLE} WHERE table_name = {}",
+            placeholder(dialect, 1)
+        );
+        let rows = self
+            .db
+            .query_with(&sql, &[Value::String(table.into())])
+            .await?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        match row.get("latest") {
+            Some(Value::Null) | None => Ok(None),
+            Some(Value::String(text)) => OffsetDateTime::parse(text, &Rfc3339)
+                .map(Some)
+                .map_err(|e| TieringError::State(format!("latest updated_at is not RFC3339: {e}"))),
+            _ => Err(bad_column("latest")),
+        }
+    }
+
     /// 列出状态行；`table` 为 `None` 时列出全部表。
     pub async fn list(&self, table: Option<&str>) -> Result<Vec<ArchiveJobState>, TieringError> {
         let dialect = self.dialect()?;
