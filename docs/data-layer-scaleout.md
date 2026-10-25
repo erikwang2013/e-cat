@@ -167,13 +167,13 @@ ecat-tier restore --config app.yaml
 `run` 与 `verify` 需要 `cli` feature；冷后端连接通过环境变量提供：
 `ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`，
 `ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD`（必须同时设置才启用 Basic Auth；
-只设置一个会报配置错误，不会退化为匿名连接），
+空值视为未设置，只设置一个非空值会报配置错误，不会退化为匿名连接），
 `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`。
 
 `TieringHealthCheck::with_archive_lag(store, max_lag)` 在冷层可达性之外检查状态表最新
 `updated_at`；没有状态行视为尚无归档历史。`probe_timeout` 分别约束冷层探针与归档滞后
-状态查询，任一段超预算即不健康，避免 `/ready` 被挂起的协调库拖住。
+状态查询（各段独立预算，最坏约 2×），任一段超预算即不健康，避免 `/ready` 被挂起的协调库拖住。
 
 ## 3. 分布式原语
 
@@ -212,10 +212,16 @@ tx.commit().await?;                      // END -> PREPARE all -> decision -> CO
 ```
 
 - 协调日志 `distributed_tx(id, status, participants, decision, created_at)`。
-- 任一 prepare 失败全部回滚；恢复扫描 `prepared` / `committing` / `rolling_back`。
-- 恢复先按 participant `xa_recover` 的 in-doubt 列表交叉核对：XID 不在列表视为已解决
-  （不重发 COMMIT/ROLLBACK）；`xa_recover` 本身失败则回退到日志重放，保留重试。
-- XA 生命周期固定在一条物理连接上；协调器数据库是单点，生产需外部 HA。
+- 任一 prepare 失败全部回滚；恢复扫描 `started` / `prepared` / `committing` / `rolling_back`。
+- 恢复只对 `prepared` / `committing` 按 participant `xa_recover` 的 in-doubt 列表交叉核对：
+  XID 不在列表视为已解决（不重发 COMMIT/ROLLBACK）；`rolling_back` / `started` 一律按日志
+  重放（列表看不到 END 但未 PREPARE 的 active 分支）。`xa_recover` 失败则回退日志重放并保留重试。
+- 恢复只应在启动时、开始接受 2PC 工作之前调用（或确认本进程没有 active 2PC 事务）；
+  不要在服务进程中周期调用，否则会回滚本进程活跃的 `started` 分支。崩溃进程的 active
+  分支随固定连接断开由数据库回滚，因此 `started` 行只对已停止的进程有意义。
+- XA 生命周期固定在一条物理连接上；每个 participant 的 pool 必须固定到持有其分支的
+  单台服务器，不要在 XA participant 前放负载均衡代理，除非它保证 XA RECOVER 与
+  prepared XID 的会话/服务器亲和性；协调器数据库是单点，生产需外部 HA。
 - 不把 2PC 接进 `KeyedClient` / `scatter`，只作为显式 API。
 
 ### 3.4 共享 Redis 池与远程拓扑
@@ -263,10 +269,14 @@ App::builder()
 - `DualWrite` 只镜像单条写语句；主写与镜像写不在同一事务内（镜像失败会报错，调用方需重试），
   `transaction()` 只在主拓扑执行，跨库事务内的双写需调用方自行拆分。
 - `rollback` 只恢复路由并保留旧分片，不做反向数据搬移。
-- 2PC 协调器数据库单点；`xa_recover` 交叉核对只覆盖 prepare 之后的阶段，`started`
-  的 active 事务仍按日志直接回滚（连接断开时数据库自行回滚）。
-- `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth；用户名/密码必须成对设置，
-  只设置一个会直接报配置错误。
+- 2PC 协调器数据库单点。恢复只应在启动时/接受 2PC 工作前调用（或本进程没有 active
+  2PC 事务时），不要周期调用：否则会把本进程活跃的 `started` 分支按日志回滚；崩溃进程的
+  active 分支随连接断开由数据库回滚。`xa_recover` 交叉核对只覆盖 `prepared`/`committing`，
+  `rolling_back`/`started` 一律重放。每个 participant 的 pool 必须固定到持有其分支的
+  单台服务器，XA participant 前不要放负载均衡代理，除非保证 XA RECOVER 与 prepared XID
+  的会话/服务器亲和性；否则交叉核对的空列表结论不可信。
+- `ecat-tier` 的 ClickHouse 认证仅支持 Basic Auth；用户名/密码必须成对设置（空值视为
+  未设置），只设置一个非空值会直接报配置错误。
 
 ## 相关文档
 

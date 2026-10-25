@@ -176,15 +176,17 @@ ecat-tier restore --config app.yaml
 
 `run` and `verify` require the `cli` feature. Cold-backend endpoints come from
 `ECAT_CLICKHOUSE_URL` / `ECAT_CLICKHOUSE_DATABASE`,
-`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD` (Basic Auth requires both; setting only
-one is a config error, not an anonymous connection),
+`ECAT_CLICKHOUSE_USERNAME` / `ECAT_CLICKHOUSE_PASSWORD` (Basic Auth requires both; empty values
+count as unset, and setting only one non-empty value is a config error, not an anonymous
+connection),
 plus `ECAT_S3_ENDPOINT` / `ECAT_S3_REGION` / `ECAT_S3_ACCESS_KEY` /
 `ECAT_S3_SECRET_KEY` / `ECAT_S3_BUCKET` / `ECAT_S3_PREFIX`.
 
 `TieringHealthCheck::with_archive_lag(store, max_lag)` checks the newest `updated_at` in the
 state table in addition to cold reachability; no state rows means no archive history.
-`probe_timeout` bounds both the cold probe and the archive-lag state query, so a hung
-coordinator DB cannot stall `/ready`.
+`probe_timeout` bounds the cold probe and the archive-lag state query separately; each stage
+gets its own full budget (worst case ~2×), so a hung coordinator DB cannot stall `/ready`
+beyond that.
 
 ## 3. Distributed primitives
 
@@ -226,12 +228,21 @@ tx.commit().await?;                      // END -> PREPARE all -> decision -> CO
 
 - Coordination log: `distributed_tx(id, status, participants, decision, created_at)`.
 - Any prepare failure rolls every participant back; recovery scans
-  `prepared` / `committing` / `rolling_back`.
-- Recovery first cross-checks each participant's `xa_recover` in-doubt list: an absent XID
-  is treated as already resolved (no COMMIT/ROLLBACK replay); if `xa_recover` itself fails,
-  recovery falls back to replaying the log decision and retrying later.
-- The XA lifecycle is pinned to one physical connection. The coordinator DB is a single
-  point; production needs external HA.
+  `started` / `prepared` / `committing` / `rolling_back`.
+- Recovery cross-checks only `prepared` / `committing` against each participant's
+  `xa_recover` in-doubt list: an absent XID is treated as already resolved (no
+  COMMIT/ROLLBACK replay). `rolling_back` / `started` always replay from the log because
+  the list cannot see ENDed-but-never-PREPAREd active branches. If `xa_recover` itself
+  fails, recovery falls back to replaying the log decision and retrying later.
+- Run recovery only at startup/before accepting 2PC work (or when this process owns no
+  active 2PC transactions); never periodically in a serving process, or it will roll back
+  this process's live `started` branches. A crashed process's active branches are rolled
+  back by the database when the pinned connection drops, so `started` rows are only
+  meaningful to a process that is no longer alive.
+- The XA lifecycle is pinned to one physical connection. Each participant's pool must be
+  pinned to the single server holding its branches; do not put a load-balanced proxy in
+  front of an XA participant unless it guarantees session/server affinity for XA RECOVER
+  and the prepared XID. The coordinator DB is a single point; production needs external HA.
 - 2PC is not wired into `KeyedClient` / `scatter`; it is an explicit API.
 
 ### 3.4 Shared Redis pool and remote topology
@@ -287,11 +298,17 @@ idempotent and the handle is cheap to clone.
   runs on the primary topology alone, so callers needing transactional dual writes must
   split them.
 - `rollback` only restores routing and keeps old shards; it does not copy data back.
-- The 2PC coordinator DB is a single point. `xa_recover` cross-checking covers only the
-  post-prepare phases; `started` active transactions are still rolled back from the log
-  (the database rolls them back itself when the connection drops).
+- The 2PC coordinator DB is a single point. Run recovery only at startup/before accepting
+  2PC work (or when this process owns no active 2PC transactions), never periodically in a
+  serving process: it would roll back this process's live `started` branches (a crashed
+  process's branches are rolled back by the database when the pinned connection drops).
+  `xa_recover` cross-checking covers only `prepared`/`committing`; `rolling_back`/`started`
+  always replay. Each participant's pool must be pinned to the single server holding its
+  branches; do not put a load-balanced proxy in front of an XA participant unless it
+  guarantees session/server affinity for XA RECOVER and the prepared XID; otherwise an
+  empty in-doubt list is not conclusive.
 - `ecat-tier` ClickHouse auth supports only Basic Auth; the username/password pair is
-  all-or-nothing (a lone variable is rejected).
+  all-or-nothing (empty values count as unset; a lone non-empty variable is rejected).
 
 ## Related
 

@@ -1,11 +1,14 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 恢复 worker：扫描 PREPARED/COMMITTING（以及未完成的 ROLLING_BACK），
+//! 恢复 worker：扫描 STARTED/PREPARED/COMMITTING/ROLLING_BACK，
 //! 按协调日志决策重放 COMMIT/ROLLBACK。
 use super::coordinator::{LogRow, RecoveryReport, TwoPhaseCoordinator, XaError, XaParticipant};
 use std::sync::Arc;
 
 impl TwoPhaseCoordinator {
-    /// 启动时/周期调用；带 fence 时保证同一时刻只有一个恢复者。
+    /// 应在启动时、开始接受 2PC 工作之前调用；带 fence 时同一时刻只有一个恢复者。
+    /// 不要在服务进程中周期调用：恢复会把本进程仍 active 的 `started` 分支按日志
+    /// 回滚。崩溃进程的 active 分支随固定连接断开由数据库回滚，因此 `started` 行
+    /// 只对已停止的进程有意义（或确认本进程没有任何 active 2PC 事务后再调用）。
     pub async fn recover(&self) -> Result<RecoveryReport, XaError> {
         self.ensure_schema().await?;
         let guard = self.acquire_fence().await?;
@@ -42,9 +45,9 @@ impl TwoPhaseCoordinator {
                 }
             };
             let commit = should_commit(&row);
-            // `started` 的 XID 仍是同进程里的 active 事务，`xa_recover` 看不到；
-            // 只有已 prepare 的阶段才用 in-doubt 列表判断是否已解决。
-            let cross_check = row.status != "started";
+            // `xa_recover` 只列 PREPARED 分支；`started` / `rolling_back` 可能包含
+            // END 但未 PREPARE 的 active 分支，空列表不能证明已解决，必须直接重放。
+            let cross_check = matches!(row.status.as_str(), "prepared" | "committing");
             let outcome = if commit {
                 self.recover_commit(&row.id, &participants, cross_check)
                     .await
@@ -103,6 +106,7 @@ impl TwoPhaseCoordinator {
 }
 
 /// 参与者报告没有该 XID 的 in-doubt 事务 ⇒ 已解决，跳过重放。
+/// 仅当参与者 pool 固定到持有该分支的单台服务器时结论才可靠。
 /// `xa_recover` 失败时返回 `false`，维持原有「按日志重放、失败下次重试」的兜底。
 async fn already_resolved(participant: &dyn XaParticipant, id: &str) -> bool {
     match participant.xa_recover().await {

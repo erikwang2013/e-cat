@@ -20,6 +20,11 @@ pub trait XaParticipant: Send + Sync {
     async fn xa_prepare(&self, xid: &str) -> Result<(), XaError>;
     async fn xa_commit(&self, xid: &str) -> Result<(), XaError>;
     async fn xa_rollback(&self, xid: &str) -> Result<(), XaError>;
+
+    /// 返回该参与者当前 PREPARED 的 in-doubt XID。
+    /// 实现必须把 pool 固定到持有这些分支的单台服务器：不要在 XA 参与者前放
+    /// 负载均衡代理，除非它保证 XA RECOVER 与 prepared XID 的会话/服务器亲和性。
+    /// 否则查询可能落到不持有分支的服务器并返回空列表，恢复会误判为已解决而跳过。
     async fn xa_recover(&self) -> Result<Vec<String>, XaError>;
 
     /// 在该参与者固定的 XA 连接上执行参数化 SQL。

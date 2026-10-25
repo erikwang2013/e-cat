@@ -564,8 +564,8 @@ fn get_user(id: u64) -> Result<User, Error> {
 - **批量 `update_many` 的乐观锁冲突无法定位到行（ecat-orm）**：只能靠「返回行数 < 传入行数」察觉，需要定位时用逐行 `update`。
 - **`join` 的表名与 ON 条件不做白名单校验（ecat-orm）**：`join(table, on)` 收的是字符串，字符串里没有类型信息；与 `filter_raw` 同一信任边界。
 - **分片迁移（ecat-data-sharding）**：只搬移标量列，BLOB/BYTEA 在回填/校验/切流前即 fail-closed（元数据不可读同样拒绝）；hash 变更是“回填 + `DualWrite`”，镜像写与主写不在同一事务内，失败需调用方重试；`rollback` 只恢复路由，不反向搬数据。
-- **opt-in 2PC（ecat-data-2pc）**：仅 MySQL/PostgreSQL；协调器数据库是单点，生产需外部 HA；恢复先按 participant `xa_recover` 的 in-doubt 列表交叉核对（仅 prepare 之后的阶段，`xa_recover` 失败时回退日志重放），`started` 阶段仍直接回滚。
-- **冷层 CLI（ecat-data-tiering）**：冷后端连接通过环境变量配置；ClickHouse Basic Auth 需同时设置 `ECAT_CLICKHOUSE_USERNAME` 与 `ECAT_CLICKHOUSE_PASSWORD`，只设置一个会报配置错误；readiness 的归档滞后状态查询与冷层探针共用 `probe_timeout` 预算。
+- **opt-in 2PC（ecat-data-2pc）**：仅 MySQL/PostgreSQL；协调器数据库是单点，生产需外部 HA；恢复先按 participant `xa_recover` 的 in-doubt 列表交叉核对（仅 `prepared`/`committing`，`xa_recover` 失败时回退日志重放），`rolling_back`/`started` 一律按日志重放；恢复只应在启动时、开始接受 2PC 工作之前调用（或确认本进程没有 active 2PC 事务），不要在服务进程中周期调用——否则会回滚本进程活跃的 `started` 分支（崩溃进程的分支由数据库在连接断开时回滚）；每个 participant 的 pool 必须固定到持有其分支的单台服务器，不要在 XA participant 前放负载均衡代理，除非它保证 XA RECOVER 与 prepared XID 的会话/服务器亲和性；否则交叉核对的空列表结论不可信。
+- **冷层 CLI（ecat-data-tiering）**：冷后端连接通过环境变量配置；ClickHouse Basic Auth 需同时设置 `ECAT_CLICKHOUSE_USERNAME` 与 `ECAT_CLICKHOUSE_PASSWORD`（空值视为未设置），只设置一个非空变量会报配置错误；readiness 的冷层探针与归档滞后状态查询各有独立的 `probe_timeout` 预算（最坏约 2×），不是共用。
 
 ## 设计目标
 
