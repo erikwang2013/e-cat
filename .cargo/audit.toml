@@ -2,14 +2,17 @@
 # 原则：仅忽略已在跟踪文档完成暴露评估的项；新增 ignore 必须先补文档评估。
 [advisories]
 ignore = [
-    # rustls-webpki 0.102.8 —— CRL 吊销校验绕过 / name-constraint 绕过 / CRL 解析可达 panic。
-    # 经 async-nats 0.38 / rumqttc 0.25 传递引入（0.102 线无修复版）；e-cat 客户端证书链校验
-    # 不启用 CRL 路径，实际暴露低。**要升级的是 async-nats / rumqttc 自身**，
-    # 与本仓的 rustls 无关（本仓 rustls 已于 2026-10-06 升至 0.23.45，该项仍为 0.102.8）。
+    # rustls-webpki 0.102.8 —— 证书链可接受已失信的 emSign 中间证书（RUSTSEC-2026-0382），
+    # 另含此前的 CRL 吊销校验绕过 / name-constraint 绕过 / CRL 解析 panic（0049/0098/0099/0104）。
+    # 0.102 线无修复版；async-nats 已于 0.47 升到 webpki 0.103.16，剩余唯一路径是
+    # rumqttc 0.25.1（上游无更新版）：它只把 webpki 用作一个从未构造的 Error 变体，
+    # 实际证书校验走 rustls 0.23 + webpki 0.103.16，故该副本不参与验证，暴露为零。
+    # 上游发布修复版后应升级 rumqttc 并移除本组 ignore。
     "RUSTSEC-2026-0049",
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
+    "RUSTSEC-2026-0382",
     # rsa 0.9.10 —— Marvin Attack 时序侧信道（无修复版）。
     # 仅用于 ecat-auth JWT 签名（RSA 私钥运算），不涉及解密/验证时序测量场景，暴露低。
     "RUSTSEC-2023-0071",
