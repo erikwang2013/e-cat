@@ -1,9 +1,11 @@
-# 本地联调用：三库一键起。不进 CI。
-# 部署形态（P6）用 profile 选择，默认的 mssql/postgres/mysql 仍是一键起：
+# 本地联调用。不进 CI。三种形态用 profile 选择：
+#   docker compose --profile dev up          # 原三库联调：MSSQL / PostgreSQL / MySQL 8.0
 #   docker compose --profile standalone up   # 单机：MySQL 8.4 + Redis
 #   docker compose --profile distributed up  # 分布式：MySQL + Redis + ClickHouse + 代理 + 2 app
+# 注意：旧的三库已收进 dev profile，`docker compose up` 不再默认起它们。
 services:
   mssql:
+    profiles: [dev]
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
@@ -11,10 +13,12 @@ services:
       MSSQL_PID: Developer
     ports: ["1433:1433"]
   postgres:
+    profiles: [dev]
     image: postgres:16-alpine
     environment: { POSTGRES_PASSWORD: postgres }
     ports: ["5432:5432"]
   mysql:
+    profiles: [dev]
     image: mysql:8.0
     environment: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: bee_test }
     ports: ["3306:3306"]
@@ -59,6 +63,13 @@ services:
     ports: ["3308:3307"]
     depends_on:
       ecat-mysql: { condition: service_healthy }
+    healthcheck:
+      # 镜像无 mysql 客户端，用 bash 的 /dev/tcp 探代理监听端口。
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3307"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
   app-1:
     profiles: [distributed]
     build: { context: ., dockerfile: ecat-deploy/Dockerfile }

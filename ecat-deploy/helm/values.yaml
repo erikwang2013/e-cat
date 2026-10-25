@@ -14,11 +14,15 @@ image:
   pullPolicy: IfNotPresent
 
 mysql:
+  # 集群内单实例样例；生产改用外部库时设 false。
+  enabled: true
+  database: bee_test
   image:
     repository: mysql
     tag: "8.4" # "8.4" 或 "9"
 
 # 口令一律从 Secret 读取，values.yaml 不出现任何密码。
+# Secret 需含 mysql-root-password（MySQL）与 mysql-dsn（应用）两个键。
 existingSecret: ecat-secrets
 
 service:

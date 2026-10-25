@@ -1,0 +1,62 @@
+{{- if not (has .Values.deploymentMode (list "standalone" "distributed")) }}
+{{- fail "deploymentMode must be standalone or distributed" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    app: {{ .Chart.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+          env:
+            - name: ECAT_DEPLOYMENT_MODE
+              value: {{ .Values.deploymentMode | quote }}
+            - name: ECAT_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: {{ .Values.nodeId.fieldRef.fieldPath }}
+            {{- if .Values.existingSecret }}
+            - name: ECAT_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: mysql-dsn
+            {{- end }}
+            {{- if eq .Values.deploymentMode "distributed" }}
+            - name: ECAT_CACHE_MODE
+              value: redis
+            {{- end }}
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

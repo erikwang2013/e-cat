@@ -40,13 +40,13 @@ usage_error() {
 
 # Services of one compose profile, one name per line. Unprofiled services are not
 # listed. Services are the only keys at two-space indent, profiles are four.
-compose_services() {
-  awk -v want="$1" '
+compose_service_profiles() {
+  awk '
     /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
-      if (svc != "" && found) print svc
+      if (svc != "") print svc "\t" prof
       svc = $1
       sub(/:$/, "", svc)
-      found = 0
+      prof = ""
       next
     }
     /^    profiles:[[:space:]]*\[/ {
@@ -54,36 +54,42 @@ compose_services() {
       sub(/^[^[]*\[/, "", line)
       sub(/\].*$/, "", line)
       gsub(/[[:space:]"]/, "", line)
-      n = split(line, names, ",")
-      for (i = 1; i <= n; i++) {
-        if (names[i] == want) found = 1
-      }
+      prof = line
     }
-    END { if (svc != "" && found) print svc }
+    END { if (svc != "") print svc "\t" prof }
   ' "$COMPOSE"
 }
 
-require_service() {
-  local profile=$1 service=$2 services
-  services=$(compose_services "$profile")
-  grep -qx -- "$service" <<<"$services" \
-    || fail "compose profile '$profile' is missing service '$service'"
+compose_services() {
+  compose_service_profiles | awk -F'\t' -v want="$1" '
+    {
+      n = split($2, names, ",")
+      for (i = 1; i <= n; i++) {
+        if (names[i] == want) print $1
+      }
+    }
+  '
+}
+
+# Exact service sets: dev is the old trio, standalone the single-node shape,
+# distributed the full topology. Any extra or missing service breaks isolation.
+require_profile_set() {
+  local profile=$1 expected=$2 actual
+  actual=$(compose_services "$profile" | LC_ALL=C sort | tr '\n' ' ')
+  [[ "$actual" == "$expected" ]] \
+    || fail "compose profile '$profile' services are '${actual:-<none>}' (want '$expected')"
 }
 
 check_compose() {
   [[ -f "$COMPOSE" ]] || fail "missing $COMPOSE"
-  require_service standalone ecat-mysql
-  require_service standalone ecat-redis
-  local service
-  for service in ecat-mysql ecat-redis clickhouse shardingsphere-proxy app-1 app-2; do
-    require_service distributed "$service"
-  done
-  # Standalone is the single-node shape: no cold store, no proxy, no extra app.
-  for service in clickhouse shardingsphere-proxy app-1 app-2; do
-    if compose_services standalone | grep -qx -- "$service"; then
-      fail "compose profile 'standalone' must not include '$service'"
-    fi
-  done
+  require_profile_set dev 'mssql mysql postgres '
+  require_profile_set standalone 'ecat-mysql ecat-redis '
+  require_profile_set distributed 'app-1 app-2 clickhouse ecat-mysql ecat-redis shardingsphere-proxy '
+  # Unprofiled services would co-start with every profile.
+  local unprofiled
+  unprofiled=$(compose_service_profiles | awk -F'\t' '$2 == "" { printf "%s ", $1 }')
+  [[ -z "$unprofiled" ]] \
+    || fail "compose services without a profile co-start with every profile: $unprofiled"
   local modes node
   modes=$(grep -c 'ECAT_DEPLOYMENT_MODE: distributed' "$COMPOSE" || true)
   [[ "$modes" -ge 2 ]] \
@@ -96,22 +102,46 @@ check_compose() {
 
 check_helm_values() {
   [[ -f "$VALUES" ]] || fail "missing $VALUES"
-  local key
+  local key mode
   for key in 'deploymentMode:' 'replicaCount:' 'nodeId:' 'fieldPath: metadata.name' \
-             'readinessProbe:' 'livenessProbe:' 'existingSecret:' 'tag: "8.4"'; do
+             'readinessProbe:' 'livenessProbe:' 'existingSecret:'; do
     grep -qF -- "$key" "$VALUES" || fail "helm values missing '$key'"
   done
-  grep -q 'standalone' "$VALUES" || fail "helm values must offer deploymentMode standalone"
-  grep -q 'distributed' "$VALUES" || fail "helm values must offer deploymentMode distributed"
+  # mysql.image.tag 是可切换项：8.4 与 9 都合法。
+  grep -Eq '^[[:space:]]*tag:[[:space:]]*"(8\.4|9)"' "$VALUES" \
+    || fail 'helm values mysql.image.tag must be "8.4" or "9"'
+  # 只认 deploymentMode 的取值；注释里出现 distributed 不算启用分布式。
+  mode=$(sed -n 's/^deploymentMode:[[:space:]]*//p' "$VALUES" | head -n1 \
+    | sed 's/[[:space:]]*#.*//; s/^"//; s/"$//; s/[[:space:]]*$//')
+  [[ "$mode" == standalone || "$mode" == distributed ]] \
+    || fail "helm values deploymentMode must be standalone or distributed (got '${mode:-<missing>}')"
   # Credentials come from the Secret named by existingSecret; a password key here is a leak.
   if grep -Eqi '^[[:space:]]*(mysql|redis|root|db)?_?(password|passwd|secret):' "$VALUES"; then
     fail "helm values contain a password literal (use existingSecret)"
   fi
 }
 
+# The chart has no default templates: without these, every value above is inert.
+check_helm_templates() {
+  local dir=$ROOT/ecat-deploy/helm/templates key
+  for key in deployment.yaml service.yaml mysql.yaml; do
+    [[ -f "$dir/$key" ]] || fail "missing helm template ecat-deploy/helm/templates/$key"
+  done
+  for key in '.Values.deploymentMode' '.Values.replicaCount' '.Values.nodeId' \
+             '.Values.existingSecret' '.Values.readinessProbe' '.Values.livenessProbe'; do
+    grep -qF -- "$key" "$dir/deployment.yaml" \
+      || fail "helm deployment template does not consume $key"
+  done
+  grep -qF -- '.Values.mysql.image' "$dir/mysql.yaml" \
+    || fail "helm mysql template does not consume .Values.mysql.image"
+  grep -qF -- '.Values.service' "$dir/service.yaml" \
+    || fail "helm service template does not consume .Values.service"
+}
+
 check_all() {
   check_compose
   check_helm_values
+  check_helm_templates
 }
 
 # Never echo a DSN's raw input: a malformed DSN can carry the password anywhere.
