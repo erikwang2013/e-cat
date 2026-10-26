@@ -215,47 +215,6 @@
   }
 }
 
-.crypto-details {
-  margin-top: 20px;
-}
-
-.crypto-body p {
-  margin-bottom: 14px;
-  font-size: 0.86rem;
-}
-
-.crypto-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.crypto-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(10, 14, 19, 0.5);
-}
-
-.crypto-item img {
-  width: 100%;
-  height: auto;
-  padding: 6px;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.crypto-item figcaption {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  line-height: 1.45;
-  color: var(--muted-2);
-  text-align: center;
-}
 
 /* Toast */
 
@@ -379,10 +338,6 @@
   .support {
     grid-template-columns: 1fr auto auto;
   }
-
-  .crypto-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 640px) {
@@ -465,10 +420,6 @@
 
   .support-qr {
     justify-self: center;
-  }
-
-  .crypto-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .toast {
