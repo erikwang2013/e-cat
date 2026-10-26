@@ -27,9 +27,9 @@ tracing.workspace = true
 # 可选：`health` feature 的 readyz 探针；默认不进依赖树。
 ecat-health = { workspace = true, optional = true }
 # 可选：远程拓扑源复用 ConsulConfigSource / EtcdConfigSource。
-ecat-config-remote = { version = "7.2.1", path = "../ecat-config-remote", optional = true }
+ecat-config-remote = { version = "7.3.0", path = "../ecat-config-remote", optional = true }
 # 可选：迁移单执行者的 fencing token。ecat-lock 不在 workspace.dependencies 表内。
-ecat-lock = { version = "7.2.1", path = "../ecat-lock", optional = true }
+ecat-lock = { version = "7.3.0", path = "../ecat-lock", optional = true }
 
 [features]
 health = ["dep:ecat-health"]

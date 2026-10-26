@@ -7,7 +7,7 @@ description = "WebSocket example for the e-cat framework"
 publish = false
 
 [dependencies]
-ecat = { version = "7.2.1", path = "../../ecat" }
-ecat-transport-ws = { version = "7.2.1", path = "../../ecat-transport-ws" }
+ecat = { version = "7.3.0", path = "../../ecat" }
+ecat-transport-ws = { version = "7.3.0", path = "../../ecat-transport-ws" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tracing.workspace = true

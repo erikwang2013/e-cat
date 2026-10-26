@@ -1,6 +1,6 @@
 # Ecat data-layer scale-out
 
-> Status: `7.2.1` (released). This page describes additive, default-off data-layer
+> Status: `7.3.0` (current). This page describes additive, default-off data-layer
 > capabilities introduced in 7.2.0 and hardened in 7.2.1. Existing `SqlExecutor` / `RdbmsClient` / `Cache` / `Entity` /
 > `Dialect` APIs and config fields are unchanged; new behavior ships in new crates and features.
 

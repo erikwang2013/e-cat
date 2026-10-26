@@ -5,11 +5,11 @@
 
 Der chinesische Name von Ecat: 一只猫 (wörtlich „eine Katze")
 
-**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v7.2.1 · 60 crates).
+**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v7.3.0 · 60 crates).
 
 Es bietet eine API-first-Entwicklungserfahrung, eine pluggbare Komponentenarchitektur, eine einheitliche HTTP/gRPC-Middleware-Abstraktion sowie eine vollständige CLI-Werkzeugkette. Entwickler, die Kratos kennen, können nahtlos einsteigen und gleichzeitig die Typsicherheit, Zero-Cost-Abstraktionen und die extreme Leistung von Rust voll ausschöpfen.
 
-> **Data-Layer-Skalierung (7.2.1)**：Sharding, Hot/Cold-Tiering, Saga/2PC, Fencing, gemeinsamer Redis-Pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **Data-Layer-Skalierung (7.3.0)**：Sharding, Hot/Cold-Tiering, Saga/2PC, Fencing, gemeinsamer Redis-Pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 > **Performance**: Full-Chain-Lesen mit maximal 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), 0/100.000 Stichproben ≥10 ms; siehe [Performance-Benchmark](../../performance.en.md).
 
@@ -556,7 +556,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Warum ein Cargo Workspace
 
-Konsistent mit dem modularen Design von Kratos. Alle `ecat-*`-Crates werden im Workspace mit synchronisierten Versionen veröffentlicht (aktuell 7.2.1), jeweils unabhängig kompiliert, Nutzer binden nach Bedarf ein. Kern-Crates halten die Abhängigkeiten minimal, Contrib-Crates bieten optionale Integrationen.
+Konsistent mit dem modularen Design von Kratos. Alle `ecat-*`-Crates werden im Workspace mit synchronisierten Versionen veröffentlicht (aktuell 7.3.0), jeweils unabhängig kompiliert, Nutzer binden nach Bedarf ein. Kern-Crates halten die Abhängigkeiten minimal, Contrib-Crates bieten optionale Integrationen.
 
 ### Warum prost (statt protobuf-rs)
 

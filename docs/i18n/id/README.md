@@ -5,11 +5,11 @@
 
 Nama Tionghoa Ecat: 一只猫 (seekor kucing)
 
-**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.2.1 · 60 crates).
+**Ecat** adalah framework microservice Rust yang sejajar dengan [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.3.0 · 60 crates).
 
 Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dipasang, abstraksi middleware HTTP/gRPC terpadu, serta rantai alat CLI yang lengkap. Pengembang yang akrab dengan Kratos dapat langsung menggunakannya, sekaligus memanfaatkan sepenuhnya type-safety Rust, abstraksi biaya nol, dan performa ekstrem.
 
-> **Scale-out lapisan data (7.2.1)**：Sharding, tiering panas/dingin, Saga/2PC, fencing, pool Redis bersama. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **Scale-out lapisan data (7.3.0)**：Sharding, tiering panas/dingin, Saga/2PC, fencing, pool Redis bersama. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 > **Kinerja**: pembacaan rantai penuh mencapai maksimum 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), dengan 0/100.000 sampel ≥10 ms; lihat [tolok ukur kinerja](../../performance.en.md).
 
@@ -556,7 +556,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Mengapa Cargo Workspace
 
-Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 7.2.1), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
+Selaras dengan desain modular Kratos. Semua crate `ecat-*` dirilis dengan versi lockstep workspace (saat ini 7.3.0), masing-masing dikompilasi secara independen, pengguna mengimpornya sesuai kebutuhan. Crate inti mempertahankan dependensi minimal, crate contrib menyediakan integrasi opsional.
 
 ### Mengapa prost (bukan protobuf-rs)
 
