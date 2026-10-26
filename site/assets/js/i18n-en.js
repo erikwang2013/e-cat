@@ -303,7 +303,6 @@ window.ECAT_EN = {
   "pet.wechat": "WeChat Pay",
   "pet.alipay": "Alipay",
   "pet.qrHint": "Click to enlarge",
-  "pet.bankLink": "Bank transfer details",
 
   "pet.name.main": "Ecat",
   "pet.name.smile": "Smile",
