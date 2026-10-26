@@ -11,6 +11,8 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 
 > **データ層スケールアウト（7.2.1）**：シャーディング、ホット/コールド階層化、Saga/2PC、fencing、Redis 共有プール。 [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **パフォーマンス**：フルチェーン読み取りの最大は 5.9–9.2 ms（HTTP）/ 6.0–8.4 ms（gRPC）、0/100,000 サンプルが ≥10 ms。[パフォーマンスベンチマーク](../../performance.en.md)を参照。
+
 <p align="center">
   <img src="e-cat.svg" alt="Ecat プロジェクトマスコット（動的）" width="220" />
 </p>

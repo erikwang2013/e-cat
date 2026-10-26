@@ -11,6 +11,8 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 
 > **Scale-out lapisan data (7.2.1)**：Sharding, tiering panas/dingin, Saga/2PC, fencing, pool Redis bersama. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **Kinerja**: pembacaan rantai penuh mencapai maksimum 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), dengan 0/100.000 sampel ≥10 ms; lihat [tolok ukur kinerja](../../performance.en.md).
+
 <p align="center">
   <img src="e-cat.svg" alt="Maskot proyek Ecat (dinamis)" width="220" />
 </p>

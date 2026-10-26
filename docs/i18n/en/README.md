@@ -11,6 +11,8 @@ It offers an API-first development experience, a pluggable component architectur
 
 > **Data-layer scale-out (7.2.1)**：Sharding, hot/cold tiering, Saga/2PC, fencing, shared Redis pool. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **Performance**: full-chain reads peak at 5.9–9.2 ms (HTTP) / 6.0–8.4 ms (gRPC), with 0/100,000 samples ≥10 ms; see the [performance benchmark](../../performance.en.md).
+
 <p align="center">
   <img src="e-cat.svg" alt="Ecat project mascot (animated)" width="220" />
 </p>

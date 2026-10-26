@@ -11,6 +11,8 @@ Il offre une expérience de développement API-first, une architecture de compos
 
 > **Mise à l’échelle de la couche données (7.2.1)**：Sharding, tiering chaud/froid, Saga/2PC, fencing, pool Redis partagé. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **Performances** : les lectures de bout en bout atteignent au maximum 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), avec 0/100 000 échantillons ≥10 ms ; voir le [benchmark de performances](../../performance.en.md).
+
 <p align="center">
   <img src="e-cat.svg" alt="Mascotte du projet Ecat (animée)" width="220" />
 </p>

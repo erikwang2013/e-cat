@@ -1,6 +1,6 @@
 # Ecat performance benchmark (full chain)
 
-> Status: 2026-10-26; commit `dcd8523` (final harness). Scope: local loopback, HTTP + gRPC + MySQL 9 + Redis 7; the read SLO is **max < 10ms per round**, writes are reported separately and are outside that SLO. These numbers are best-effort on a shared laptop, not a production guarantee.
+> Version: 7.3.0. Status: 2026-10-26; performance commits `dcd8523` (harness) and `979d25f` (docs). Scope: local loopback, HTTP + gRPC + MySQL 9 + Redis 7; the read SLO is **max < 10ms per round**, writes are reported separately and are outside that SLO. These numbers are best-effort on a shared laptop, not a production guarantee.
 
 ## Summary
 
@@ -13,6 +13,8 @@
 - The read path is one primary-key `SELECT` plus one Redis `GET`. The earlier separate runs `20261026-123115` / `20261026-063056` are historical context only, no longer the primary data.
 - The write path (`UPDATE` + Redis `SET`, including InnoDB durability) has p99 12–26ms and max 23–49ms; see "Write path". It is outside the 10ms read SLO.
 - Middleware is opt-in and HTTP-only; the final middleware run did not pass the 10ms gate (14/15,000 ≥10ms); see "Middleware".
+
+![Full-chain read latency: per-round max (bars) and p99 (dots) against the 10ms SLO](performance.svg)
 
 ## Environment and topology
 

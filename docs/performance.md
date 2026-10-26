@@ -1,6 +1,6 @@
 # Ecat 性能基准（全链路）
 
-> 状态：2026-10-26；commit `dcd8523`（最终 harness）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
+> 版本：7.3.0。状态：2026-10-26；性能提交 `dcd8523`（harness）与 `979d25f`（文档）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
 
 ## 结论
 
@@ -13,6 +13,8 @@
 - 读路径 = 一条主键 `SELECT` + 一条 Redis `GET`。此前分开运行的 `20261026-123115` / `20261026-063056` 仅作历史对照，不再作为主数据。
 - 写路径（`UPDATE` + Redis `SET`，含 InnoDB 落盘）p99 12–26ms、max 23–49ms，见“写路径”，不纳入 10ms 读 SLO。
 - 中间件是 opt-in 且仅 HTTP；最终运行未通过 10ms gate（14/15,000 ≥10ms），见“中间件”。
+
+![全链路读延迟：每轮 max（柱）与 p99（点），对照 10ms SLO](performance.svg)
 
 ## 环境与拓扑
 

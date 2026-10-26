@@ -11,6 +11,8 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 
 > **데이터 계층 확장(7.2.1)**：샤딩, 핫/콜드 계층화, Saga/2PC, fencing, Redis 공유 풀. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **성능**: 전체 체인 읽기 최대 5.9–9.2 ms(HTTP) / 6.0–8.4 ms(gRPC), 0/100,000 샘플 ≥10 ms; [성능 벤치마크](../../performance.en.md)를 참고하세요.
+
 <p align="center">
   <img src="e-cat.svg" alt="Ecat 프로젝트 펫(동적)" width="220" />
 </p>

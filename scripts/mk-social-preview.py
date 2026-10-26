@@ -4,11 +4,14 @@
 配色取自上一版（保持视觉一致）；字体用 Noto Sans CJK SC —— 一个字体覆盖中英，
 双语排版不会出现字形不匹配。
 """
+import re
 import subprocess
 import tomllib
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-# 计数从 workspace members 推导，避免文案里的数字与代码脱节。
+# 版本与计数从仓库文件推导，避免文案里的数字与代码脱节。
+with open("CHANGELOG.md", encoding="utf-8") as f:
+    VERSION = re.search(r"^## \[(\d+\.\d+\.\d+)\]", f.read(), re.MULTILINE).group(1)
 with open("Cargo.toml", "rb") as f:
     members = tomllib.load(f)["workspace"]["members"]
 CRATES = sum(1 for m in members if not m.startswith("examples/"))
@@ -102,7 +105,7 @@ for zh, en in pairs:
 
 # 徽章：crate 数从 workspace members 推导
 f_badge = font(FONT_REG, 30)
-btext = f"{CRATES} crates"
+btext = f"{VERSION} · 0/100k ≥10ms · {CRATES} crates"
 tw = d.textlength(btext, font=f_badge)
 bx, by = X, y + 4
 d.rounded_rectangle([bx, by, bx + tw + 42, by + 54], radius=27,

@@ -11,6 +11,8 @@ Oferece uma experiência de desenvolvimento API-first, arquitetura de componente
 
 > **Escala da camada de dados (7.2.1)**：Sharding, tiering quente/frio, Saga/2PC, fencing, pool Redis compartilhado. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **Desempenho**: leituras de cadeia completa atingem no máximo 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), com 0/100.000 amostras ≥10 ms; consulte o [benchmark de desempenho](../../performance.en.md).
+
 <p align="center">
   <img src="e-cat.svg" alt="Mascote do projeto Ecat (dinâmico)" width="220" />
 </p>

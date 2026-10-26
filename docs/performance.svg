@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="chart-title chart-desc">
+<title id="chart-title">Ecat 7.3.0 full-chain read latency: per-round max and p99, HTTP vs gRPC</title>
+<desc id="chart-desc">Grouped bars show per-round max latency in microseconds for HTTP and gRPC reads; dots show p99. All ten rounds stay below the 10 millisecond max-per-round line. Eight concurrency, 10,000 timed requests per round, MySQL 9 plus Redis 7, loopback.</desc>
+<rect width="1280" height="720" fill="#f9f6f1"/>
+<text x="96" y="60" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="34" font-weight="600" fill="#2b2623">Ecat 7.3.0 — full-chain read latency</text>
+<text x="1224" y="59" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="16" fill="#52514e">Peak max: HTTP 9.19 ms · gRPC 8.42 ms</text>
+<text x="96" y="98" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="16.5" fill="#898781">Per-round max (bars) and p99 (dots) · HTTP vs gRPC · 8 concurrency × 10,000 timed requests per round + 2,000 warmup</text>
+<rect x="96" y="123" width="14" height="14" rx="3" fill="#2a78d6"/>
+<text x="117" y="135" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">HTTP read</text>
+<rect x="210" y="123" width="14" height="14" rx="3" fill="#eb6834"/>
+<text x="231" y="135" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">gRPC read</text>
+<circle cx="328" cy="130" r="5" fill="#2a78d6"/>
+<circle cx="342" cy="130" r="5" fill="#eb6834"/>
+<text x="354" y="135" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">p99 (bar = max)</text>
+<line x1="96" x2="1224" y1="592.00" y2="592.00" stroke="#e1e0d9" stroke-width="1"/>
+<text x="82" y="597.00" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781" font-variant-numeric="tabular-nums">0</text>
+<line x1="96" x2="1224" y1="510.40" y2="510.40" stroke="#e1e0d9" stroke-width="1"/>
+<text x="82" y="515.40" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781" font-variant-numeric="tabular-nums">2</text>
+<line x1="96" x2="1224" y1="428.80" y2="428.80" stroke="#e1e0d9" stroke-width="1"/>
+<text x="82" y="433.80" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781" font-variant-numeric="tabular-nums">4</text>
+<line x1="96" x2="1224" y1="347.20" y2="347.20" stroke="#e1e0d9" stroke-width="1"/>
+<text x="82" y="352.20" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781" font-variant-numeric="tabular-nums">6</text>
+<line x1="96" x2="1224" y1="265.60" y2="265.60" stroke="#e1e0d9" stroke-width="1"/>
+<text x="82" y="270.60" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781" font-variant-numeric="tabular-nums">8</text>
+<line x1="96" x2="1224" y1="184.00" y2="184.00" stroke="#52514e" stroke-width="2"/>
+<text x="1224" y="176.00" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#52514e">10 ms SLO (max per round)</text>
+<text x="36" y="388" text-anchor="middle" transform="rotate(-90 36 388)" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="14" fill="#898781">Latency (ms)</text>
+<line x1="96" x2="1224" y1="592" y2="592" stroke="#c3c2b7" stroke-width="1"/>
+<path d="M183.8,592 L183.8,284.41 Q183.8,280.41 187.8,280.41 L203.8,280.41 Q207.8,280.41 207.8,284.41 L207.8,592 Z" fill="#2a78d6"/>
+<path d="M209.8,592 L209.8,343.86 Q209.8,339.86 213.8,339.86 L229.8,339.86 Q233.8,339.86 233.8,343.86 L233.8,592 Z" fill="#eb6834"/>
+<circle cx="195.8" cy="412.93" r="7.5" fill="#f9f6f1"/><circle cx="195.8" cy="412.93" r="5.5" fill="#2a78d6"/>
+<circle cx="221.8" cy="446.47" r="7.5" fill="#f9f6f1"/><circle cx="221.8" cy="446.47" r="5.5" fill="#eb6834"/>
+<text x="208.8" y="618" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">Round 1</text>
+<path d="M409.40000000000003,592 L409.40000000000003,345.94 Q409.40000000000003,341.94 413.40000000000003,341.94 L429.40000000000003,341.94 Q433.40000000000003,341.94 433.40000000000003,345.94 L433.40000000000003,592 Z" fill="#2a78d6"/>
+<path d="M435.40000000000003,592 L435.40000000000003,313.01 Q435.40000000000003,309.01 439.40000000000003,309.01 L455.40000000000003,309.01 Q459.40000000000003,309.01 459.40000000000003,313.01 L459.40000000000003,592 Z" fill="#eb6834"/>
+<circle cx="421.4" cy="466.42" r="7.5" fill="#f9f6f1"/><circle cx="421.4" cy="466.42" r="5.5" fill="#2a78d6"/>
+<circle cx="447.4" cy="458.18" r="7.5" fill="#f9f6f1"/><circle cx="447.4" cy="458.18" r="5.5" fill="#eb6834"/>
+<text x="434.4" y="618" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">Round 2</text>
+<path d="M635.0,592 L635.0,220.93 Q635.0,216.93 639.0,216.93 L655.0,216.93 Q659.0,216.93 659.0,220.93 L659.0,592 Z" fill="#2a78d6"/>
+<path d="M661.0,592 L661.0,252.38 Q661.0,248.38 665.0,248.38 L681.0,248.38 Q685.0,248.38 685.0,252.38 L685.0,592 Z" fill="#eb6834"/>
+<circle cx="647.0" cy="457.28" r="7.5" fill="#f9f6f1"/><circle cx="647.0" cy="457.28" r="5.5" fill="#2a78d6"/>
+<circle cx="673.0" cy="463.32" r="7.5" fill="#f9f6f1"/><circle cx="673.0" cy="463.32" r="5.5" fill="#eb6834"/>
+<text x="660.0" y="618" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">Round 3</text>
+<path d="M860.5999999999999,592 L860.5999999999999,354.59 Q860.5999999999999,350.59 864.5999999999999,350.59 L880.5999999999999,350.59 Q884.5999999999999,350.59 884.5999999999999,354.59 L884.5999999999999,592 Z" fill="#2a78d6"/>
+<path d="M886.5999999999999,592 L886.5999999999999,334.31 Q886.5999999999999,330.31 890.5999999999999,330.31 L906.5999999999999,330.31 Q910.5999999999999,330.31 910.5999999999999,334.31 L910.5999999999999,592 Z" fill="#eb6834"/>
+<circle cx="872.6" cy="476.98" r="7.5" fill="#f9f6f1"/><circle cx="872.6" cy="476.98" r="5.5" fill="#2a78d6"/>
+<circle cx="898.6" cy="470.58" r="7.5" fill="#f9f6f1"/><circle cx="898.6" cy="470.58" r="5.5" fill="#eb6834"/>
+<text x="885.6" y="618" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">Round 4</text>
+<path d="M1086.2,592 L1086.2,277.03 Q1086.2,273.03 1090.2,273.03 L1106.2,273.03 Q1110.2,273.03 1110.2,277.03 L1110.2,592 Z" fill="#2a78d6"/>
+<path d="M1112.2,592 L1112.2,350.14 Q1112.2,346.14 1116.2,346.14 L1132.2,346.14 Q1136.2,346.14 1136.2,350.14 L1136.2,592 Z" fill="#eb6834"/>
+<circle cx="1098.2" cy="455.77" r="7.5" fill="#f9f6f1"/><circle cx="1098.2" cy="455.77" r="5.5" fill="#2a78d6"/>
+<circle cx="1124.2" cy="460.71" r="7.5" fill="#f9f6f1"/><circle cx="1124.2" cy="460.71" r="5.5" fill="#eb6834"/>
+<text x="1111.2" y="618" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="15" fill="#52514e">Round 5</text>
+<line x1="96" x2="1224" y1="638" y2="638" stroke="#e1e0d9" stroke-width="1"/>
+<text x="96" y="664" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="13.5" fill="#898781">MySQL 9 + Redis 7 · loopback on a shared 4C/8T laptop · 0 errors · 0/100,000 read samples ≥10 ms</text>
+<text x="96" y="686" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="13.5" fill="#898781">Writes are outside the 10 ms SLO (p99 12–26 ms, max 23–49 ms). Best-effort observation, not a production guarantee.</text>
+<text x="96" y="708" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif" font-size="13.5" fill="#898781">Source: docs/performance.md · final combined run 20261026-131632-2541047</text>
+</svg>

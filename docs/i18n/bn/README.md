@@ -11,6 +11,8 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 
 > **ডেটা লেয়ার স্কেল-আউট (7.2.1)**：শার্ডিং, হট/কোল্ড টায়ারিং, Saga/2PC, ফেন্সিং, শেয়ার্ড Redis পুল। [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **কর্মক্ষমতা**: সম্পূর্ণ চেইন পঠন সর্বোচ্চ 5.9–9.2 ms (HTTP) / 6.0–8.4 ms (gRPC), 0/100,000 নমুনা ≥10 ms; [কর্মক্ষমতা বেঞ্চমার্ক](../../performance.en.md) দেখুন।
+
 <p align="center">
   <img src="e-cat.svg" alt="Ecat প্রকল্পের মাসকট (অ্যানিমেটেড)" width="220" />
 </p>

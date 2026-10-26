@@ -56,11 +56,12 @@
 
   const originals = new Map();
   document
-    .querySelectorAll("[data-i18n], [data-i18n-html], [data-i18n-aria]")
+    .querySelectorAll("[data-i18n], [data-i18n-html], [data-i18n-aria], [data-i18n-alt]")
     .forEach((el) => {
       originals.set(el, {
         html: el.innerHTML,
         aria: el.getAttribute("aria-label"),
+        alt: el.getAttribute("alt"),
       });
     });
 
@@ -71,7 +72,7 @@
     root.lang = lang === "en" ? "en" : "zh-CN";
 
     document
-      .querySelectorAll("[data-i18n], [data-i18n-html], [data-i18n-aria]")
+      .querySelectorAll("[data-i18n], [data-i18n-html], [data-i18n-aria], [data-i18n-alt]")
       .forEach((el) => {
         const key = el.dataset.i18n || el.dataset.i18nHtml;
         const original = originals.get(el);
@@ -82,11 +83,18 @@
           if (el.dataset.i18nAria && EN[el.dataset.i18nAria]) {
             el.setAttribute("aria-label", EN[el.dataset.i18nAria]);
           }
+          if (el.dataset.i18nAlt && EN[el.dataset.i18nAlt]) {
+            el.setAttribute("alt", EN[el.dataset.i18nAlt]);
+          }
         } else {
           if (key) el.innerHTML = original.html;
           if (el.dataset.i18nAria) {
             if (original.aria == null) el.removeAttribute("aria-label");
             else el.setAttribute("aria-label", original.aria);
+          }
+          if (el.dataset.i18nAlt) {
+            if (original.alt == null) el.removeAttribute("alt");
+            else el.setAttribute("alt", original.alt);
           }
         }
       });
@@ -276,6 +284,19 @@
     const initial =
       tabButtons.find((tab) => tab.getAttribute("aria-selected") === "true") || tabButtons[0];
     selectTab(initial);
+    /* Deep links such as #panel-orm, or a heading inside a panel, must reveal its tab. */
+    function revealHashTab() {
+      const target =
+        location.hash.length > 1 ? document.getElementById(location.hash.slice(1)) : null;
+      const panel = target && target.closest('[role="tabpanel"]');
+      if (!panel) return;
+      const tab = tabButtons.find((item) => item.getAttribute("aria-controls") === panel.id);
+      if (!tab) return;
+      selectTab(tab);
+      target.scrollIntoView();
+    }
+    revealHashTab();
+    window.addEventListener("hashchange", revealHashTab);
   }
 
   /* Mascot selection and back-to-top */

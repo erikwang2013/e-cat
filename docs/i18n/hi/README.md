@@ -11,6 +11,8 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 
 > **डेटा लेयर स्केल-आउट (7.2.1)**：शार्डिंग, हॉट/कोल्ड टियरिंग, Saga/2PC, फेंसिंग, साझा Redis पूल। [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
+> **प्रदर्शन**: पूर्ण-श्रृंखला पठन अधिकतम 5.9–9.2 ms (HTTP) / 6.0–8.4 ms (gRPC), 0/100,000 नमूने ≥10 ms; [प्रदर्शन बेंचमार्क](../../performance.en.md) देखें।
+
 <p align="center">
   <img src="e-cat.svg" alt="Ecat प्रोजेक्ट पालतू (डायनामिक)" width="220" />
 </p>
