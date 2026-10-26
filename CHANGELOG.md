@@ -1,5 +1,48 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **全链路性能基准** —— 新增 `examples/fullchain-bench`（`serve` / `load` / `probe`）与
+  `scripts/perf/fullchain.sh`：HTTP/gRPC × 读/写/静态，MySQL 9 + Redis 7；8 并发、
+  每轮 1 万计时请求、2 千预热、5 轮；输出 p50/p99/p99.9/max、`>=10ms` 计数、错误数
+  与吞吐，并通过 `x-server-us` / `server_us` 记录服务端处理时间。脚本负责容器、CPU
+  绑定、环境快照（loadavg/PSI/温度）与 JSONL/摘要产物。
+- **细粒度延迟报告** —— `ecat-bench` 新增 `DetailedBenchReport` /
+  `run_bench_detailed`，在 p50/p95/p99 之外记录 p99.9、max、错误数和超阈值请求数；
+  错误请求计入延迟样本并单独计数。
+- **性能文档** —— 新增 `docs/performance.md` / `docs/performance.en.md`，记录环境、
+  方法、最终合并运行结果、探针归因、中间件与写路径口径、噪声样例和复现命令。
+
+### Fixed
+
+- **HTTP 服务端 TCP_NODELAY** —— `ecat-transport-http` 在明文 listener
+  （`ListenerExt::tap_io`）与 TLS accept loop 上对每个连接设置 `TCP_NODELAY`；
+  `axum::serve` 不会自动设置，小请求/响应在 Nagle + 延迟 ACK 下会产生毫秒级尾部。
+- **gRPC 服务端 TCP_NODELAY** —— `ecat-transport-grpc` 改为
+  `tonic::transport::Server::builder().tcp_nodelay(true)`；tonic 服务端默认关闭，
+  客户端 Endpoint 默认开启。
+
+### Changed / Notes
+
+- 基准客户端按 worker 使用独立 HTTP 连接池与独立 gRPC Channel，避免共享连接池锁与
+  单条 HTTP/2 连接多路复用的干扰；静态/读写请求均轮换 client，`serverMax` 只统计
+  预热之后的请求并在每轮清零。
+- 脚本 gate 校验预期 series、轮数、每轮请求数与错误数，缺数据、错误或读轮超阈值均
+  失败；容器按进程 PID 命名、只清理本进程创建的容器，端口绑定 `127.0.0.1` 并在
+  3307/6379/8000/50051 被占用时拒绝启动。
+- 最终合并运行实测（本机 loopback，10k/轮 × 5，HTTP+gRPC 同进程）：HTTP 读 max
+  5917–9193µs、gRPC 读 max 6026–8422µs，读样本合计 0/100,000 ≥10ms 且 0 错误
+  （因最高温度 91°C 标记 `noisy=true`，gate 仍通过）；写路径（`UPDATE` + Redis
+  `SET`，含 InnoDB 落盘）p99 12–26ms、max 23–49ms，单独报告，不在 10ms SLO 内。
+- opt-in HTTP 中间件（Metrics + Tracing + Logging，同步 fmt stdout 每请求日志）最终
+  运行 14/15,000 ≥10ms、gate FAILED，不满足 p100 10ms 目标；需改用非阻塞/采样日志
+  或不安装 `LoggingLayer`。gRPC 侧没有对应中间件集成，未评估。
+- 结果取自共享 4C/8T 笔记本（并发构建时 loadavg 曾达约 18、PSI IO 达约 77%、温度
+  97–98°C）；并发/高温轮次存在 >10ms 尾部，`max`/p100 不可保证。文档中的数字是
+  best-effort 观测，不是生产环境承诺。
+
 ## [7.2.1] — 2026-10-25
 
 > 7.2.0 的修复与安全版本：CI 全绿、RustSec 清零、迁移 fail-closed、P3 限制收敛。

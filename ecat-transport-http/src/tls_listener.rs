@@ -163,6 +163,9 @@ async fn accept_loop(
                         continue;
                     }
                 };
+                if let Err(error) = stream.set_nodelay(true) {
+                    tracing::debug!(%error, "failed to set TCP_NODELAY on TLS connection");
+                }
                 // 无可用许可时直接断开连接：不排队、不堆积握手任务，
                 // 握手风暴下并发握手数有上限（S1 补充）。断开日志按
                 // 时间窗口限频，防刷日志放大 DoS 面。

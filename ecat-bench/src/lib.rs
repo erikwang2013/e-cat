@@ -1,4 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod detailed;
+pub use detailed::{DetailedBenchReport, run_bench_detailed};
+
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]

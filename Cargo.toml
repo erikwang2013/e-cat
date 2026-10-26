@@ -64,6 +64,7 @@ members = [
     "examples/databases",
     "examples/middleware",
     "examples/websocket",
+    "examples/fullchain-bench",
 ]
 resolver = "2"
 exclude = [

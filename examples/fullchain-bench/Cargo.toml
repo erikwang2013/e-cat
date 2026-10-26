@@ -1,0 +1,31 @@
+[package]
+name = "fullchain-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Full-chain HTTP/gRPC + MySQL + Redis latency benchmark"
+publish = false
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[dependencies]
+ecat-bench = { version = "7.2.1", path = "../../ecat-bench" }
+ecat-data = { version = "7.2.1", path = "../../ecat-data" }
+ecat-data-sqlx = { version = "7.2.1", path = "../../ecat-data-sqlx" }
+ecat-transport = { version = "7.2.1", path = "../../ecat-transport" }
+ecat-data-redis = { version = "7.2.1", path = "../../ecat-data-redis" }
+ecat-transport-http = { version = "7.2.1", path = "../../ecat-transport-http" }
+ecat-transport-grpc = { version = "7.2.1", path = "../../ecat-transport-grpc" }
+ecat-middleware = { version = "7.2.1", path = "../../ecat-middleware" }
+ecat-metrics = { version = "7.2.1", path = "../../ecat-metrics" }
+axum.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
+tonic.workspace = true
+prost.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }

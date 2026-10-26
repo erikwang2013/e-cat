@@ -137,6 +137,10 @@ Ecat中文名：一只猫
 | HTTP Client | **reqwest** |
 | CLI | **clap** |
 
+## 性能
+
+本机 loopback 全链路基准（HTTP/gRPC + MySQL 9 + Redis 7，8 并发、每轮 1 万请求 × 5 轮）：最终合并运行中 HTTP 读 max 5.9–9.2ms、gRPC 读 max 6.0–8.4ms，读样本合计 0/100,000 ≥10ms、0 错误（因最高温度 91°C 标记 noisy）。写路径单独报告，不在 10ms SLO 内；共享笔记本上的结果是 best-effort，不是生产保证。方法、探针归因、噪声区间与复现命令见[性能基准](docs/performance.md)。
+
 ## 支持的数据库
 
 | 类别 | 数据库 | Crate | 状态 | 超时/熔断 |

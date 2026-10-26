@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use axum::Router;
+use axum::serve::ListenerExt;
 use ecat_transport::{Server as TransportServer, TlsConfig, normalize_addr};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
@@ -79,6 +80,13 @@ impl TransportServer for HttpServer {
                 .with_graceful_shutdown(shutdown_signal)
                 .await?;
         } else {
+            // HTTP/1.1 的请求/响应通常是小包；Nagle 会把它们拖到延迟 ACK 窗口。
+            // axum::serve 不会自动设置 TCP_NODELAY；tonic 客户端默认开启，但 tonic 服务端也默认关闭。
+            let listener = listener.tap_io(|stream| {
+                if let Err(error) = stream.set_nodelay(true) {
+                    tracing::debug!(%error, "failed to set TCP_NODELAY on HTTP connection");
+                }
+            });
             axum::serve(listener, router)
                 .with_graceful_shutdown(shutdown_signal)
                 .await?;

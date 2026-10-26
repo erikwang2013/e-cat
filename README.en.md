@@ -132,6 +132,10 @@ Client Request
 | HTTP Client | **reqwest** |
 | CLI | **clap** |
 
+## Performance
+
+Local loopback full-chain benchmark (HTTP/gRPC + MySQL 9 + Redis 7, concurrency 8, 10k requests per round × 5 rounds): in the final combined run, HTTP read max is 5.9–9.2ms and gRPC read max is 6.0–8.4ms, with 0/100,000 read samples ≥10ms and 0 errors (marked noisy because the peak temperature reached 91°C). Writes are reported separately and are not covered by the 10ms SLO; results on a shared laptop are best-effort, not a production guarantee. See [Performance benchmark](docs/performance.en.md) for method, probe attribution, noisy-run ranges, and reproduction commands.
+
 ## Supported Databases (19 backends)
 
 | Category | Database | Crate | Status | Timeout/Breaker |

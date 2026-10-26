@@ -2376,6 +2376,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "fullchain-bench"
+version = "7.2.1"
+dependencies = [
+ "axum 0.8.9",
+ "ecat-bench",
+ "ecat-data",
+ "ecat-data-redis",
+ "ecat-data-sqlx",
+ "ecat-metrics",
+ "ecat-middleware",
+ "ecat-transport",
+ "ecat-transport-grpc",
+ "ecat-transport-http",
+ "prost",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

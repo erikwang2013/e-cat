@@ -76,7 +76,9 @@ impl TransportServer for GrpcServer {
         let shutdown_signal = async move {
             let _ = rx.changed().await;
         };
-        let mut builder = tonic::transport::Server::builder();
+        // tonic 的 Server 默认 tcp_nodelay=false；gRPC 小消息在 Nagle +
+        // 延迟 ACK 下会出现毫秒级抖动。客户端 Endpoint 默认 true，服务端需显式开。
+        let mut builder = tonic::transport::Server::builder().tcp_nodelay(true);
         if let Some(tls) = &self.tls_config {
             // tonic 在 tls_config() 中立即构建 rustls acceptor，必须先装好 provider
             ensure_crypto_provider();

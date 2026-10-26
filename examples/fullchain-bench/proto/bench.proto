@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package bench;
+
+service Bench {
+  rpc Ping(PingRequest) returns (PingReply);
+  rpc Read(Key) returns (Value);
+  rpc Write(WriteRequest) returns (WriteReply);
+}
+
+message PingRequest {}
+
+message PingReply {
+  uint64 server_us = 1;
+}
+
+message Key {
+  int64 id = 1;
+}
+
+message Value {
+  string value = 1;
+  uint64 cache_len = 2;
+  uint64 server_us = 3;
+}
+
+message WriteRequest {
+  int64 id = 1;
+  string value = 2;
+}
+
+message WriteReply {
+  bool ok = 1;
+  uint64 server_us = 2;
+}
