@@ -1,6 +1,6 @@
 # Ecat performance benchmark (full chain)
 
-> Status: 2026-10-26; commit `2f32a9b` plus uncommitted performance work (final harness). Scope: local loopback, HTTP + gRPC + MySQL 9 + Redis 7; the read SLO is **max < 10ms per round**, writes are reported separately and are outside that SLO. These numbers are best-effort on a shared laptop, not a production guarantee.
+> Status: 2026-10-26; commit `dcd8523` (final harness). Scope: local loopback, HTTP + gRPC + MySQL 9 + Redis 7; the read SLO is **max < 10ms per round**, writes are reported separately and are outside that SLO. These numbers are best-effort on a shared laptop, not a production guarantee.
 
 ## Summary
 

@@ -1,6 +1,6 @@
 # Ecat 性能基准（全链路）
 
-> 状态：2026-10-26；commit `2f32a9b` + 未提交的性能改动（最终 harness）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
+> 状态：2026-10-26；commit `dcd8523`（最终 harness）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
 
 ## 结论
 
