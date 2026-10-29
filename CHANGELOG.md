@@ -1,6 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [8.0.0] — 2026-10-29
+
+### Breaking
+
+- `SqlxConfig` 新增公开字段 `mysql_compat`（`"mysql"` / `"doris"` / `"starrocks"`）。
+  直接写 `SqlxConfig { ... }` 结构体字面量的下游代码需要补该字段；配置文件反序列化
+  路径不受影响。按仓库既有的严格 semver 约定（新增 `RdbmsError` 变体也曾升 major），
+  本次发布为 8.0.0。
 
 ### Added
 

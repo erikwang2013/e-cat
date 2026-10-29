@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架</title>
-<meta name="description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。">
+<meta name="description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。">
 <meta name="keywords" content="Ecat,一只猫,Rust 微服务框架,Kratos,gRPC,HTTP,tower,ORM,分库分表,冷热分层,性能基准,微服务">
 <meta name="theme-color" content="#0a0e13">
 <meta name="color-scheme" content="dark">
@@ -29,7 +29,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ecat">
 <meta property="og:title" content="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架">
-<meta property="og:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。">
+<meta property="og:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。">
 <meta property="og:url" content="https://e-cat.erik.xyz/">
 <meta property="og:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
 <meta property="og:image:type" content="image/png">
@@ -40,20 +40,20 @@
 <meta property="og:locale:alternate" content="en_US">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架">
-<meta name="twitter:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。">
+<meta name="twitter:description" content="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。">
 <meta name="twitter:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@graph": [
-    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
+    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
     {"@type":"Person","@id":"https://e-cat.erik.xyz/#person","name":"erik","url":"https://erik.xyz","email":"erik@erik.xyz","sameAs":["https://github.com/erikwang2013"]},
-    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.3.0","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC, benchmarks","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
-    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/#webpage","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-26","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"mainEntity":{"@id":"https://e-cat.erik.xyz/#faq"}},
+    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"8.0.0","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC, benchmarks","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
+    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/#webpage","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-29","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"mainEntity":{"@id":"https://e-cat.erik.xyz/#faq"}},
     {"@type":"FAQPage","@id":"https://e-cat.erik.xyz/#faq","mainEntity":[
-      {"@type":"Question","name":"Ecat 是什么？","acceptedAnswer":{"@type":"Answer","text":"Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 60 个可按 feature 组合的 crate。"}},
+      {"@type":"Question","name":"Ecat 是什么？","acceptedAnswer":{"@type":"Answer","text":"Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 75 个可按 feature 组合的 crate。"}},
       {"@type":"Question","name":"Ecat 和 Kratos 有什么关系？","acceptedAnswer":{"@type":"Answer","text":"Ecat 对齐 Kratos 的 API-first、可插拔与统一抽象理念，但使用 Rust 生态：tower::Service/Layer、axum、tonic 与 prost，不做 Go in Rust。"}},
-      {"@type":"Question","name":"Ecat 支持哪些数据库？","acceptedAnswer":{"@type":"Answer","text":"19 个数据后端，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server）、缓存、搜索、图、时序、文档、对象存储与 OLAP；除 Memcached 外均带超时与熔断。"}},
+      {"@type":"Question","name":"Ecat 支持哪些数据库？","acceptedAnswer":{"@type":"Answer","text":"34 个数据平台，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server、Doris、StarRocks）、缓存、搜索、图、时序、文档、宽列（HBase、Cassandra）、对象存储（S3/MinIO、HDFS）与 OLAP/湖仓（ClickHouse、Trino、Druid、Kylin、Spark、Flink、Hive、Iceberg、Delta Sharing、Hudi、Paimon）；除 Memcached 外均带超时与熔断。"}},
       {"@type":"Question","name":"如何安装 Ecat？","acceptedAnswer":{"@type":"Answer","text":"需要 Rust 1.88+ 与 protoc。运行 cargo install ecat-cli，然后用 ecat new 创建项目、ecat proto 生成代码、ecat run 启动服务。"}},
       {"@type":"Question","name":"Ecat 可以用于生产吗？","acceptedAnswer":{"@type":"Answer","text":"内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、Metrics、Retry、Validate、CORS，提供健康检查、Prometheus 指标与 Docker/Kubernetes/Helm 模板；已知限制见文档参考页。"}}
     ]}
@@ -65,7 +65,7 @@
 <script src="assets/js/main.js" defer></script>
 <script src="assets/js/search.js" defer></script>
 </head>
-<body data-page="home" data-title-zh="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架" data-title-en="Ecat | A Rust microservices framework built on Kratos concepts" data-desc-zh="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，新增分库分表/冷热分层与全链路性能基准，内置 ORM。" data-desc-en="Ecat is a Rust microservices framework modeled on Kratos v3: API-first, shared HTTP and gRPC tower middleware, 60 crates, 19 data backends, sharding/tiering, full-chain benchmarks, and a built-in ORM.">
+<body data-page="home" data-title-zh="一只猫 Ecat | 对标 Kratos 的 Rust 微服务框架" data-title-en="Ecat | A Rust microservices framework built on Kratos concepts" data-desc-zh="Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，覆盖数据层横向扩展、工作流编排与全链路性能基准，内置 ORM。" data-desc-en="Ecat is a Rust microservices framework modeled on Kratos v3: API-first, shared HTTP and gRPC tower middleware, 75 crates, 34 data platforms, workflow orchestration, sharding/tiering, full-chain benchmarks, and a built-in ORM.">
 <a class="skip-link" href="#main" data-i18n="a11y.skip">跳到主要内容</a>
 <header class="site-header">
   <div class="shell header-inner">
@@ -101,7 +101,7 @@
       <div class="hero-copy">
         <p class="eyebrow" data-i18n="hero.eyebrow">Rust 微服务框架</p>
         <h1 class="hero-title" data-i18n-html="hero.title">一只猫 <span class="hero-title-en">Ecat</span></h1>
-        <p class="hero-lead" data-i18n="hero.lead">对标 Kratos v3 的 Rust 微服务框架。API-first，HTTP 与 gRPC 共享中间件，60 个 crate 按需组合。</p>
+        <p class="hero-lead" data-i18n="hero.lead">对标 Kratos v3 的 Rust 微服务框架。API-first，HTTP 与 gRPC 共享中间件，75 个 crate 按需组合。</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="docs.html#install" data-i18n="hero.ctaPrimary">开始安装</a>
           <a class="btn btn-ghost" href="https://github.com/erikwang2013/e-cat" target="_blank" rel="noopener" data-i18n="hero.ctaSecondary">查看源码</a>
@@ -117,7 +117,7 @@
   <section class="stats-band" aria-label="项目数据" data-i18n-aria="stats.label">
     <div class="shell stats-grid">
       <div class="stat"><strong>60</strong><span data-i18n="stats.crates">个 crate</span></div>
-      <div class="stat"><strong>19</strong><span data-i18n="stats.backends">个数据后端</span></div>
+      <div class="stat"><strong>34</strong><span data-i18n="stats.backends">个数据平台</span></div>
       <div class="stat"><strong>11</strong><span data-i18n="stats.middleware">个内置中间件</span></div>
       <div class="stat"><strong>4</strong><span data-i18n="stats.protocols">种协议</span></div>
     </div>
@@ -132,7 +132,7 @@
         <ul class="check-list">
           <li data-i18n="intro.point1">与 Kratos 的 API-first 理念对齐，不做 Go in Rust。</li>
           <li data-i18n="intro.point2">直接复用 tower::Service 与 tower::Layer，没有自定义中间件协议。</li>
-          <li data-i18n="intro.point3">60 个 crate 锁步发布，按需引入，不拖入无用依赖。</li>
+          <li data-i18n="intro.point3">75 个 crate 锁步发布，按需引入，不拖入无用依赖。</li>
         </ul>
       </div>
       <div class="intro-visual reveal" aria-hidden="true">
@@ -150,7 +150,7 @@
         <div class="arch-row"><span class="arch-label" data-i18n="arch.app">应用</span><div class="arch-chips"><span>AppBuilder</span><span>App</span><span>on_start</span><span>on_stop</span></div></div>
         <div class="arch-row"><span class="arch-label" data-i18n="arch.transport">传输</span><div class="arch-chips"><span>HTTP / axum</span><span>gRPC / tonic</span><span>WebSocket</span><span>GraphQL</span></div></div>
         <div class="arch-row"><span class="arch-label" data-i18n="arch.middleware">中间件</span><div class="arch-chips"><span>Recovery</span><span>Tracing</span><span>Logging</span><span>Timeout</span><span>RateLimit</span><span>Security</span><span>CircuitBreaker</span><span>Metrics</span><span>Retry</span><span>Validate</span><span>CORS</span></div></div>
-        <div class="arch-row"><span class="arch-label" data-i18n="arch.data">数据</span><div class="arch-chips"><span>SQLx</span><span>Redis</span><span>MongoDB</span><span>S3</span><span>ShardRouter</span><span>TieredQuery</span><span>Saga / 2PC</span><span>Outbox</span><span data-i18n="arch.dataMore">19 个后端 + 横向扩展</span></div></div>
+        <div class="arch-row"><span class="arch-label" data-i18n="arch.data">数据</span><div class="arch-chips"><span>SQLx</span><span>Redis</span><span>MongoDB</span><span>S3</span><span>ShardRouter</span><span>TieredQuery</span><span>Saga / 2PC</span><span>Outbox</span><span data-i18n="arch.dataMore">34 个数据平台 + 横向扩展</span></div></div>
         <div class="arch-row"><span class="arch-label" data-i18n="arch.base">基础</span><div class="arch-chips"><span>Protobuf</span><span>Errors</span><span>Metadata</span><span>Config</span><span>Registry</span><span>Tracing</span></div></div>
       </div>
     </div>
@@ -191,8 +191,8 @@
           <div class="bento-list"><span class="chip chip--accent">Recovery</span><span class="chip chip--accent">Tracing</span><span class="chip chip--accent">Timeout</span><span class="chip chip--accent">RateLimit</span><span class="chip chip--accent">Security</span><span class="chip chip--accent">CircuitBreaker</span></div>
         </article>
         <article class="bento-cell span-4 reveal">
-          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-database"></use></svg></span><h3 data-i18n="features.data.title">19 个数据后端</h3></div>
-          <p data-i18n="features.data.desc">关系型、缓存、搜索、图、时序、文档、对象存储和 OLAP 共用统一 trait。</p>
+          <div class="bento-head"><span class="bento-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-database"></use></svg></span><h3 data-i18n="features.data.title">34 个数据平台</h3></div>
+          <p data-i18n="features.data.desc">关系型、缓存、搜索、图、时序、文档、宽列、对象存储与 OLAP/湖仓共用统一 trait；Hive/Hudi/Paimon 通过 Trino/Flink/Spark 查询。</p>
           <div class="db-groups">
             <div class="db-group"><span>RDBMS</span><div><span class="chip">SQLite</span><span class="chip">PostgreSQL</span><span class="chip">MySQL</span><span class="chip">TiDB</span><span class="chip">SQL Server</span></div></div>
             <div class="db-group"><span>Cache / Search</span><div><span class="chip">Redis</span><span class="chip">Memcached</span><span class="chip">OpenSearch</span><span class="chip">Elasticsearch</span></div></div>
@@ -238,8 +238,8 @@
   <section class="section" id="timeline">
     <div class="shell">
       <div class="section-head reveal">
-        <h2 data-i18n="timeline.title">从骨架到 60 个 crate</h2>
-        <p data-i18n="timeline.lead">从 2.x 的数据后端到 7.1 的宠物 CLI、7.2.0 的数据层横向扩展、7.2.1 的安全修复，再到 7.3.0 的全链路性能基准。Phase 1–16 已完成，Phase 17 已发布（live gate 仍待真机）。</p>
+        <h2 data-i18n="timeline.title">从骨架到 75 个 crate</h2>
+        <p data-i18n="timeline.lead">从 2.x 的数据后端到 7.1 的宠物 CLI、7.2.0 的数据层横向扩展、7.2.1 的安全修复、7.3.0 的全链路性能基准，再到 8.0.0 的数据平台与工作流编排。Phase 1–17 已完成（部分 live gate 仍待真机）。</p>
       </div>
       <div class="timeline">
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v2.1.7</strong><time datetime="2026-07-29">2026-07-29</time></div><h3 data-i18n="timeline.v217.title">数据层打开局面</h3><p data-i18n="timeline.v217.desc">11 个数据库后端，TLS、WebSocket、API 版本路由与部署模板落地。</p></article>
@@ -253,6 +253,7 @@
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v7.2.0</strong><time datetime="2026-10-25">2026-10-25</time></div><h3 data-i18n="timeline.v720.title">数据层横向扩展</h3><p data-i18n="timeline.v720.desc">分库分表、冷热分层、迁移、Saga/2PC、fencing、远程拓扑与 Redis 共享池；live gates 待真机。</p></article>
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v7.2.1</strong><time datetime="2026-10-25">2026-10-25</time></div><h3 data-i18n="timeline.v721.title">安全与 CI 修复</h3><p data-i18n="timeline.v721.desc">RustSec 清零、MySQL 8.4/9 TLS 恢复、迁移 fail-closed 与运行时加固；MSRV 1.88。</p></article>
         <article class="timeline-item reveal"><div class="timeline-meta"><strong>v7.3.0</strong><time datetime="2026-10-26">2026-10-26</time></div><h3 data-i18n="timeline.v730.title">全链路性能基准</h3><p data-i18n="timeline.v730.desc">HTTP/gRPC 读路径 0/100,000 次 ≥10ms，TCP_NODELAY 消除毫秒级尾部；基准脚本与文档随版本发布。</p></article>
+        <article class="timeline-item reveal"><div class="timeline-meta"><strong>v8.0.0</strong><time datetime="2026-10-29">2026-10-29</time></div><h3 data-i18n="timeline.v800.title">数据平台与工作流编排</h3><p data-i18n="timeline.v800.desc">新增 Trino、Flink、Druid、Kylin、Spark、HDFS、HBase、Cassandra、Iceberg、Delta Sharing 客户端；Doris/StarRocks 接入 sqlx；工作流统一契约覆盖 Airflow、DolphinScheduler、Azkaban、Oozie；支持表扩至 34 项。</p></article>
       </div>
     </div>
   </section>
@@ -261,7 +262,7 @@
     <div class="shell">
       <div class="section-head reveal">
         <h2 data-i18n="perf.title">全链路性能基准（7.3.0）</h2>
-        <p data-i18n="perf.lead">HTTP/gRPC 搭配 MySQL 9 + Redis 7，本机 loopback、8 并发、每轮 1 万请求、5 轮；读路径为一条主键 SELECT 加一条 Redis GET。</p>
+        <p data-i18n="perf.lead">HTTP/gRPC 搭配 MySQL 9 + Redis 7，本机 loopback、8 并发、每轮 1 万请求、5 轮；读路径为一条主键 SELECT 加一条 Redis GET。下图为 7.3.0 基准；8.0.0 无性能改动，未重跑。</p>
       </div>
       <div class="arch-panel perf-panel reveal">
         <div class="stats-grid">
@@ -285,7 +286,7 @@
       <div class="faq-list reveal">
         <details class="faq-item">
           <summary><span data-i18n="faq.q1">Ecat 是什么？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
-          <p data-i18n="faq.a1">Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 60 个可按 feature 组合的 crate。</p>
+          <p data-i18n="faq.a1">Ecat（一只猫）是对标 go-kratos/kratos v3 的 Rust 微服务框架，提供 API-first 开发体验、HTTP 与 gRPC 共用 tower 中间件，以及 75 个可按 feature 组合的 crate。</p>
         </details>
         <details class="faq-item">
           <summary><span data-i18n="faq.q2">Ecat 和 Kratos 有什么关系？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
@@ -293,7 +294,7 @@
         </details>
         <details class="faq-item">
           <summary><span data-i18n="faq.q3">Ecat 支持哪些数据库？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
-          <p data-i18n="faq.a3">19 个数据后端，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server）、缓存、搜索、图、时序、文档、对象存储与 OLAP；除 Memcached 外均带超时与熔断。</p>
+          <p data-i18n="faq.a3">34 个数据平台，覆盖 RDBMS（SQLite、PostgreSQL、MySQL、TiDB、SQL Server、Doris、StarRocks）、缓存、搜索、图、时序、文档、宽列（HBase、Cassandra）、对象存储（S3/MinIO、HDFS）与 OLAP/湖仓（ClickHouse、Trino、Druid、Kylin、Spark、Flink、Hive、Iceberg、Delta Sharing、Hudi、Paimon）；除 Memcached 外均带超时与熔断。</p>
         </details>
         <details class="faq-item">
           <summary><span data-i18n="faq.q4">如何安装 Ecat？</span><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-chevron-down"></use></svg></summary>
@@ -321,7 +322,7 @@
         <div class="download-primary reveal">
           <h3 data-i18n="download.primaryTitle">安装 CLI</h3>
           <p data-i18n="download.primaryDesc">只需要 Rust 1.88+ 和 protoc。命令会安装 ecat 二进制和宠物资源。</p>
-          <div class="version-line"><span class="version-pill">v7.3.0</span><span data-i18n="download.versionLabel">当前版本</span><span>Rust 1.88+</span><span>Apache-2.0</span></div>
+          <div class="version-line"><span class="version-pill">v8.0.0</span><span data-i18n="download.versionLabel">当前版本</span><span>Rust 1.88+</span><span>Apache-2.0</span></div>
           <div class="install-line"><code id="cargo-install">cargo install ecat-cli</code><button class="copy-btn" data-copy="#cargo-install" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
           <div class="download-links">
             <a class="text-link" href="https://crates.io/crates/ecat-cli" target="_blank" rel="noopener">crates.io <svg class="icon icon-sm" aria-hidden="true"><use href="assets/icons/sprite.svg#i-external-link"></use></svg></a>

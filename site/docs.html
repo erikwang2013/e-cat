@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ecat 安装与使用 | Rust 微服务框架文档</title>
-<meta name="description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
+<meta name="description" content="安装 ecat-cli，创建服务，组合中间件，连接 34 个数据平台、编排 4 个工作流引擎，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
 <meta name="keywords" content="Ecat 安装,ecat-cli,Rust 微服务,ORM,数据后端,分库分表,冷热分层,性能基准,中间件,Kratos">
 <meta name="theme-color" content="#0a0e13">
 <meta name="color-scheme" content="dark">
@@ -26,7 +26,7 @@
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Ecat">
 <meta property="og:title" content="Ecat 安装与使用 | Rust 微服务框架文档">
-<meta property="og:description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
+<meta property="og:description" content="安装 ecat-cli，创建服务，组合中间件，连接 34 个数据平台、编排 4 个工作流引擎，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
 <meta property="og:url" content="https://e-cat.erik.xyz/docs.html">
 <meta property="og:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
 <meta property="og:image:type" content="image/png">
@@ -36,20 +36,20 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="article:published_time" content="2026-10-21T00:00:00+08:00">
-<meta property="article:modified_time" content="2026-10-26T00:00:00+08:00">
+<meta property="article:modified_time" content="2026-10-29T00:00:00+08:00">
 <meta property="article:author" content="https://erik.xyz">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Ecat 安装与使用 | Rust 微服务框架文档">
-<meta name="twitter:description" content="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
+<meta name="twitter:description" content="安装 ecat-cli，创建服务，组合中间件，连接 34 个数据平台、编排 4 个工作流引擎，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。">
 <meta name="twitter:image" content="https://e-cat.erik.xyz/assets/img/social-preview.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@graph": [
-    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，60 个 crate，19 个数据后端，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
+    {"@type":"WebSite","@id":"https://e-cat.erik.xyz/#website","url":"https://e-cat.erik.xyz/","name":"一只猫 Ecat","alternateName":"Ecat","description":"Ecat 是对标 Kratos v3 的 Rust 微服务框架：API-first，HTTP 与 gRPC 共享 tower 中间件，75 个 crate，34 个数据平台，内置 ORM。","inLanguage":"zh-CN","publisher":{"@id":"https://e-cat.erik.xyz/#person"}},
     {"@type":"Person","@id":"https://e-cat.erik.xyz/#person","name":"erik","url":"https://erik.xyz","email":"erik@erik.xyz","sameAs":["https://github.com/erikwang2013"]},
-    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"7.3.0","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC, benchmarks","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
-    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/docs.html#webpage","url":"https://e-cat.erik.xyz/docs.html","name":"Ecat 安装与使用 | Rust 微服务框架文档","description":"安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-26","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"breadcrumb":{"@id":"https://e-cat.erik.xyz/docs.html#breadcrumb"}},
+    {"@type":"SoftwareSourceCode","@id":"https://e-cat.erik.xyz/#software","name":"Ecat","alternateName":"一只猫","description":"API-first Rust 微服务框架，HTTP 与 gRPC 共享 tower 中间件，支持分库分表、冷热分层与 opt-in 2PC。","url":"https://e-cat.erik.xyz/","codeRepository":"https://github.com/erikwang2013/e-cat","programmingLanguage":{"@type":"ComputerLanguage","name":"Rust"},"license":"https://www.apache.org/licenses/LICENSE-2.0","version":"8.0.0","keywords":"Rust, microservices, Kratos, gRPC, HTTP, tower, ORM, sharding, tiering, Saga, 2PC, benchmarks","author":{"@id":"https://e-cat.erik.xyz/#person"},"sameAs":["https://crates.io/crates/ecat-cli","https://docs.rs/ecat"]},
+    {"@type":"WebPage","@id":"https://e-cat.erik.xyz/docs.html#webpage","url":"https://e-cat.erik.xyz/docs.html","name":"Ecat 安装与使用 | Rust 微服务框架文档","description":"安装 ecat-cli，创建服务，组合中间件，连接 34 个数据平台、编排 4 个工作流引擎，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。","inLanguage":"zh-CN","isPartOf":{"@id":"https://e-cat.erik.xyz/#website"},"about":{"@id":"https://e-cat.erik.xyz/#software"},"datePublished":"2026-10-21","dateModified":"2026-10-29","primaryImageOfPage":{"@type":"ImageObject","url":"https://e-cat.erik.xyz/assets/img/social-preview.png","width":1280,"height":640},"breadcrumb":{"@id":"https://e-cat.erik.xyz/docs.html#breadcrumb"}},
     {"@type":"BreadcrumbList","@id":"https://e-cat.erik.xyz/docs.html#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"概览","item":"https://e-cat.erik.xyz/"},{"@type":"ListItem","position":2,"name":"文档","item":"https://e-cat.erik.xyz/docs.html"}]}
   ]
 }
@@ -59,7 +59,7 @@
 <script src="assets/js/main.js" defer></script>
 <script src="assets/js/search.js" defer></script>
 </head>
-<body data-page="docs" data-title-zh="Ecat 安装与使用 | Rust 微服务框架文档" data-title-en="Install and use Ecat | Rust microservices documentation" data-desc-zh="安装 ecat-cli，创建服务，组合中间件，连接 19 个数据后端，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。" data-desc-en="Install ecat-cli, scaffold a service, add middleware, connect 19 data backends, use the ORM, and review sharding/tiering, full-chain benchmarks, the stack, Kratos mapping, and known limitations.">
+<body data-page="docs" data-title-zh="Ecat 安装与使用 | Rust 微服务框架文档" data-title-en="Install and use Ecat | Rust microservices documentation" data-desc-zh="安装 ecat-cli，创建服务，组合中间件，连接 34 个数据平台、编排 4 个工作流引擎，使用 ORM，并查阅分库分表/冷热分层、全链路性能基准、技术栈、Kratos 映射与已知限制。" data-desc-en="Install ecat-cli, scaffold a service, add middleware, connect 34 data platforms, orchestrate four workflow engines, use the ORM, and review sharding/tiering, full-chain benchmarks, the stack, Kratos mapping, and known limitations.">
 <a class="skip-link" href="#main" data-i18n="a11y.skip">跳到主要内容</a>
 <header class="site-header">
   <div class="shell header-inner">
@@ -91,7 +91,7 @@
       <div class="page-hero-copy">
         <nav class="breadcrumbs" aria-label="面包屑" data-i18n-aria="a11y.breadcrumb"><a href="./" data-i18n="nav.home">概览</a><span aria-hidden="true">/</span><span aria-current="page" data-i18n="nav.docs">文档</span></nav>
         <h1 data-i18n="docs.pageTitle">安装与使用 Ecat</h1>
-        <p data-i18n="docs.pageLead">从 cargo install 到运行中的 HTTP 与 gRPC 服务，再看 ORM、19 个数据后端、分库分表/冷热分层、全链路性能基准与已知限制。示例与仓库 examples 使用同一套 API。</p>
+        <p data-i18n="docs.pageLead">从 cargo install 到运行中的 HTTP 与 gRPC 服务，再看 ORM、34 个数据平台、分库分表/冷热分层、全链路性能基准与已知限制。示例与仓库 examples 使用同一套 API。</p>
       </div>
       <img class="page-hero-pet" src="assets/img/pet/smile.svg" alt="" width="480" height="480" loading="eager" fetchpriority="high" decoding="async">
     </div>
@@ -399,16 +399,19 @@ User::update(&amp;db, &amp;got).<span class="k">await</span>?;
         <div class="tab-panel tab-panel--wide" role="tabpanel" id="panel-reference" aria-labelledby="tab-reference" hidden>
           <div class="ref-panel">
             <div class="ref-block">
-              <h3 data-i18n="ref.backendsTitle">支持的数据库（19 个）</h3>
-              <p data-i18n="ref.backendsLead">超时与熔断按 client 配置；Memcached 是内存实现，不能用于生产持久缓存。</p>
+              <h3 data-i18n="ref.backendsTitle">支持的数据平台（34 个）</h3>
+              <p data-i18n="ref.backendsLead">超时与熔断按 client 配置；Memcached 是内存实现，不能用于生产持久缓存；Hive/Hudi/Paimon 通过 Trino/Flink/Spark 查询，不提供独立 client。</p>
               <ul class="ref-list">
-                <li><strong data-i18n="ref.groupRdbms">RDBMS</strong><span>SQLite · PostgreSQL · MySQL · TiDB · SQL Server</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupRdbms">RDBMS</strong><span>SQLite · PostgreSQL · MySQL · TiDB · SQL Server · Doris · StarRocks</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
                 <li><strong data-i18n="ref.groupCache">缓存</strong><span>Redis</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
                 <li><strong data-i18n="ref.groupCache">缓存</strong><span data-i18n="ref.groupMemcached">Memcached</span><em>⚠️ <span data-i18n="ref.memcachedNote">内存实现（非生产）</span></em></li>
                 <li><strong data-i18n="ref.groupSearch">搜索</strong><span>OpenSearch · Elasticsearch</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
                 <li><strong data-i18n="ref.groupGraph">图</strong><span>Neo4j · NebulaGraph · ArangoDB</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
                 <li><strong data-i18n="ref.groupTsdb">时序</strong><span>InfluxDB · IoTDB · QuestDB · TDengine</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
-                <li><strong data-i18n="ref.groupDoc">文档 / 对象 / OLAP</strong><span>MongoDB · S3 / MinIO · ClickHouse</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupWide">宽列</strong><span>HBase · Cassandra</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupDoc">文档 / 对象</strong><span>MongoDB · S3 / MinIO · HDFS</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupLakehouse">OLAP / 湖仓</strong><span>ClickHouse · Trino · Druid · Kylin · Spark · Flink · Hive · Iceberg · Delta Sharing · Hudi · Paimon</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
+                <li><strong data-i18n="ref.groupWorkflow">工作流</strong><span>Airflow · DolphinScheduler · Azkaban · Oozie（<code>ecat-workflow</code>）</span><em>✅ <span data-i18n="ref.resilience">超时 + 熔断</span></em></li>
               </ul>
               <p class="ref-note" data-i18n="ref.resilienceNote">默认查询超时 30 秒（0 = 禁用）；熔断阈值 0.5 / 窗口 30 秒 / 半开探测 3 / 打开 10 秒；HTTP 后端另有 max_concurrency（默认 32）。</p>
               <p class="ref-note" data-i18n="ref.tlsNote">除 ecat-data-sqlx 与 ecat-data-memcached 外，各后端 Config 支持可选 tls；SqlxConfig 配 tls 会启动报错，Memcached 的 tls 字段静默无效。</p>
@@ -505,7 +508,7 @@ tiering:
     <div class="shell">
       <div class="section-head reveal">
         <h2 data-i18n="perf.title">全链路性能基准（7.3.0）</h2>
-        <p data-i18n="perf.docsLead">最终合并运行：HTTP 与 gRPC 在同一进程，8 并发、每轮 10,000 请求、5 轮；读路径为一条主键 SELECT + 一条 Redis GET，本机 loopback，不是生产承诺。</p>
+        <p data-i18n="perf.docsLead">最终合并运行：HTTP 与 gRPC 在同一进程，8 并发、每轮 10,000 请求、5 轮；读路径为一条主键 SELECT + 一条 Redis GET，本机 loopback，不是生产承诺。表中为 7.3.0 基准；8.0.0 无性能改动，未重跑。</p>
       </div>
       <div class="reveal">
         <div class="perf-table-wrap">

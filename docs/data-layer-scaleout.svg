@@ -110,5 +110,5 @@
   <rect x="64" y="620" width="1152" height="1" fill="#1d3a43"/>
   <text class="foot" x="64" y="660">兼容性：既有 trait / 配置 / 方言未改；新能力通过新 crate 与默认关闭的 feature 接入。</text>
   <text class="foot-mono" x="64" y="690">LIVE GATES: MySQL 8.4/9 auth &amp; partition · Redis · ClickHouse/S3 · Consul/etcd · Helm · backup drill</text>
-  <text class="foot-mono" x="1216" y="690" text-anchor="end">60 crates · 19 backends</text>
+  <text class="foot-mono" x="1216" y="690" text-anchor="end">75 crates · 34 data platforms</text>
 </svg>

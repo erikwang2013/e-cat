@@ -1,6 +1,6 @@
 # Ecat 性能基准（全链路）
 
-> 版本：7.3.0。状态：2026-10-26；性能提交 `dcd8523`（harness）与 `979d25f`（文档）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
+> 版本：7.3.0（8.0.0 未重跑）。状态：2026-10-26；性能提交 `dcd8523`（harness）与 `979d25f`（文档）。范围：本机 loopback，HTTP + gRPC + MySQL 9 + Redis 7；读 SLO 为每轮 max < 10ms，写路径单独报告、不在 SLO 内。数字为共享笔记本上的 best-effort，不是生产保证。
 
 ## 结论
 

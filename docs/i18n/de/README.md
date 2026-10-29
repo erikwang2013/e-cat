@@ -5,7 +5,7 @@
 
 Der chinesische Name von Ecat: 一只猫 (wörtlich „eine Katze")
 
-**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v7.3.0 · 60 crates).
+**一只猫** ist ein Rust-Mikroservice-Framework, das sich an [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 orientiert (v7.3.0 · 75 crates).
 
 Es bietet eine API-first-Entwicklungserfahrung, eine pluggbare Komponentenarchitektur, eine einheitliche HTTP/gRPC-Middleware-Abstraktion sowie eine vollständige CLI-Werkzeugkette. Entwickler, die Kratos kennen, können nahtlos einsteigen und gleichzeitig die Typsicherheit, Zero-Cost-Abstraktionen und die extreme Leistung von Rust voll ausschöpfen.
 

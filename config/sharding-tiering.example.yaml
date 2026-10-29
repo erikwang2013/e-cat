@@ -1,9 +1,9 @@
-# Ecat 数据层横向扩展示例（7.3.0）
+# Ecat 数据层横向扩展示例（8.0.0）
 # 这些段落都是可选的；默认配置仍按单库单表运行。
 # 启用方式（按需选择）：
-#   ecat = { version = "7.3.0", features = ["sharding", "tiering", "saga", "2pc", "worker"] }
-#   ecat-data-sharding = { version = "7.3.0", features = ["migrate"] }
-#   ecat-data-tiering  = { version = "7.3.0", features = ["clickhouse", "cli"] }
+#   ecat = { version = "8.0.0", features = ["sharding", "tiering", "saga", "2pc", "worker"] }
+#   ecat-data-sharding = { version = "8.0.0", features = ["migrate"] }
+#   ecat-data-tiering  = { version = "8.0.0", features = ["clickhouse", "cli"] }
 
 database:
   url: "mysql://user:pass@127.0.0.1:3306/app"

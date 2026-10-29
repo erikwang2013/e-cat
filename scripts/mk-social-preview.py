@@ -15,12 +15,15 @@ with open("CHANGELOG.md", encoding="utf-8") as f:
 with open("Cargo.toml", "rb") as f:
     members = tomllib.load(f)["workspace"]["members"]
 CRATES = sum(1 for m in members if not m.startswith("examples/"))
-# ecat-data-sqlx covers four products (SQLite/PG/MySQL/TiDB); the sharding,
-# tiering and 2PC crates are data-layer extensions, not database backends.
+# ecat-data-sqlx covers six products (SQLite/PG/MySQL/TiDB/Doris/StarRocks);
+# Hive/Hudi/Paimon are queried through Trino/Flink/Spark and have no standalone
+# crate. The sharding, tiering and 2PC crates are data-layer extensions, not
+# data-platform entries. The support table currently has 34 entries.
 NON_BACKEND_DATA_CRATES = {"ecat-data-sharding", "ecat-data-tiering", "ecat-data-2pc"}
 DATA_BACKENDS = (
     sum(1 for m in members if m.startswith("ecat-data-") and m not in NON_BACKEND_DATA_CRATES)
-    + 3
+    + 5  # sqlx covers six products, counted as one crate above
+    + 3  # Hive / Hudi / Paimon via Trino/Flink/Spark
 )
 
 W, H = 1280, 640
@@ -93,8 +96,8 @@ LINE_GAP_EN = 40
 pairs = [
     ("Rust 微服务框架 · 对标 go-kratos/kratos",
      "Rust microservices framework · benchmarked against go-kratos/kratos"),
-    (f"HTTP · gRPC · {DATA_BACKENDS} 数据后端 · 分库分表 / 冷热分层",
-     f"HTTP · gRPC · {DATA_BACKENDS} data backends · sharding / tiering"),
+    (f"HTTP · gRPC · {DATA_BACKENDS} 数据平台 · 分库分表 / 冷热分层",
+     f"HTTP · gRPC · {DATA_BACKENDS} data platforms · sharding / tiering"),
 ]
 
 for zh, en in pairs:
@@ -105,7 +108,7 @@ for zh, en in pairs:
 
 # 徽章：crate 数从 workspace members 推导
 f_badge = font(FONT_REG, 30)
-btext = f"{VERSION} · 0/100k ≥10ms · {CRATES} crates"
+btext = f"{VERSION} · {CRATES} crates · {DATA_BACKENDS} data platforms"
 tw = d.textlength(btext, font=f_badge)
 bx, by = X, y + 4
 d.rounded_rectangle([bx, by, bx + tw + 42, by + 54], radius=27,
