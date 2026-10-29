@@ -97,7 +97,7 @@ Client Request
 - **Auth**: JWT / API Key authentication middleware, claims propagated to request context
 - **Messaging**: MessageQueue trait + EventBus local/remote Pub/Sub
 - **Multi-protocol**: HTTP, gRPC, WebSocket, GraphQL unified routing
-- **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
+- **Multi-source data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), TSDB (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), wide-column (HBase/Cassandra), object storage (S3/MinIO/HDFS), OLAP/lakehouse (ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon)
 - **Data-layer scale-out**: sharding (ShardRouter / scatter / Snowflake / outbox), hot/cold tiering (ArchiveJob / TieredQuery / ClickHouse / S3), shard migration, Saga, opt-in XA 2PC, fencing lock, Consul/etcd topology, and a shared Redis pool; feature-gated and default-off (see the [data-layer scale-out guide](docs/data-layer-scaleout.en.md))
 
 ### Kratos Concept Mapping
@@ -136,7 +136,7 @@ Client Request
 
 Local loopback full-chain benchmark (HTTP/gRPC + MySQL 9 + Redis 7, concurrency 8, 10k requests per round × 5 rounds): in the final combined run, HTTP read max is 5.9–9.2ms and gRPC read max is 6.0–8.4ms, with 0/100,000 read samples ≥10ms and 0 errors (marked noisy because the peak temperature reached 91°C). Writes are reported separately and are not covered by the 10ms SLO; results on a shared laptop are best-effort, not a production guarantee. See [Performance benchmark](docs/performance.en.md) for method, probe attribution, noisy-run ranges, and reproduction commands.
 
-## Supported Databases (19 backends)
+## Supported Data Platforms (34 entries)
 
 | Category | Database | Crate | Status | Timeout/Breaker |
 |----------|----------|-------|--------|------|
@@ -150,6 +150,14 @@ Local loopback full-chain benchmark (HTTP/gRPC + MySQL 9 + Redis 7, concurrency 
 | Search | OpenSearch | `ecat-data-opensearch` | ✅ Implemented | ✅ Timeout + Breaker |
 | Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented | ✅ Timeout + Breaker |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented | ✅ Timeout + Breaker |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ MySQL protocol (`mysql_compat: "doris"`) | ✅ Timeout + Breaker |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ MySQL protocol (`mysql_compat: "starrocks"`) | ✅ Timeout + Breaker |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ Timeout + Breaker |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ Timeout + Breaker |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ Timeout + Breaker |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ Timeout + Breaker |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ Timeout + Breaker |
+| OLAP | Apache Hive | via Trino Hive connector | ✅ Queried through Trino | ✅ (via Trino) |
 | Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Timeout + Breaker |
 | Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Timeout + Breaker |
 | Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Timeout + Breaker |
@@ -158,13 +166,22 @@ Local loopback full-chain benchmark (HTTP/gRPC + MySQL 9 + Redis 7, concurrency 
 | TSDB | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Timeout + Breaker |
 | TSDB | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Timeout + Breaker |
 | Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver | ✅ Timeout + Breaker |
+| Wide-column | Apache HBase | `ecat-data-hbase` | ✅ REST (hbase-rest) | ✅ Timeout + Breaker |
+| Wide-column | Apache Cassandra | `ecat-data-cassandra` | ✅ Native CQL (scylla) | ✅ Timeout + Breaker |
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + Breaker |
+| Object storage | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ Timeout + Breaker |
+| Lakehouse metadata | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog (metadata only) | ✅ Timeout + Breaker |
+| Lakehouse sharing | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing (read-only) | ✅ Timeout + Breaker |
+| Lakehouse query | Apache Hudi | via Trino / Spark | ✅ Queried through an engine | With the engine |
+| Lakehouse query | Apache Paimon | via Flink / Spark / StarRocks / Doris | ✅ Queried through an engine | With the engine |
 
 > **Timeout/breaker**: timeout = the query timeout `query_timeout_secs` (default 30 s, `0` = disabled; configurable on **all** data backends except the memcached in-memory implementation; MongoDB's concurrency backpressure goes through the driver connection pool `max_pool_size`); breaker = **every client carries its own** `ecat_circuit_breaker::Breaker` (failure ratio 0.5 / window 30 s / half-open probes 3 / open 10 s, no `enabled` master switch); HTTP backends additionally have `max_concurrency` (default 32). `ecat_data::CircuitBreakerExecutor` can still wrap any `SqlExecutor` backend. Read/write splitting uses `ecat_data::RdbmsRouting`: writes go to the primary, reads round-robin across replicas and **skip replicas whose breaker is open**; when no replica is available it falls back to the primary by default, or returns `RdbmsError::NoAvailableReplica` with `fallback_to_primary(false)`.
 
-> All backends share unified trait abstractions (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files.
+> All backends share unified trait abstractions (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`) and provide `XxxConfig` structs (`#[derive(Deserialize)]`) for loading connection info from JSON/YAML config files. Iceberg / Delta Sharing are not part of these traits: they are standalone catalog/sharing metadata clients. Hive / Hudi / Paimon are queried through Trino / Flink / Spark and have no standalone client.
 
-> **Constructor naming convention**: message-queue crates (`ecat-mq-*`) use `connect` as the primary constructor (`KafkaMq::connect(brokers)`, `MqttMq::connect(url)`, …) and additionally offer `from_config`; data-backend crates (`ecat-data-*`) mostly use `new`, except `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` (which use `connect`) and `ecat-data-mongodb` / `ecat-data-s3` (which only offer `from_config`). This is an existing convention, not enforced — unification would be breaking and is deferred; it may be revisited in the 3.0 window.
+> **Lakehouse/engine access**: Hive is queried through the Trino Hive connector (requires a Hive Metastore or Glue); Hudi through the Trino Hudi connector (Hudi ≥ 0.12.3, HMS, Parquet, table synced to HMS) or Spark; Paimon through Flink / Spark / StarRocks / Doris (the Trino Paimon plugin is pinned to Trino 440); Delta Sharing can only read tables a provider shares, not arbitrary paths. The Iceberg / Delta Sharing clients handle metadata only; they do not decode Parquet, manifests, or snapshots.
+
+> **Constructor naming convention**: message-queue crates (`ecat-mq-*`) use `connect` as the primary constructor (`KafkaMq::connect(brokers)`, `MqttMq::connect(url)`, …) and additionally offer `from_config`; data-backend crates (`ecat-data-*`) mostly use `new`, except `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` (which use `connect`), `ecat-data-mongodb` / `ecat-data-s3` (which only offer `from_config`), and `ecat-data-cassandra` (whose `connect` / `from_config` are async because scylla session creation is async). This is an existing convention, not enforced — unification would be breaking and is deferred; it may be revisited in the 3.0 window.
 
 ### Messaging Backends (4 MQ)
 
@@ -176,6 +193,17 @@ Local loopback full-chain benchmark (HTTP/gRPC + MySQL 9 + Redis 7, concurrency 
 | NATS | `ecat-mq-nats` | `async` |
 
 Also: service registry (Consul / etcd), distributed lock (Redis), scheduler (tokio), OTLP tracing export, API versioning, OpenAPI spec generation.
+
+### Workflow orchestration (4 engines)
+
+| Engine | Crate | Create | Trigger | Status/Cancel | List | Notes |
+|--------|-------|--------|---------|---------------|------|-------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌ (DAGs are deployed as files) | ✅ | ✅ / ✅ (marks failed) | ✅ (requires dag_id) | REST API v2 by default, v1 optional |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅ (workflow style includes release) | ✅ | ✅ / ✅ | ✅ | 3.3+ `workflow-*` by default, 3.2 `legacy` optional |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy; repository archived |
+| Apache Oozie | `ecat-workflow-oozie` | ✅ (submits job XML) | ✅ | ✅ / ✅ | ✅ | retired, moved to the Attic |
+
+> The shared contract lives in `ecat-workflow`: `WorkflowClient` + `WorkflowHttp` (TLS / Basic/Bearer / timeout / breaker / concurrency cap). Each adapter reports its real capabilities through `capabilities()`; unsupported operations return `WorkflowError::Unsupported`. Airflow DAGs can only be created by deploying files; Oozie Kerberos is not supported yet.
 
 ### Data-layer scale-out (Unreleased)
 
@@ -324,7 +352,12 @@ e-cat/
 ├── ecat-config-remote/         # Consul KV remote config
 ├── ecat-metrics/               # Prometheus integration
 ├── ecat-data/                  # Data access traits
-├── ecat-data-*/                # database backends (19 products) plus sharding/tiering/2PC
+├── ecat-data-*/                # data platform clients (34 entries) plus sharding/tiering/2PC
+├── ecat-workflow/              # Workflow contract + shared HTTP shell
+├── ecat-workflow-airflow/      # Airflow adapter
+├── ecat-workflow-dolphinscheduler/ # DolphinScheduler adapter
+├── ecat-workflow-azkaban/      # Azkaban legacy adapter
+├── ecat-workflow-oozie/        # Oozie retired adapter
 ├── ecat-data-sharding/         # sharding: catalog/router/scatter/outbox/migration
 ├── ecat-data-tiering/          # hot/cold tiering: archive/sinks/cross-boundary query/CLI
 ├── ecat-saga/                  # Saga engine (reverse compensation + persisted resume)

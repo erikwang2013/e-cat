@@ -102,7 +102,7 @@ Ecat中文名：一只猫
 - **分布式追踪**：请求 span、trace_id 注入/提取
 - **gRPC 客户端**：GrpcClient 集成服务发现与负载均衡
 - **多协议**：HTTP、gRPC、WebSocket、GraphQL 统一路由
-- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、对象存储（S3/MinIO）、OLAP（ClickHouse）
+- **多数据源**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks）、缓存（Redis/Memcached）、搜索（OpenSearch/Elasticsearch）、图（Neo4j/NebulaGraph/ArangoDB）、时序（InfluxDB/IoTDB/QuestDB/TDengine）、文档（MongoDB）、宽列（HBase/Cassandra）、对象存储（S3/MinIO/HDFS）、OLAP/湖仓（ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon）
 - **数据层横向扩展**：分库分表（ShardRouter / scatter / Snowflake / outbox）、冷热分层（ArchiveJob / TieredQuery / ClickHouse / S3）、分片迁移、Saga、opt-in XA 2PC、fencing lock、Consul/etcd 拓扑与 Redis 共享池；全部按 feature 接入且默认关闭（详见[数据层横向扩展指南](docs/data-layer-scaleout.md)）
 
 ### Kratos 概念映射
@@ -141,7 +141,7 @@ Ecat中文名：一只猫
 
 本机 loopback 全链路基准（HTTP/gRPC + MySQL 9 + Redis 7，8 并发、每轮 1 万请求 × 5 轮）：最终合并运行中 HTTP 读 max 5.9–9.2ms、gRPC 读 max 6.0–8.4ms，读样本合计 0/100,000 ≥10ms、0 错误（因最高温度 91°C 标记 noisy）。写路径单独报告，不在 10ms SLO 内；共享笔记本上的结果是 best-effort，不是生产保证。方法、探针归因、噪声区间与复现命令见[性能基准](docs/performance.md)。
 
-## 支持的数据库
+## 支持的数据平台（34 项）
 
 | 类别 | 数据库 | Crate | 状态 | 超时/熔断 |
 |------|--------|-------|------|------|
@@ -155,6 +155,14 @@ Ecat中文名：一只猫
 | 搜索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 已实现 | ✅ 超时 + 熔断 |
 | 缓存 | Memcached | `ecat-data-memcached` | ⚠️ 内存实现（非生产，勿用于持久缓存） | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 已实现 | ✅ 超时 + 熔断 |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ MySQL 协议（`mysql_compat: "doris"`） | ✅ 超时 + 熔断 |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ MySQL 协议（`mysql_compat: "starrocks"`） | ✅ 超时 + 熔断 |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ 超时 + 熔断 |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ 超时 + 熔断 |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ 超时 + 熔断 |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ 超时 + 熔断 |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ 超时 + 熔断 |
+| OLAP | Apache Hive | 经 Trino Hive connector | ✅ 通过 Trino 查询 | ✅（随 Trino） |
 | 图 | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ 超时 + 熔断 |
 | 图 | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ 超时 + 熔断 |
 | 图 | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ 超时 + 熔断 |
@@ -163,13 +171,33 @@ Ecat中文名：一只猫
 | 时序 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ 超时 + 熔断 |
 | 时序 | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ 超时 + 熔断 |
 | 文档 | MongoDB | `ecat-data-mongodb` | ✅ 原生驱动 | ✅ 超时 + 熔断 |
+| 宽列 | Apache HBase | `ecat-data-hbase` | ✅ REST（hbase-rest） | ✅ 超时 + 熔断 |
+| 宽列 | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL 原生（scylla） | ✅ 超时 + 熔断 |
 | 对象存储 | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ 超时 + 熔断 |
+| 对象存储 | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ 超时 + 熔断 |
+| 湖仓元数据 | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog（仅元数据） | ✅ 超时 + 熔断 |
+| 湖仓共享 | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing（只读） | ✅ 超时 + 熔断 |
+| 湖仓查询 | Apache Hudi | 经 Trino / Spark | ✅ 通过引擎查询 | 随引擎 |
+| 湖仓查询 | Apache Paimon | 经 Flink / Spark / StarRocks / Doris | ✅ 通过引擎查询 | 随引擎 |
 
 > **超时/熔断**：超时 = 查询超时 `query_timeout_secs`（默认 30 秒，`0` = 禁用；除 memcached 内存实现外，**所有**数据后端均可配，MongoDB 的并发背压走驱动连接池 `max_pool_size`）；熔断 = **每个 client 自带** `ecat_circuit_breaker::Breaker`（失败率 0.5 / 窗口 30 秒 / 半开探测 3 / 打开 10 秒，无 `enabled` 总开关）；HTTP 后端另有 `max_concurrency`（默认 32）。`ecat_data::CircuitBreakerExecutor` 仍可包装任意 `SqlExecutor` 后端。读写分离用 `ecat_data::RdbmsRouting`：写落主库、读落副本轮询，并**跳过已熔断的副本**；副本全不可用时默认降级读主，`fallback_to_primary(false)` 则报 `RdbmsError::NoAvailableReplica`。
 
-> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`），按需引入对应 contrib crate。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+> 所有数据后端通过统一的 trait 抽象（`RdbmsClient` 管事务、`SqlExecutor` 管执行与方言 / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`），按需引入对应 contrib crate。Iceberg / Delta Sharing 不属于这些 trait，是独立的目录/共享元数据客户端；Hive / Hudi / Paimon 通过 Trino / Flink / Spark 查询，不提供独立 client。
 
-> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
+> **湖仓/引擎接入说明**：Hive 通过 Trino Hive connector（需 Hive Metastore 或 Glue）；Hudi 通过 Trino Hudi connector（需 Hudi ≥ 0.12.3、HMS、Parquet，且表已 sync 到 HMS）或 Spark；Paimon 通过 Flink / Spark / StarRocks / Doris（Trino 的 Paimon 插件锁 Trino 440）；Delta Sharing 只能读 provider 共享的表，不能读任意路径。Iceberg / Delta Sharing 客户端只做元数据，不解析 Parquet / manifest / 快照。每个后端均提供 `XxxConfig` 结构体（`#[derive(Deserialize)]`），支持从 JSON/YAML 配置文件加载连接信息。
+
+> **构造器命名约定**：消息队列 crate（`ecat-mq-*`）主构造器统一为 `connect`（如 `KafkaMq::connect(brokers)`、`MqttMq::connect(url)`），另提供 `from_config` 从配置加载；数据后端 crate（`ecat-data-*`）多数主构造器为 `new`，例外：`ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` 沿用 `connect`，`ecat-data-mongodb` / `ecat-data-s3` 仅提供 `from_config`，`ecat-data-cassandra` 使用 `async` 的 `connect` / `from_config`（scylla 建 session 是异步的）。此为既有约定，不强制统一（避免破坏性变更）；3.0 窗口可评估统一。
+
+### 工作流编排（4 个引擎）
+
+| 引擎 | Crate | 创建 | 触发 | 状态/取消 | 列表 | 说明 |
+|------|-------|------|------|-----------|------|------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌（DAG 以文件部署） | ✅ | ✅ / ✅（标 failed） | ✅（需 dag_id） | 默认 API v2，可配 v1 |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅（workflow 风格含 release） | ✅ | ✅ / ✅ | ✅ | 默认 3.3+ `workflow-*`，可配 3.2 `legacy` |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy；仓库已 archived |
+| Apache Oozie | `ecat-workflow-oozie` | ✅（提交 job XML） | ✅ | ✅ / ✅ | ✅ | retired，已进 Attic |
+
+> 统一契约在 `ecat-workflow`：`WorkflowClient` + `WorkflowHttp`（TLS / Basic/Bearer / 超时 / 熔断 / 并发上限）。各适配器的真实能力以 `capabilities()` 为准；不支持的操作用 `WorkflowError::Unsupported` 返回。Airflow 的 DAG 只能通过部署文件创建；Oozie 的 Kerberos 暂不支持。
 
 ### 数据层横向扩展（Unreleased）
 
@@ -348,7 +376,7 @@ e-cat/
 ├── ecat-graphql/               # GraphQL endpoint
 ├── ecat-data-elasticsearch/    # Elasticsearch 搜索后端
 ├── ecat-data-clickhouse/       # ClickHouse OLAP 后端
-├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB）
+├── ecat-data-sqlx/             # RDBMS 后端（SQLite/PG/MySQL/TiDB/Doris/StarRocks）
 ├── ecat-data-mssql/            # SQL Server 后端（tiberius-ng）
 ├── ecat-orm/                   # ORM：实体宏、查询构建器、迁移
 ├── ecat-orm-derive/            # #[derive(Entity)] 派生宏
@@ -367,6 +395,21 @@ e-cat/
 ├── ecat-data-tdengine/         # TDengine 时序后端
 ├── ecat-data-mongodb/          # MongoDB 文档后端
 ├── ecat-data-s3/               # S3 / MinIO 对象存储后端
+├── ecat-data-hadoop/           # Hadoop WebHDFS 存储后端
+├── ecat-data-hbase/            # HBase REST 宽列后端
+├── ecat-data-cassandra/        # Cassandra CQL 原生后端
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # Kylin query REST
+├── ecat-data-spark/            # Spark SQL via Livy
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog（仅元数据）
+├── ecat-data-delta-sharing/    # Delta Sharing 只读元数据
+├── ecat-workflow/              # 工作流统一契约 + HTTP 外壳
+├── ecat-workflow-airflow/      # Airflow 适配
+├── ecat-workflow-dolphinscheduler/ # DolphinScheduler 适配
+├── ecat-workflow-azkaban/      # Azkaban legacy 适配
+├── ecat-workflow-oozie/        # Oozie retired 适配
 ├── ecat-data-sharding/         # 分库分表：catalog/router/scatter/outbox/迁移
 ├── ecat-data-tiering/          # 冷热分层：归档/冷层 sink/跨边界查询/CLI
 ├── ecat-saga/                  # Saga 引擎（逆序补偿 + 持久化续跑）

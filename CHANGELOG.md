@@ -1,5 +1,44 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **数据平台扩展（新增 15 项，支持表共 34 项）**：
+  - SQL/OLAP over HTTP：`ecat-data-trino`、`ecat-data-druid`、`ecat-data-kylin`、
+    `ecat-data-spark`（Livy）、`ecat-data-flink`（SQL Gateway）。
+  - MySQL 协议：Apache Doris / StarRocks 复用 `ecat-data-sqlx`；新增
+    `SqlxConfig.mysql_compat`（`"mysql"` / `"doris"` / `"starrocks"`）与
+    `SqlxClient::connect_with_mysql_compat()`，关闭 sqlx 建连时默认的
+    `SET sql_mode=(SELECT CONCAT(...))` 子查询（StarRocks 不支持）。
+  - 宽列：`ecat-data-hbase`（hbase-rest）、`ecat-data-cassandra`（scylla CQL）；
+    `ecat-data` 新增 `WideColumnClient` trait。
+  - 存储/湖仓：`ecat-data-hadoop`（WebHDFS）、`ecat-data-iceberg`
+    （REST Catalog，仅元数据）、`ecat-data-delta-sharing`（Delta Sharing 只读；
+    兼容旧 JSON 信封与 NDJSON 流，保留 `refreshToken`）。
+  - Hive / Hudi / Paimon 不新增独立 client：Hive 走 Trino Hive connector，
+    Hudi 走 Trino/Spark，Paimon 走 Flink/Spark/StarRocks/Doris；边界与前提见 README。
+- **工作流编排**：新增 `ecat-workflow` 统一 `WorkflowClient` 契约与共享
+  `WorkflowHttp` 出站外壳（TLS、Basic/Bearer、超时、熔断、并发上限），以及
+  `ecat-workflow-airflow`、`ecat-workflow-dolphinscheduler`、
+  `ecat-workflow-azkaban`、`ecat-workflow-oozie` 四个适配器。各适配器通过
+  `capabilities()` 如实声明创建/触发/取消/列表能力；Airflow 默认 REST v2
+  （`api_version` 可配 v1），DolphinScheduler 默认 3.3+ `workflow-*`
+  （`api_style` 可配 3.2 `legacy`）。Airflow 的 DAG 仍需文件部署，Azkaban 仓库
+  已 archived，Oozie 已 retired（Attic）。
+- **`ecat-tls`**：新增 `build_reqwest_client_builder()`，供调用方在 build 前追加
+  redirect policy 等策略（WebHDFS 两跳 PUT 使用）。
+
+### Changed / Notes
+
+- `SqlxConfig` 新增公开字段 `mysql_compat`：直接写结构体字面量的下游代码需要补
+  该字段；配置文件反序列化路径不受影响。
+- 新数据客户端沿用既有出站韧性约定（`query_timeout_secs`、逐 client 熔断器、
+  `max_concurrency`；`metrics` 为 opt-in）。工作流适配器 v1 不接 metrics。
+- 已知限制：Cassandra 无真实集群测试；HBase/Hadoop 的 Kerberos、Oozie 的 Kerberos
+  明确不支持；Spark Livy 同一 client 的语句串行执行；HDFS `list` 当前递归整个
+  bucket 后按 prefix 过滤；Delta Sharing 客户端不解析 Parquet。
+
 ## [7.3.0] — 2026-10-26
 
 ### Added
