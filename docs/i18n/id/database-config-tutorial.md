@@ -149,6 +149,7 @@ sql:
 | `slow_query_ms` | `u64` | `1000` | Ambang peringatan kueri lambat (ms); tidak diisi = 1000, **0 = mati** (hanya feature `tracing`) |
 | `test_before_acquire` | `bool` | `false` | Ping dulu sebelum koneksi diberikan |
 | `session_init` | `string[]` | Sesuai dialek | Pernyataan inisialisasi sesi untuk setiap koneksi baru |
+| `mysql_compat` | `"mysql"` / `"doris"` / `"starrocks"` | `"mysql"` | Mode kompatibilitas protokol MySQL; hanya berlaku untuk `mysql://` |
 
 #### `session_init` (inisialisasi sesi)
 
@@ -172,6 +173,25 @@ sql:
     - "SET time_zone = '+00:00'"
     - "SET NAMES utf8mb4"
 ```
+
+#### `mysql_compat` (Doris / StarRocks)
+
+Doris dan StarRocks memakai protokol wire MySQL, tetapi sqlx secara default
+mengirim `SET sql_mode=(SELECT CONCAT(@@sql_mode,...))` saat terhubung; StarRocks
+tidak mendukung subkueri tersebut sehingga koneksi langsung gagal. `mysql_compat`
+mematikan `pipes_as_concat` dan `no_engine_substitution` pada opsi koneksi dan
+secara eksplisit memakai `utf8mb4` / `utf8mb4_general_ci`:
+
+```yaml
+sql:
+  url: "mysql://fe-host:9030/dbname"   # query_port FE untuk Doris / StarRocks
+  mysql_compat: "starrocks"            # gunakan "doris" untuk Doris; MySQL native tetap memakai default
+```
+
+> Kedua sakelar ini tidak dapat diatur lewat parameter URL; gunakan kolom
+> konfigurasi atau `SqlxClient::connect_with_mysql_compat()`. Kompatibilitas DML
+> prepared StarRocks bergantung pada versi; jika muncul galat 1295, tambahkan
+> `?statement-cache-capacity=0` ke URL dan beralih ke protokol teks.
 
 #### `warm_up()` — Pemanasan
 

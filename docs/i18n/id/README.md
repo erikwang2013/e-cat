@@ -103,7 +103,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 - **Pelacakan terdistribusi**: span permintaan, injeksi/ekstraksi trace_id
 - **Klien gRPC**: GrpcClient terintegrasi dengan service discovery dan load balancing
 - **Multi-protokol**: HTTP, gRPC, WebSocket, GraphQL dengan routing terpadu
-- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
+- **Multi-sumber data**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks), cache (Redis/Memcached), pencarian (OpenSearch/Elasticsearch), graf (Neo4j/NebulaGraph/ArangoDB), time-series (InfluxDB/IoTDB/QuestDB/TDengine), dokumen (MongoDB), wide-column (HBase/Cassandra), object storage (S3/MinIO/HDFS), OLAP/lakehouse (ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon)
 
 ### Pemetaan Konsep Kratos
 
@@ -150,6 +150,14 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | Pencarian | Elasticsearch | `ecat-data-elasticsearch` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ Implementasi memori (bukan produksi, jangan gunakan untuk cache persisten) | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Terimplementasi | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ Protokol MySQL (`mysql_compat: "doris"`) | ✅ Timeout + pemutus sirkuit |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ Protokol MySQL (`mysql_compat: "starrocks"`) | ✅ Timeout + pemutus sirkuit |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ Timeout + pemutus sirkuit |
+| OLAP | Apache Hive | melalui Trino Hive connector | ✅ Dikueri melalui Trino | ✅ (melalui Trino) |
 | Graf | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
 | Graf | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
 | Graf | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
@@ -158,13 +166,33 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | Time-series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Timeout + pemutus sirkuit |
 | Time-series | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Timeout + pemutus sirkuit |
 | Dokumen | MongoDB | `ecat-data-mongodb` | ✅ Driver native | ✅ Timeout + pemutus sirkuit |
+| Wide-column | Apache HBase | `ecat-data-hbase` | ✅ REST (hbase-rest) | ✅ Timeout + pemutus sirkuit |
+| Wide-column | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL native (scylla) | ✅ Timeout + pemutus sirkuit |
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + pemutus sirkuit |
+| Object storage | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ Timeout + pemutus sirkuit |
+| Metadata lakehouse | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog (hanya metadata) | ✅ Timeout + pemutus sirkuit |
+| Berbagi lakehouse | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing (hanya-baca) | ✅ Timeout + pemutus sirkuit |
+| Kueri lakehouse | Apache Hudi | melalui Trino / Spark | ✅ Dikueri melalui mesin | Dengan mesin |
+| Kueri lakehouse | Apache Paimon | melalui Flink / Spark / StarRocks / Doris | ✅ Dikueri melalui mesin | Dengan mesin |
 
 > **Timeout/pemutus sirkuit**: Timeout = timeout kueri `query_timeout_secs` (default 30 detik, `0` = nonaktif; dapat dikonfigurasi pada **semua** backend data kecuali implementasi in-memory memcached; backpressure konkurensi MongoDB ditangani pool koneksi driver `max_pool_size`); pemutus sirkuit = **setiap client membawa miliknya sendiri** `ecat_circuit_breaker::Breaker` (rasio kegagalan 0.5 / jendela 30 detik / probe setengah terbuka 3 / terbuka 10 detik, tanpa sakelar utama `enabled`); backend HTTP juga memiliki `max_concurrency` (default 32). `ecat_data::CircuitBreakerExecutor` tetap dapat membungkus backend `SqlExecutor` apa pun. Pemisahan baca/tulis memakai `ecat_data::RdbmsRouting`: tulis ke primary, baca bergiliran ke replika dan **melewati replika yang pemutus sirkuitnya terbuka**; bila tidak ada replika yang tersedia, default-nya turun ke primary, dan dengan `fallback_to_primary(false)` mengembalikan `RdbmsError::NoAvailableReplica`.
 
-> Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), impor crate contrib terkait sesuai kebutuhan. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
+> Semua backend data diabstraksikan melalui trait terpadu (`RdbmsClient` untuk transaksi, `SqlExecutor` untuk eksekusi dan dialek / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`), impor crate contrib terkait sesuai kebutuhan. Iceberg / Delta Sharing bukan bagian dari trait ini: keduanya adalah klien metadata katalog/berbagi yang berdiri sendiri. Hive / Hudi / Paimon dikueri melalui Trino / Flink / Spark dan tidak memiliki klien mandiri. Setiap backend menyediakan struct `XxxConfig` (`#[derive(Deserialize)]`), yang mendukung pemuatan info koneksi dari file konfigurasi JSON/YAML.
+
+> **Akses lakehouse/mesin**: Hive dikueri melalui Trino Hive connector (memerlukan Hive Metastore atau Glue); Hudi melalui Trino Hudi connector (Hudi ≥ 0.12.3, HMS, Parquet, dan tabel sudah di-sync ke HMS) atau Spark; Paimon melalui Flink / Spark / StarRocks / Doris (plugin Paimon Trino dipatok ke Trino 440); Delta Sharing hanya dapat membaca tabel yang dibagikan provider, bukan path sembarangan. Klien Iceberg / Delta Sharing hanya menangani metadata; keduanya tidak mendekode Parquet, manifest, atau snapshot.
 
 > **Konvensi penamaan konstruktor**: konstruktor utama crate message queue (`ecat-mq-*`) terpadu sebagai `connect` (mis. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), juga menyediakan `from_config` untuk memuat dari konfigurasi; sebagian besar konstruktor utama crate backend data (`ecat-data-*`) adalah `new`, dengan pengecualian: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` tetap menggunakan `connect`, `ecat-data-mongodb` / `ecat-data-s3` hanya menyediakan `from_config`. Ini adalah konvensi yang sudah ada, tidak dipaksakan untuk diseragamkan (menghindari perubahan yang merusak); dapat dievaluasi untuk diseragamkan di jendela 3.0.
+
+### Orkestrasi alur kerja (4 mesin)
+
+| Mesin | Crate | Buat | Picu | Status/Batalkan | Daftar | Catatan |
+|-------|-------|------|------|-----------------|--------|---------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌ (DAG di-deploy sebagai file) | ✅ | ✅ / ✅ (menandai gagal) | ✅ (memerlukan dag_id) | REST API v2 secara default, v1 opsional |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅ (gaya workflow mencakup release) | ✅ | ✅ / ✅ | ✅ | 3.3+ `workflow-*` secara default, 3.2 `legacy` opsional |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy; repositori diarsipkan |
+| Apache Oozie | `ecat-workflow-oozie` | ✅ (mengirim job XML) | ✅ | ✅ / ✅ | ✅ | retired, dipindahkan ke Attic |
+
+> Kontrak bersama berada di `ecat-workflow`: `WorkflowClient` + `WorkflowHttp` (TLS / Basic/Bearer / timeout / pemutus sirkuit / batas konkurensi). Setiap adaptor melaporkan kemampuan sebenarnya melalui `capabilities()`; operasi yang tidak didukung mengembalikan `WorkflowError::Unsupported`. DAG Airflow hanya dapat dibuat dengan men-deploy file; Kerberos pada Oozie belum didukung.
 
 ### Contoh Konfigurasi Database
 
@@ -344,6 +372,21 @@ e-cat/
 ├── ecat-data-tdengine/         # Backend time-series TDengine
 ├── ecat-data-mongodb/          # Backend dokumen MongoDB
 ├── ecat-data-s3/               # Backend object storage S3 / MinIO
+├── ecat-data-hadoop/           # Backend penyimpanan Hadoop WebHDFS
+├── ecat-data-hbase/            # Backend wide-column HBase REST
+├── ecat-data-cassandra/        # Backend CQL native Cassandra
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # Kueri Kylin via REST
+├── ecat-data-spark/            # Spark SQL via Livy
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog (hanya metadata)
+├── ecat-data-delta-sharing/    # Metadata hanya-baca Delta Sharing
+├── ecat-workflow/              # Kontrak alur kerja terpadu + shell HTTP
+├── ecat-workflow-airflow/      # Adaptor Airflow
+├── ecat-workflow-dolphinscheduler/ # Adaptor DolphinScheduler
+├── ecat-workflow-azkaban/      # Adaptor legacy Azkaban
+├── ecat-workflow-oozie/        # Adaptor Oozie (pensiun)
 ├── ecat-mq-rabbitmq/           # Backend pesan RabbitMQ
 ├── ecat-mq-mqtt/               # Backend pesan MQTT
 ├── ecat-mq-nats/               # Backend pesan NATS

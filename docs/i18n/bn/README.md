@@ -103,7 +103,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 - **ডিস্ট্রিবিউটেড ট্রেসিং**：রিকোয়েস্ট span, trace_id ইনজেকশন/এক্সট্রাকশন
 - **gRPC ক্লায়েন্ট**：GrpcClient সার্ভিস ডিসকভারি ও লোড ব্যালেন্সিং একীভূত
 - **মাল্টি-প্রোটোকল**：HTTP, gRPC, WebSocket, GraphQL ইউনিফাইড রাউটিং
-- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), অবজেক্ট স্টোরেজ (S3/MinIO), OLAP (ClickHouse)
+- **মাল্টি-ডেটাসোর্স**：RDBMS (SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks), ক্যাশ (Redis/Memcached), সার্চ (OpenSearch/Elasticsearch), গ্রাফ (Neo4j/NebulaGraph/ArangoDB), টাইম-সিরিজ (InfluxDB/IoTDB/QuestDB/TDengine), ডকুমেন্ট (MongoDB), ওয়াইড-কলাম (HBase/Cassandra), অবজেক্ট স্টোরেজ (S3/MinIO/HDFS), OLAP/লেকহাউস (ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon)
 
 ### Kratos কনসেপ্ট ম্যাপিং
 
@@ -150,6 +150,14 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | সার্চ | Elasticsearch | `ecat-data-elasticsearch` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | ক্যাশ | Memcached | `ecat-data-memcached` | ⚠️ মেমরি-ভিত্তিক (প্রোডাকশন নয়, স্থায়ী ক্যাশের জন্য ব্যবহার করবেন না) | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ বাস্তবায়িত | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ MySQL প্রোটোকল (`mysql_compat: "doris"`) | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ MySQL প্রোটোকল (`mysql_compat: "starrocks"`) | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| OLAP | Apache Hive | Trino Hive connector-এর মাধ্যমে | ✅ Trino-এর মাধ্যমে কুয়েরি | ✅ (Trino-এর মাধ্যমে) |
 | গ্রাফ | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | গ্রাফ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | গ্রাফ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
@@ -158,13 +166,33 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | টাইম-সিরিজ | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | টাইম-সিরিজ | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | ডকুমেন্ট | MongoDB | `ecat-data-mongodb` | ✅ নেটিভ ড্রাইভার | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| ওয়াইড-কলাম | Apache HBase | `ecat-data-hbase` | ✅ REST (hbase-rest) | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| ওয়াইড-কলাম | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL নেটিভ (scylla) | ✅ টাইমআউট + সার্কিট ব্রেকার |
 | অবজেক্ট স্টোরেজ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| অবজেক্ট স্টোরেজ | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| লেকহাউস মেটাডেটা | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog (শুধু মেটাডেটা) | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| লেকহাউস শেয়ারিং | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing (শুধু-পাঠ্য) | ✅ টাইমআউট + সার্কিট ব্রেকার |
+| লেকহাউস কুয়েরি | Apache Hudi | Trino / Spark-এর মাধ্যমে | ✅ ইঞ্জিনের মাধ্যমে কুয়েরি | ইঞ্জিনের সাথে |
+| লেকহাউস কুয়েরি | Apache Paimon | Flink / Spark / StarRocks / Doris-এর মাধ্যমে | ✅ ইঞ্জিনের মাধ্যমে কুয়েরি | ইঞ্জিনের সাথে |
 
 > **টাইমআউট/সার্কিট ব্রেকার**: টাইমআউট = কোয়েরি টাইমআউট `query_timeout_secs` (ডিফল্ট ৩০ সেকেন্ড, `0` = নিষ্ক্রিয়; memcached-এর ইন-মেমরি বাস্তবায়ন ছাড়া **সব** ডেটা ব্যাকএন্ডে কনফিগার করা যায়, MongoDB-এর কনকারেন্সি ব্যাকপ্রেশার ড্রাইভার কানেকশন পুল `max_pool_size`-এ চলে); সার্কিট ব্রেকার = **প্রতিটি client-এর নিজস্ব** `ecat_circuit_breaker::Breaker` (ব্যর্থতার হার 0.5 / উইন্ডো ৩০ সেকেন্ড / হাফ-ওপেন প্রোব ৩ / খোলা ১০ সেকেন্ড, কোনো `enabled` মাস্টার সুইচ নেই); HTTP ব্যাকএন্ডে অতিরিক্তভাবে `max_concurrency` (ডিফল্ট ৩২) আছে। `ecat_data::CircuitBreakerExecutor` এখনও যেকোনো `SqlExecutor` ব্যাকএন্ড মোড়াতে পারে। রিড/রাইট বিভাজনে `ecat_data::RdbmsRouting`: লেখা প্রাইমারিতে, পড়া রেপ্লিকাগুলোতে পালাক্রমে, এবং **যে রেপ্লিকার সার্কিট ব্রেকার খোলা তা এড়িয়ে যাওয়া হয়**; কোনো রেপ্লিকা না থাকলে ডিফল্টভাবে প্রাইমারিতে অবনমন, আর `fallback_to_primary(false)` হলে `RdbmsError::NoAvailableReplica` ফেরে।
 
-> সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
+> সব ডেটা ব্যাকএন্ড ইউনিফাইড trait অ্যাবস্ট্রাকশনের মাধ্যমে (`RdbmsClient` ট্রানজেকশনের জন্য, `SqlExecutor` এক্সিকিউশন ও ডায়ালেক্টের জন্য / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`), প্রয়োজন অনুযায়ী সংশ্লিষ্ট contrib crate অন্তর্ভুক্ত করুন। Iceberg / Delta Sharing এই trait-গুলোর অংশ নয়: এগুলো স্বাধীন ক্যাটালগ/শেয়ারিং মেটাডেটা ক্লায়েন্ট। Hive / Hudi / Paimon Trino / Flink / Spark-এর মাধ্যমে কুয়েরি করা হয় এবং এদের স্বাধীন client নেই। প্রতিটি ব্যাকএন্ড `XxxConfig` স্ট্রাক্ট (`#[derive(Deserialize)]`) প্রদান করে, JSON/YAML কনফিগ ফাইল থেকে সংযোগ তথ্য লোড করা যায়।
+
+> **লেকহাউস/ইঞ্জিন অ্যাক্সেস**：Hive কুয়েরি করা হয় Trino Hive connector-এর মাধ্যমে (Hive Metastore বা Glue প্রয়োজন); Hudi Trino Hudi connector-এর মাধ্যমে (Hudi ≥ 0.12.3, HMS, Parquet, এবং টেবিলটি HMS-এ sync করা থাকতে হবে) অথবা Spark; Paimon Flink / Spark / StarRocks / Doris-এর মাধ্যমে (Trino-এর Paimon প্লাগইন Trino 440-এ পিন করা); Delta Sharing শুধু provider-শেয়ার করা টেবিল পড়তে পারে, কোনো ইচ্ছামতো পথ নয়। Iceberg / Delta Sharing ক্লায়েন্ট শুধু মেটাডেটা নিয়ে কাজ করে; এরা Parquet / manifest / snapshot ডিকোড করে না।
 
 > **কনস্ট্রাক্টর নামকরণ কনভেনশন**：মেসেজ কিউ crates (`ecat-mq-*`) এর প্রধান কনস্ট্রাক্টর একই `connect` (যেমন `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), সাথে `from_config` কনফিগ থেকে লোড করার জন্য; ডেটা ব্যাকএন্ড crates (`ecat-data-*`) এর বেশিরভাগ প্রধান কনস্ট্রাক্টর `new`, ব্যতিক্রম: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` `connect` অনুসরণ করে, `ecat-data-mongodb` / `ecat-data-s3` শুধুমাত্র `from_config` প্রদান করে। এটি বিদ্যমান কনভেনশন, বাধ্যতামূলকভাবে একীভূত নয় (ব্রেকিং পরিবর্তন এড়াতে); 3.0 উইন্ডোতে একীকরণ মূল্যায়ন করা যেতে পারে।
+
+### ওয়ার্কফ্লো অর্কেস্ট্রেশন (4 ইঞ্জিন)
+
+| ইঞ্জিন | Crate | তৈরি | ট্রিগার | অবস্থা/বাতিল | তালিকা | নোট |
+|--------|-------|------|---------|---------------|--------|------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌ (DAG ফাইল হিসেবে ডিপ্লয় করা হয়) | ✅ | ✅ / ✅ (ব্যর্থ হিসেবে চিহ্নিত) | ✅ (dag_id প্রয়োজন) | ডিফল্ট REST API v2, v1 ঐচ্ছিক |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅ (workflow শৈলীতে release অন্তর্ভুক্ত) | ✅ | ✅ / ✅ | ✅ | ডিফল্ট 3.3+ `workflow-*`, 3.2 `legacy` ঐচ্ছিক |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy; রিপোজিটরি আর্কাইভ করা হয়েছে |
+| Apache Oozie | `ecat-workflow-oozie` | ✅ (job XML সাবমিট করে) | ✅ | ✅ / ✅ | ✅ | retired, Attic-এ স্থানান্তরিত |
+
+> শেয়ার্ড কনট্র্যাক্ট `ecat-workflow`-এ: `WorkflowClient` + `WorkflowHttp` (TLS / Basic/Bearer / টাইমআউট / সার্কিট ব্রেকার / কনকারেন্সি সীমা)। প্রতিটি অ্যাডাপ্টার `capabilities()`-এর মাধ্যমে প্রকৃত সক্ষমতা জানায়; অসমর্থিত অপারেশন `WorkflowError::Unsupported` রিটার্ন করে। Airflow-এর DAG শুধুমাত্র ফাইল ডিপ্লয় করে তৈরি করা যায়; Oozie-এর Kerberos এখনও সমর্থিত নয়।
 
 ### ডেটাবেস কনফিগ উদাহরণ
 
@@ -344,6 +372,21 @@ e-cat/
 ├── ecat-data-tdengine/         # TDengine টাইম-সিরিজ ব্যাকএন্ড
 ├── ecat-data-mongodb/          # MongoDB ডকুমেন্ট ব্যাকএন্ড
 ├── ecat-data-s3/               # S3 / MinIO অবজেক্ট স্টোরেজ ব্যাকএন্ড
+├── ecat-data-hadoop/           # Hadoop WebHDFS স্টোরেজ ব্যাকএন্ড
+├── ecat-data-hbase/            # HBase REST ওয়াইড-কলাম ব্যাকএন্ড
+├── ecat-data-cassandra/        # Cassandra নেটিভ CQL ব্যাকএন্ড
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # Kylin কুয়েরি REST
+├── ecat-data-spark/            # Spark SQL (Livy-এর মাধ্যমে)
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog (শুধু মেটাডেটা)
+├── ecat-data-delta-sharing/    # Delta Sharing শুধু-পাঠ্য মেটাডেটা
+├── ecat-workflow/              # ইউনিফাইড ওয়ার্কফ্লো কনট্র্যাক্ট + HTTP শেল
+├── ecat-workflow-airflow/      # Airflow অ্যাডাপ্টার
+├── ecat-workflow-dolphinscheduler/ # DolphinScheduler অ্যাডাপ্টার
+├── ecat-workflow-azkaban/      # Azkaban legacy অ্যাডাপ্টার
+├── ecat-workflow-oozie/        # Oozie retired অ্যাডাপ্টার
 ├── ecat-mq-rabbitmq/           # RabbitMQ মেসেজ ব্যাকএন্ড
 ├── ecat-mq-mqtt/               # MQTT মেসেজ ব্যাকএন্ড
 ├── ecat-mq-nats/               # NATS মেসেজ ব্যাকএন্ড

@@ -149,6 +149,7 @@ sql:
 | `slow_query_ms` | `u64` | `1000` | Seuil d'alerte de requête lente (ms) ; non configuré = 1000, **0 = désactivé** (feature `tracing` uniquement) |
 | `test_before_acquire` | `bool` | `false` | Ping avant de remettre la connexion |
 | `session_init` | `string[]` | Selon le dialecte | Instructions d'initialisation de session pour chaque nouvelle connexion |
+| `mysql_compat` | `"mysql"` / `"doris"` / `"starrocks"` | `"mysql"` | Mode de compatibilité du protocole MySQL ; ne s'applique qu'à `mysql://` |
 
 #### `session_init` (initialisation de session)
 
@@ -172,6 +173,25 @@ sql:
     - "SET time_zone = '+00:00'"
     - "SET NAMES utf8mb4"
 ```
+
+#### `mysql_compat` (Doris / StarRocks)
+
+Doris et StarRocks utilisent le protocole wire MySQL, mais sqlx envoie par défaut
+`SET sql_mode=(SELECT CONCAT(@@sql_mode,...))` à la connexion ; StarRocks ne prend
+pas en charge cette sous-requête et la connexion échoue immédiatement.
+`mysql_compat` désactive `pipes_as_concat` et `no_engine_substitution` dans les
+options de connexion et utilise explicitement `utf8mb4` / `utf8mb4_general_ci` :
+
+```yaml
+sql:
+  url: "mysql://fe-host:9030/dbname"   # query_port du FE pour Doris / StarRocks
+  mysql_compat: "starrocks"            # "doris" pour Doris ; MySQL natif garde la valeur par défaut
+```
+
+> Ces deux commutateurs ne peuvent pas être définis via des paramètres d'URL ;
+> utilisez le champ de configuration ou `SqlxClient::connect_with_mysql_compat()`.
+> La compatibilité DML préparée de StarRocks dépend de la version ; en cas
+> d'erreur 1295, ajoutez `?statement-cache-capacity=0` à l'URL et passez au protocole texte.
 
 #### `warm_up()` — Préchauffage
 

@@ -103,7 +103,7 @@
 - **التتبع الموزع**: spans الطلبات، حقن/استخراج trace_id
 - **عميل gRPC**: يدمج GrpcClient اكتشاف الخدمات وموازنة الحمل
 - **متعدد البروتوكولات**: توجيه موحد لـ HTTP وgRPC وWebSocket وGraphQL
-- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، التخزين الكائني (S3/MinIO)، OLAP (ClickHouse)
+- **مصادر بيانات متعددة**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks)، التخزين المؤقت (Redis/Memcached)، البحث (OpenSearch/Elasticsearch)، الرسوم البيانية (Neo4j/NebulaGraph/ArangoDB)، السلاسل الزمنية (InfluxDB/IoTDB/QuestDB/TDengine)، المستندات (MongoDB)، أعمدة واسعة (HBase/Cassandra)، التخزين الكائني (S3/MinIO/HDFS)، OLAP/بحيرة البيانات (ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon)
 
 ### مقارنة مفاهيم Kratos
 
@@ -150,6 +150,14 @@
 | البحث | Elasticsearch | `ecat-data-elasticsearch` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
 | التخزين المؤقت | Memcached | `ecat-data-memcached` | ⚠️ تنفيذ في الذاكرة (غير مناسب للإنتاج، لا تستخدمه للتخزين المؤقت الدائم) | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ مُنفَّذ | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ بروتوكول MySQL (`mysql_compat: "doris"`) | ✅ المهلة + قاطع الدائرة |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ بروتوكول MySQL (`mysql_compat: "starrocks"`) | ✅ المهلة + قاطع الدائرة |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ المهلة + قاطع الدائرة |
+| OLAP | Apache Hive | عبر Trino Hive connector | ✅ يُستعلم عبر Trino | ✅ (عبر Trino) |
 | الرسوم البيانية | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ المهلة + قاطع الدائرة |
 | الرسوم البيانية | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ المهلة + قاطع الدائرة |
 | الرسوم البيانية | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ المهلة + قاطع الدائرة |
@@ -158,13 +166,33 @@
 | السلاسل الزمنية | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ المهلة + قاطع الدائرة |
 | السلاسل الزمنية | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ المهلة + قاطع الدائرة |
 | المستندات | MongoDB | `ecat-data-mongodb` | ✅ مشغّل أصلي | ✅ المهلة + قاطع الدائرة |
+| أعمدة واسعة | Apache HBase | `ecat-data-hbase` | ✅ REST (hbase-rest) | ✅ المهلة + قاطع الدائرة |
+| أعمدة واسعة | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL أصلي (scylla) | ✅ المهلة + قاطع الدائرة |
 | التخزين الكائني | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ المهلة + قاطع الدائرة |
+| التخزين الكائني | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ المهلة + قاطع الدائرة |
+| بيانات وصفية لبحيرة البيانات | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog (بيانات وصفية فقط) | ✅ المهلة + قاطع الدائرة |
+| مشاركة بحيرة البيانات | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing (للقراءة فقط) | ✅ المهلة + قاطع الدائرة |
+| استعلام بحيرة البيانات | Apache Hudi | عبر Trino / Spark | ✅ يُستعلم عبر محرك | مع المحرك |
+| استعلام بحيرة البيانات | Apache Paimon | عبر Flink / Spark / StarRocks / Doris | ✅ يُستعلم عبر محرك | مع المحرك |
 
 > **المهلة/قاطع الدائرة**: المهلة = مهلة الاستعلام `query_timeout_secs` (الافتراضي 30 ثانية، `0` = معطّل؛ قابلة للضبط في **كل** خلفيات البيانات عدا تنفيذ memcached في الذاكرة، والضغط الخلفي للتزامن في MongoDB يمر عبر مجمّع اتصالات المشغّل `max_pool_size`)؛ قاطع الدائرة = **لكل client قاطعه الخاص** `ecat_circuit_breaker::Breaker` (نسبة الفشل 0.5 / النافذة 30 ثانية / فحوص نصف مفتوحة 3 / مدة الفتح 10 ثوانٍ، بدون مفتاح رئيسي `enabled`)؛ خلفيات HTTP لديها أيضًا `max_concurrency` (الافتراضي 32). لا يزال بإمكان `ecat_data::CircuitBreakerExecutor` تغليف أي خلفية `SqlExecutor`. فصل القراءة/الكتابة يستخدم `ecat_data::RdbmsRouting`: الكتابة إلى الأساسي، والقراءة بالتناوب على النسخ المتماثلة مع **تخطي النسخ التي قاطع دائرتها مفتوح**؛ وعند تعذّر أي نسخة يتم افتراضيًا الرجوع إلى الأساسي، ومع `fallback_to_primary(false)` يُعاد `RdbmsError::NoAvailableReplica`.
 
-> جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
+> جميع الخلفيات البياناتية مُجرّدة عبر traits موحّدة (`RdbmsClient` يدير المعاملات، و`SqlExecutor` يدير التنفيذ واللهجة / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`)؛ استورد crate المساهمة المناسبة حسب الحاجة. Iceberg / Delta Sharing ليست جزءًا من هذه traits: فهي عملاء مستقلون لبيانات وصفية للكتالوج/المشاركة. Hive / Hudi / Paimon تُستعلم عبر Trino / Flink / Spark وليس لها عميل مستقل. يوفر كل خلفية بنية `XxxConfig` (`#[derive(Deserialize)]`) تدعم تحميل معلومات الاتصال من ملفات إعدادات JSON/YAML.
+
+> **الوصول إلى lakehouse/المحركات**: يُستعلم Hive عبر Trino Hive connector (يتطلب Hive Metastore أو Glue)؛ وHudi عبر Trino Hudi connector (يتطلب Hudi ≥ 0.12.3 وHMS وParquet، مع مزامنة الجدول إلى HMS) أو Spark؛ وPaimon عبر Flink / Spark / StarRocks / Doris (إضافة Paimon في Trino مثبتة على Trino 440)؛ ولا يستطيع Delta Sharing قراءة سوى الجداول التي يشاركها provider، وليس مسارات عشوائية. تعالج عملاء Iceberg / Delta Sharing البيانات الوصفية فقط؛ ولا تفكّ ترميز Parquet أو manifest أو اللقطات.
 
 > **اصطلاح تسمية البنّاءين**: crates قوائم الرسائل (`ecat-mq-*`) تستخدم `connect` كبنّاء أساسي موحد (مثل `KafkaMq::connect(brokers)` و`MqttMq::connect(url)`)، وتوفر أيضًا `from_config` للتحميل من الإعدادات؛ معظم crates خلفيات البيانات (`ecat-data-*`) تستخدم `new` كبنّاء أساسي، مع استثناءات: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` تحافظان على `connect`، و`ecat-data-mongodb` / `ecat-data-s3` توفران `from_config` فقط. هذا اصطلاح قائم ولا يُفرض توحيده (لتجنب التغييرات الكاسرة)؛ يمكن تقييم التوحيد في نافذة 3.0.
+
+### تنسيق سير العمل (4 محركات)
+
+| المحرك | Crate | الإنشاء | التشغيل | الحالة/الإلغاء | القائمة | ملاحظات |
+|--------|-------|---------|---------|----------------|---------|---------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌ (تُنشر DAG كملفات) | ✅ | ✅ / ✅ (يُعلَّم كفاشل) | ✅ (يتطلب dag_id) | REST API v2 افتراضيًا، v1 اختياري |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅ (نمط workflow يتضمن release) | ✅ | ✅ / ✅ | ✅ | 3.3+ `workflow-*` افتراضيًا، 3.2 `legacy` اختياري |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy؛ المستودع مؤرشف |
+| Apache Oozie | `ecat-workflow-oozie` | ✅ (يرسل job XML) | ✅ | ✅ / ✅ | ✅ | retired، نُقل إلى Attic |
+
+> العقد الموحّد في `ecat-workflow`: `WorkflowClient` + `WorkflowHttp` (TLS / Basic/Bearer / مهلة / قاطع دائرة / حد التزامن). يبلّغ كل محوّل عن قدراته الفعلية عبر `capabilities()`؛ وتعيد العمليات غير المدعومة `WorkflowError::Unsupported`. لا يمكن إنشاء DAG في Airflow إلا بنشر الملفات؛ وKerberos في Oozie غير مدعوم بعد.
 
 ### مثال على إعداد قاعدة البيانات
 
@@ -343,6 +371,21 @@ e-cat/
 ├── ecat-data-tdengine/         # خلفية السلاسل الزمنية TDengine
 ├── ecat-data-mongodb/          # خلفية المستندات MongoDB
 ├── ecat-data-s3/               # خلفية التخزين الكائني S3 / MinIO
+├── ecat-data-hadoop/           # خلفية تخزين Hadoop WebHDFS
+├── ecat-data-hbase/            # خلفية أعمدة واسعة HBase REST
+├── ecat-data-cassandra/        # خلفية Cassandra أصلية CQL
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # استعلام Kylin عبر REST
+├── ecat-data-spark/            # Spark SQL عبر Livy
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog (بيانات وصفية فقط)
+├── ecat-data-delta-sharing/    # بيانات وصفية للقراءة فقط من Delta Sharing
+├── ecat-workflow/              # عقد سير عمل موحد + غلاف HTTP
+├── ecat-workflow-airflow/      # محوّل Airflow
+├── ecat-workflow-dolphinscheduler/ # محوّل DolphinScheduler
+├── ecat-workflow-azkaban/      # محوّل Azkaban القديم
+├── ecat-workflow-oozie/        # محوّل Oozie المتقاعد
 ├── ecat-mq-rabbitmq/           # خلفية رسائل RabbitMQ
 ├── ecat-mq-mqtt/               # خلفية رسائل MQTT
 ├── ecat-mq-nats/               # خلفية رسائل NATS

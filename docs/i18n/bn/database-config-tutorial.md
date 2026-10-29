@@ -149,6 +149,7 @@ sql:
 | `slow_query_ms` | `u64` | `1000` | স্লো কুয়েরি সতর্কতার থ্রেশহোল্ড (মিলিসেকেন্ড); সেট না থাকলে = 1000, **0 = বন্ধ** (শুধু `tracing` feature) |
 | `test_before_acquire` | `bool` | `false` | সংযোগ দেওয়ার আগে ping করা হবে কি না |
 | `session_init` | `string[]` | ডায়ালেক্ট অনুযায়ী | প্রতিটি নতুন সংযোগের সেশন ইনিশিয়ালাইজেশন স্টেটমেন্ট |
+| `mysql_compat` | `"mysql"` / `"doris"` / `"starrocks"` | `"mysql"` | MySQL প্রোটোকল সামঞ্জস্য মোড; শুধুমাত্র `mysql://`-এ কার্যকর |
 
 #### `session_init` (সেশন ইনিশিয়ালাইজেশন)
 
@@ -172,6 +173,25 @@ sql:
     - "SET time_zone = '+00:00'"
     - "SET NAMES utf8mb4"
 ```
+
+#### `mysql_compat` (Doris / StarRocks)
+
+Doris ও StarRocks MySQL wire প্রোটোকল ব্যবহার করে, কিন্তু sqlx সংযোগের সময়
+ডিফল্টভাবে `SET sql_mode=(SELECT CONCAT(@@sql_mode,...))` পাঠায়; StarRocks এই
+সাবকোয়েরি সমর্থন করে না, তাই সংযোগ সরাসরি ব্যর্থ হয়। `mysql_compat` সংযোগ
+বিকল্পে `pipes_as_concat` ও `no_engine_substitution` বন্ধ করে এবং স্পষ্টভাবে
+`utf8mb4` / `utf8mb4_general_ci` ব্যবহার করে:
+
+```yaml
+sql:
+  url: "mysql://fe-host:9030/dbname"   # Doris / StarRocks-এর FE query_port
+  mysql_compat: "starrocks"            # Doris-এর জন্য "doris"; নেটিভ MySQL ডিফল্ট রাখে
+```
+
+> এই দুটি সুইচ URL প্যারামিটার দিয়ে সেট করা যায় না; কনফিগ ফিল্ড বা
+> `SqlxClient::connect_with_mysql_compat()` ব্যবহার করুন। StarRocks-এর
+> prepared DML সামঞ্জস্য সংস্করণভেদে ভিন্ন; 1295 পেলে URL-এ
+> `?statement-cache-capacity=0` যোগ করে টেক্সট প্রোটোকলে যান।
 
 #### `warm_up()` — ওয়ার্ম-আপ
 

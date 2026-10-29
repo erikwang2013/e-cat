@@ -103,7 +103,7 @@ It offers an API-first development experience, a pluggable component architectur
 - **Distributed tracing**: request spans, trace_id injection/extraction
 - **gRPC client**: GrpcClient integrates service discovery and load balancing
 - **Multi-protocol**: unified routing for HTTP, gRPC, WebSocket, and GraphQL
-- **Multiple data sources**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), time series (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), object storage (S3/MinIO), OLAP (ClickHouse)
+- **Multiple data sources**: RDBMS (SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks), cache (Redis/Memcached), search (OpenSearch/Elasticsearch), graph (Neo4j/NebulaGraph/ArangoDB), time series (InfluxDB/IoTDB/QuestDB/TDengine), document (MongoDB), wide-column (HBase/Cassandra), object storage (S3/MinIO/HDFS), OLAP/lakehouse (ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon)
 
 ### Kratos Concept Mapping
 
@@ -150,6 +150,14 @@ It offers an API-first development experience, a pluggable component architectur
 | Search | Elasticsearch | `ecat-data-elasticsearch` | ✅ Implemented | ✅ Timeout + Breaker |
 | Cache | Memcached | `ecat-data-memcached` | ⚠️ In-memory implementation (not for production, do not use for persistent caching) | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ Implemented | ✅ Timeout + Breaker |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ MySQL protocol (`mysql_compat: "doris"`) | ✅ Timeout + Breaker |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ MySQL protocol (`mysql_compat: "starrocks"`) | ✅ Timeout + Breaker |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ Timeout + Breaker |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ Timeout + Breaker |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ Timeout + Breaker |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ Timeout + Breaker |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ Timeout + Breaker |
+| OLAP | Apache Hive | via Trino Hive connector | ✅ Queried through Trino | ✅ (via Trino) |
 | Graph | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ Timeout + Breaker |
 | Graph | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ Timeout + Breaker |
 | Graph | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ Timeout + Breaker |
@@ -158,13 +166,33 @@ It offers an API-first development experience, a pluggable component architectur
 | Time series | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ Timeout + Breaker |
 | Time series | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ Timeout + Breaker |
 | Document | MongoDB | `ecat-data-mongodb` | ✅ Native driver | ✅ Timeout + Breaker |
+| Wide-column | Apache HBase | `ecat-data-hbase` | ✅ REST (hbase-rest) | ✅ Timeout + Breaker |
+| Wide-column | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL native (scylla) | ✅ Timeout + Breaker |
 | Object storage | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ Timeout + Breaker |
+| Object storage | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ Timeout + Breaker |
+| Lakehouse metadata | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog (metadata only) | ✅ Timeout + Breaker |
+| Lakehouse sharing | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing (read-only) | ✅ Timeout + Breaker |
+| Lakehouse query | Apache Hudi | via Trino / Spark | ✅ Queried through an engine | With the engine |
+| Lakehouse query | Apache Paimon | via Flink / Spark / StarRocks / Doris | ✅ Queried through an engine | With the engine |
 
 > **Timeout/breaker**: timeout = the query timeout `query_timeout_secs` (default 30 s, `0` = disabled; configurable on **all** data backends except the memcached in-memory implementation; MongoDB's concurrency backpressure goes through the driver connection pool `max_pool_size`); breaker = **every client carries its own** `ecat_circuit_breaker::Breaker` (failure ratio 0.5 / window 30 s / half-open probes 3 / open 10 s, no `enabled` master switch); HTTP backends additionally have `max_concurrency` (default 32). `ecat_data::CircuitBreakerExecutor` can still wrap any `SqlExecutor` backend. Read/write splitting uses `ecat_data::RdbmsRouting`: writes go to the primary, reads round-robin across replicas and **skip replicas whose breaker is open**; when no replica is available it falls back to the primary by default, or returns `RdbmsError::NoAvailableReplica` with `fallback_to_primary(false)`.
 
-> All data backends are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`); import the corresponding contrib crate as needed. Each backend provides an `XxxConfig` struct (`#[derive(Deserialize)]`) that supports loading connection information from JSON/YAML config files.
+> All data backends are abstracted through unified traits (`RdbmsClient` for transactions and `SqlExecutor` for execution/dialect / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`); import the corresponding contrib crate as needed. Iceberg / Delta Sharing are not part of these traits: they are standalone catalog/sharing metadata clients. Hive / Hudi / Paimon are queried through Trino / Flink / Spark and have no standalone client. Each backend provides an `XxxConfig` struct (`#[derive(Deserialize)]`) that supports loading connection information from JSON/YAML config files.
+
+> **Lakehouse/engine access**: Hive is queried through the Trino Hive connector (requires a Hive Metastore or Glue); Hudi through the Trino Hudi connector (Hudi ≥ 0.12.3, HMS, Parquet, table synced to HMS) or Spark; Paimon through Flink / Spark / StarRocks / Doris (the Trino Paimon plugin is pinned to Trino 440); Delta Sharing can only read tables a provider shares, not arbitrary paths. The Iceberg / Delta Sharing clients handle metadata only; they do not decode Parquet, manifests, or snapshots.
 
 > **Constructor naming convention**: the message queue crates (`ecat-mq-*`) uniformly use `connect` as the primary constructor (e.g. `KafkaMq::connect(brokers)`, `MqttMq::connect(url)`), and also provide `from_config` for loading from config; most data backend crates (`ecat-data-*`) use `new`, with exceptions: `ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` keep `connect`, and `ecat-data-mongodb` / `ecat-data-s3` only provide `from_config`. This is an existing convention and is not forced to be unified (to avoid breaking changes); unification can be evaluated in the 3.0 window.
+
+### Workflow orchestration (4 engines)
+
+| Engine | Crate | Create | Trigger | Status/Cancel | List | Notes |
+|--------|-------|--------|---------|---------------|------|-------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌ (DAGs are deployed as files) | ✅ | ✅ / ✅ (marks failed) | ✅ (requires dag_id) | REST API v2 by default, v1 optional |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅ (workflow style includes release) | ✅ | ✅ / ✅ | ✅ | 3.3+ `workflow-*` by default, 3.2 `legacy` optional |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy; repository archived |
+| Apache Oozie | `ecat-workflow-oozie` | ✅ (submits job XML) | ✅ | ✅ / ✅ | ✅ | retired, moved to the Attic |
+
+> The shared contract lives in `ecat-workflow`: `WorkflowClient` + `WorkflowHttp` (TLS / Basic/Bearer / timeout / breaker / concurrency cap). Each adapter reports its real capabilities through `capabilities()`; unsupported operations return `WorkflowError::Unsupported`. Airflow DAGs can only be created by deploying files; Oozie Kerberos is not supported yet.
 
 ### Database Configuration Example
 
@@ -344,6 +372,21 @@ e-cat/
 ├── ecat-data-tdengine/         # TDengine time-series backend
 ├── ecat-data-mongodb/          # MongoDB document backend
 ├── ecat-data-s3/               # S3 / MinIO object storage backend
+├── ecat-data-hadoop/           # Hadoop WebHDFS storage backend
+├── ecat-data-hbase/            # HBase REST wide-column backend
+├── ecat-data-cassandra/        # Cassandra native CQL backend
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # Kylin query REST
+├── ecat-data-spark/            # Spark SQL via Livy
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog (metadata only)
+├── ecat-data-delta-sharing/    # Delta Sharing read-only metadata
+├── ecat-workflow/              # Unified workflow contract + HTTP shell
+├── ecat-workflow-airflow/      # Airflow adapter
+├── ecat-workflow-dolphinscheduler/ # DolphinScheduler adapter
+├── ecat-workflow-azkaban/      # Azkaban legacy adapter
+├── ecat-workflow-oozie/        # Oozie retired adapter
 ├── ecat-mq-rabbitmq/           # RabbitMQ message backend
 ├── ecat-mq-mqtt/               # MQTT message backend
 ├── ecat-mq-nats/               # NATS message backend

@@ -103,7 +103,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 - **分散トレーシング**：リクエスト span、trace_id の注入/抽出
 - **gRPC クライアント**：GrpcClient がサービスディスカバリとロードバランシングを統合
 - **マルチプロトコル**：HTTP、gRPC、WebSocket、GraphQL の統一ルーティング
-- **マルチデータソース**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server）、キャッシュ（Redis/Memcached）、検索（OpenSearch/Elasticsearch）、グラフ（Neo4j/NebulaGraph/ArangoDB）、時系列（InfluxDB/IoTDB/QuestDB/TDengine）、ドキュメント（MongoDB）、オブジェクトストレージ（S3/MinIO）、OLAP（ClickHouse）
+- **マルチデータソース**：RDBMS（SQLite/PG/MySQL/TiDB/SQL Server/Doris/StarRocks）、キャッシュ（Redis/Memcached）、検索（OpenSearch/Elasticsearch）、グラフ（Neo4j/NebulaGraph/ArangoDB）、時系列（InfluxDB/IoTDB/QuestDB/TDengine）、ドキュメント（MongoDB）、ワイドカラム（HBase/Cassandra）、オブジェクトストレージ（S3/MinIO/HDFS）、OLAP/レイクハウス（ClickHouse/Trino/Druid/Kylin/Spark/Flink/Hive/Iceberg/Delta Sharing/Hudi/Paimon）
 
 ### Kratos コンセプトマッピング
 
@@ -150,6 +150,14 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | 検索 | Elasticsearch | `ecat-data-elasticsearch` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
 | キャッシュ | Memcached | `ecat-data-memcached` | ⚠️ メモリ実装（非本番用、永続キャッシュには使用しないでください） | — |
 | OLAP | ClickHouse | `ecat-data-clickhouse` | ✅ 実装済み | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Doris | `ecat-data-sqlx` | ✅ MySQL プロトコル（`mysql_compat: "doris"`） | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | StarRocks | `ecat-data-sqlx` | ✅ MySQL プロトコル（`mysql_compat: "starrocks"`） | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Trino | `ecat-data-trino` | ✅ SQL over HTTP | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Druid | `ecat-data-druid` | ✅ SQL HTTP | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Kylin | `ecat-data-kylin` | ✅ REST API | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Spark | `ecat-data-spark` | ✅ Livy REST | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Flink | `ecat-data-flink` | ✅ SQL Gateway | ✅ タイムアウト + サーキットブレーカー |
+| OLAP | Apache Hive | Trino Hive connector 経由 | ✅ Trino 経由でクエリ | ✅（Trino 経由） |
 | グラフ | Neo4j | `ecat-data-neo4j` | ✅ REST API | ✅ タイムアウト + サーキットブレーカー |
 | グラフ | NebulaGraph | `ecat-data-nebulagraph` | ✅ REST API | ✅ タイムアウト + サーキットブレーカー |
 | グラフ | ArangoDB | `ecat-data-arangodb` | ✅ REST API | ✅ タイムアウト + サーキットブレーカー |
@@ -158,13 +166,33 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | 時系列 | QuestDB | `ecat-data-questdb` | ✅ HTTP API | ✅ タイムアウト + サーキットブレーカー |
 | 時系列 | TDengine | `ecat-data-tdengine` | ✅ REST API | ✅ タイムアウト + サーキットブレーカー |
 | ドキュメント | MongoDB | `ecat-data-mongodb` | ✅ ネイティブドライバ | ✅ タイムアウト + サーキットブレーカー |
+| ワイドカラム | Apache HBase | `ecat-data-hbase` | ✅ REST（hbase-rest） | ✅ タイムアウト + サーキットブレーカー |
+| ワイドカラム | Apache Cassandra | `ecat-data-cassandra` | ✅ CQL ネイティブ（scylla） | ✅ タイムアウト + サーキットブレーカー |
 | オブジェクトストレージ | S3 / MinIO | `ecat-data-s3` | ✅ reqwest+rustls | ✅ タイムアウト + サーキットブレーカー |
+| オブジェクトストレージ | Hadoop HDFS | `ecat-data-hadoop` | ✅ WebHDFS | ✅ タイムアウト + サーキットブレーカー |
+| レイクハウスメタデータ | Apache Iceberg | `ecat-data-iceberg` | ✅ REST Catalog（メタデータのみ） | ✅ タイムアウト + サーキットブレーカー |
+| レイクハウス共有 | Delta Lake | `ecat-data-delta-sharing` | ✅ Delta Sharing（読み取り専用） | ✅ タイムアウト + サーキットブレーカー |
+| レイクハウスクエリ | Apache Hudi | Trino / Spark 経由 | ✅ エンジン経由でクエリ | エンジンに準ずる |
+| レイクハウスクエリ | Apache Paimon | Flink / Spark / StarRocks / Doris 経由 | ✅ エンジン経由でクエリ | エンジンに準ずる |
 
 > **タイムアウト/サーキットブレーカー**：タイムアウト = クエリタイムアウト `query_timeout_secs`（既定 30 秒、`0` = 無効。memcached のメモリ実装を除く**すべて**のデータバックエンドで設定でき、MongoDB の並行バックプレッシャはドライバの接続プール `max_pool_size` が担います）；サーキットブレーカー = **各 client が専用の** `ecat_circuit_breaker::Breaker` を持ちます（失敗率 0.5 / ウィンドウ 30 秒 / ハーフオープン試行 3 / オープン 10 秒、`enabled` のような一括スイッチはありません）；HTTP バックエンドには `max_concurrency`（既定 32）もあります。`ecat_data::CircuitBreakerExecutor` は引き続き任意の `SqlExecutor` バックエンドを包めます。読み書き分離は `ecat_data::RdbmsRouting`：書き込みはプライマリ、読み取りはレプリカをラウンドロビンし、**サーキットブレーカーが開いているレプリカはスキップ**します。全レプリカが使用不可なら既定でプライマリに降格し、`fallback_to_primary(false)` なら `RdbmsError::NoAvailableReplica` を返します。
 
-> すべてのデータバックエンドは統一 trait 抽象（`RdbmsClient` はトランザクション、`SqlExecutor` は実行とダイアレクト / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient`）を通じて利用でき、必要に応じて対応する contrib crate を導入します。各バックエンドは `XxxConfig` 構造体（`#[derive(Deserialize)]`）を提供し、JSON/YAML 設定ファイルから接続情報をロードできます。
+> すべてのデータバックエンドは統一 trait 抽象（`RdbmsClient` はトランザクション、`SqlExecutor` は実行とダイアレクト / `Cache` / `SearchClient` / `GraphClient` / `TsdbClient` / `DocumentClient` / `StorageClient` / `WideColumnClient`）を通じて利用でき、必要に応じて対応する contrib crate を導入します。Iceberg / Delta Sharing はこれらの trait に含まれません。独立したカタログ/共有メタデータクライアントです。Hive / Hudi / Paimon は Trino / Flink / Spark 経由でクエリされ、独立した client はありません。各バックエンドは `XxxConfig` 構造体（`#[derive(Deserialize)]`）を提供し、JSON/YAML 設定ファイルから接続情報をロードできます。
+
+> **レイクハウス/エンジンアクセス**：Hive は Trino Hive connector 経由でクエリされます（Hive Metastore または Glue が必要）。Hudi は Trino Hudi connector（Hudi ≥ 0.12.3、HMS、Parquet、テーブルが HMS に sync 済みであること）または Spark 経由です。Paimon は Flink / Spark / StarRocks / Doris 経由です（Trino の Paimon プラグインは Trino 440 に固定）。Delta Sharing は provider が共有したテーブルのみを読め、任意のパスは読めません。Iceberg / Delta Sharing クライアントはメタデータのみを扱い、Parquet / manifest / スナップショットは解析しません。
 
 > **コンストラクタ命名規約**：メッセージキュー crate（`ecat-mq-*`）の主コンストラクタは統一して `connect`（例：`KafkaMq::connect(brokers)`、`MqttMq::connect(url)`）、その他に設定からロードする `from_config` を提供；データバックエンド crate（`ecat-data-*`）の主コンストラクタは大半が `new`。例外：`ecat-data-redis` / `ecat-data-sqlx` / `ecat-data-mssql` は `connect` を踏襲、`ecat-data-mongodb` / `ecat-data-s3` は `from_config` のみ提供。これは既存の規約であり、強制はしません（破壊的変更を避けるため）；3.0 の窓口で統一を評価可能です。
+
+### ワークフローオーケストレーション（4 エンジン）
+
+| エンジン | Crate | 作成 | トリガー | ステータス/キャンセル | 一覧 | 備考 |
+|----------|-------|------|----------|----------------------|------|------|
+| Apache Airflow | `ecat-workflow-airflow` | ❌（DAG はファイルとしてデプロイ） | ✅ | ✅ / ✅（failed としてマーク） | ✅（dag_id が必要） | デフォルトは REST API v2、v1 も設定可能 |
+| Apache DolphinScheduler | `ecat-workflow-dolphinscheduler` | ✅（workflow スタイルで release を含む） | ✅ | ✅ / ✅ | ✅ | デフォルトは 3.3+ の `workflow-*`、3.2 の `legacy` も設定可能 |
+| Azkaban | `ecat-workflow-azkaban` | ✅ | ✅ | ✅ / ✅ | ❌ | legacy；リポジトリは archived |
+| Apache Oozie | `ecat-workflow-oozie` | ✅（job XML を送信） | ✅ | ✅ / ✅ | ✅ | retired、Attic に移動 |
+
+> 共通契約は `ecat-workflow` にあります：`WorkflowClient` + `WorkflowHttp`（TLS / Basic/Bearer / タイムアウト / サーキットブレーカー / 同時実行上限）。各アダプターの実際の機能は `capabilities()` を基準とし、未対応の操作は `WorkflowError::Unsupported` を返します。Airflow の DAG はファイルをデプロイする方法でのみ作成できます。Oozie の Kerberos はまだ未対応です。
 
 ### データベース設定例
 
@@ -343,6 +371,21 @@ e-cat/
 ├── ecat-data-tdengine/         # TDengine 時系列バックエンド
 ├── ecat-data-mongodb/          # MongoDB ドキュメントバックエンド
 ├── ecat-data-s3/               # S3 / MinIO オブジェクトストレージバックエンド
+├── ecat-data-hadoop/           # Hadoop WebHDFS ストレージバックエンド
+├── ecat-data-hbase/            # HBase REST ワイドカラムバックエンド
+├── ecat-data-cassandra/        # Cassandra ネイティブ CQL バックエンド
+├── ecat-data-trino/            # Trino SQL over HTTP
+├── ecat-data-druid/            # Druid SQL HTTP
+├── ecat-data-kylin/            # Kylin クエリ REST
+├── ecat-data-spark/            # Spark SQL（Livy 経由）
+├── ecat-data-flink/            # Flink SQL Gateway
+├── ecat-data-iceberg/          # Iceberg REST Catalog（メタデータのみ）
+├── ecat-data-delta-sharing/    # Delta Sharing 読み取り専用メタデータ
+├── ecat-workflow/              # 統一ワークフロー契約 + HTTP シェル
+├── ecat-workflow-airflow/      # Airflow アダプター
+├── ecat-workflow-dolphinscheduler/ # DolphinScheduler アダプター
+├── ecat-workflow-azkaban/      # Azkaban レガシーアダプター
+├── ecat-workflow-oozie/        # Oozie 廃止アダプター
 ├── ecat-mq-rabbitmq/           # RabbitMQ メッセージバックエンド
 ├── ecat-mq-mqtt/               # MQTT メッセージバックエンド
 ├── ecat-mq-nats/               # NATS メッセージバックエンド
