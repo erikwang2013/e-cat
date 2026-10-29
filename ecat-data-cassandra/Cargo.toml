@@ -1,0 +1,34 @@
+[package]
+name = "ecat-data-cassandra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Apache Cassandra CQL client for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ecat-data = { version = "7.3.0", path = "../ecat-data" }
+ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+ecat-circuit-breaker.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# 并发上限用 Semaphore。
+tokio = { workspace = true, features = ["sync"] }
+# 纯 Rust CQL 驱动；默认特性为空，只开 rustls（不开 OpenSSL）。
+scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
+# scylla 只接受 Arc<rustls::ClientConfig>，rustls 未 re-export，只能直接依赖。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+rustls-native-certs = "0.8"
+# 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
+ecat-metrics = { workspace = true, optional = true }
+
+[features]
+metrics = ["dep:ecat-metrics"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

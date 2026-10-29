@@ -24,7 +24,7 @@ use ecat_data::{
 };
 use std::time::Duration;
 
-pub use config::{PoolParams, SqlxConfig};
+pub use config::{MysqlCompat, PoolParams, SqlxConfig};
 #[cfg(feature = "health")]
 pub use health::RdbmsHealthCheck;
 #[cfg(feature = "metrics")]
@@ -119,8 +119,18 @@ impl SqlxClient {
     }
 
     pub async fn connect_with_params(url: &str, params: &PoolParams) -> Result<Self, sqlx::Error> {
+        Self::connect_with_mysql_compat(url, params, MysqlCompat::Mysql).await
+    }
+
+    /// 同 [`SqlxClient::connect_with_params`]，但可指定 MySQL 协议兼容模式。
+    /// Doris / StarRocks 走 `MysqlCompat::Doris` / `MysqlCompat::StarRocks`。
+    pub async fn connect_with_mysql_compat(
+        url: &str,
+        params: &PoolParams,
+        compat: MysqlCompat,
+    ) -> Result<Self, sqlx::Error> {
         Ok(Self {
-            pool: Pool::connect(url, params).await?,
+            pool: Pool::connect_with_mysql_compat(url, params, compat).await?,
             query_timeout: params.query_timeout,
             min_connections: params.min_connections,
             slow_query: params.slow_query,
@@ -153,7 +163,7 @@ impl SqlxClient {
             }
             _ => cfg.url.clone(),
         };
-        Self::connect_with_params(&url, &params).await
+        Self::connect_with_mysql_compat(&url, &params, cfg.mysql_compat.unwrap_or_default()).await
     }
 
     /// 用已有原生池构造客户端。

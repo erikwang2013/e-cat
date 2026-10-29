@@ -20,6 +20,8 @@ sql:
   url: "postgres://localhost:5432/myapp"
   # username: "app_user"     # 可选: 嵌入 URL 认证（与 password 配合）
   # password: "changeme"     # 可选
+  # Doris / StarRocks 同样走 mysql://（FE query_port，默认 9030），但需指定兼容模式：
+  # mysql_compat: "starrocks"   # 或 "doris"；原生 MySQL 省略
 
 # ── SQL Server ──────────────────────────────────────────────
 mssql:

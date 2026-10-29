@@ -1,10 +1,11 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
-use crate::config::PoolParams;
+use crate::config::{MysqlCompat, PoolParams};
 use ecat_data::Dialect;
-use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
+use sqlx::mysql::{MySqlConnectOptions, MySqlPool, MySqlPoolOptions};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use std::str::FromStr;
 
 /// 三种原生池。方言由变体本身承载 —— 不再解析 URL 猜测。
 ///
@@ -28,13 +29,22 @@ pub enum PoolGuard {
 impl Pool {
     /// 按 URL scheme 建立对应的原生池。
     pub async fn connect(url: &str, params: &PoolParams) -> Result<Self, sqlx::Error> {
+        Self::connect_with_mysql_compat(url, params, MysqlCompat::Mysql).await
+    }
+
+    /// 同 [`Pool::connect`]，但可指定 MySQL 协议兼容模式。
+    pub async fn connect_with_mysql_compat(
+        url: &str,
+        params: &PoolParams,
+        compat: MysqlCompat,
+    ) -> Result<Self, sqlx::Error> {
         match Dialect::from_url(url) {
             Dialect::Postgres => Ok(Self::Pg(
                 common_pg(PgPoolOptions::new(), params).connect(url).await?,
             )),
             Dialect::MySql => Ok(Self::My(
                 common_mysql(MySqlPoolOptions::new(), params)
-                    .connect(url)
+                    .connect_with(mysql_options(url, compat)?)
                     .await?,
             )),
             Dialect::Sqlite => Ok(Self::Sq(
@@ -140,6 +150,24 @@ fn common_pg(opts: PgPoolOptions, p: &PoolParams) -> PgPoolOptions {
     })
 }
 
+/// 解析 MySQL URL，并按兼容模式关闭 sqlx 默认的 sql_mode 子查询。
+///
+/// StarRocks 不支持 `SET sql_mode=(SELECT CONCAT(...))`（sqlx issue #3205），
+/// 而 `pipes_as_concat` / `no_engine_substitution` 只能通过连接选项设置，URL
+/// 参数无法表达。Doris / StarRocks 同时显式使用 utf8mb4 通用排序规则，避免
+/// sqlx 默认的 `utf8mb4_0900_ai_ci` 在旧服务端不存在。
+fn mysql_options(url: &str, compat: MysqlCompat) -> Result<MySqlConnectOptions, sqlx::Error> {
+    let opts = MySqlConnectOptions::from_str(url)?;
+    if compat == MysqlCompat::Mysql {
+        return Ok(opts);
+    }
+    Ok(opts
+        .pipes_as_concat(false)
+        .no_engine_substitution(false)
+        .charset("utf8mb4")
+        .collation("utf8mb4_general_ci"))
+}
+
 fn common_mysql(opts: MySqlPoolOptions, p: &PoolParams) -> MySqlPoolOptions {
     let opts = opts
         .max_connections(p.max_connections)
@@ -216,6 +244,28 @@ mod tests {
             msg.contains("oracle"),
             "错误信息必须点名 scheme，got: {msg}"
         );
+    }
+
+    /// Doris / StarRocks 兼容模式必须关掉 sqlx 默认的 sql_mode 子查询；
+    /// `MySqlConnectOptions` 的字段是私有的，这里用 Debug 输出钉住三个开关。
+    #[test]
+    fn starrocks_compat_disables_sql_mode_subquery() {
+        let opts = mysql_options("mysql://h:9030/db", MysqlCompat::StarRocks).unwrap();
+        let debug = format!("{opts:?}");
+        assert!(debug.contains("pipes_as_concat: false"), "{debug}");
+        assert!(debug.contains("no_engine_substitution: false"), "{debug}");
+        assert!(
+            debug.contains("collation: Some(\"utf8mb4_general_ci\")"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn mysql_default_keeps_sqlx_session_settings() {
+        let opts = mysql_options("mysql://h/db", MysqlCompat::Mysql).unwrap();
+        let debug = format!("{opts:?}");
+        assert!(debug.contains("pipes_as_concat: true"), "{debug}");
+        assert!(debug.contains("no_engine_substitution: true"), "{debug}");
     }
 
     /// Mssql 归 ecat-data-mssql（tiberius），不应被 sqlx 后端静默接受。

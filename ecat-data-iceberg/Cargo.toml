@@ -1,0 +1,26 @@
+[package]
+name = "ecat-data-iceberg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Apache Iceberg REST catalog client for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ecat-circuit-breaker.workspace = true
+ecat-data.workspace = true
+ecat-errors.workspace = true
+# ecat-tls / reqwest 不在 workspace.dependencies 表里，按表内约定直写。
+ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+# 并发上限用 Semaphore。
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }

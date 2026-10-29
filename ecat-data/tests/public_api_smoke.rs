@@ -2,7 +2,7 @@
 //!
 //! 覆盖项（参数与返回类型都钉住）：`Row::new` 的构造参数、`Row::get` 的返回类型、
 //! `SqlExecutor` 全部 7 个方法、`RdbmsClient::transaction/replica_lag`、`Cache`
-//! 三个必需方法与三个默认方法的返回值、`Dialect` 五个变体。
+//! 三个必需方法与三个默认方法的返回值、`WideColumnClient` 四个方法、`Dialect` 五个变体。
 //!
 //! 所有调用都写在从未实例化的泛型函数里 —— 泛型体在定义时即做类型检查，运行时
 //! 不会发生，因此不触达网络/磁盘。参数用显式类型绑定（而非 `&[]` 之类的可推断
@@ -12,7 +12,10 @@
 //! 变体）都会让本文件编译失败，从而在 CI 上红灯。`cargo semver-checks` 需要
 //! 7.1.1 baseline tag，落地前以此文件作为最低兼容门。
 
-use ecat_data::{Cache, Dialect, Error, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction};
+use ecat_data::{
+    Cache, Dialect, Error, RdbmsClient, RdbmsError, Row, SqlExecutor, Transaction, WideColumnClient,
+};
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 fn _assert_row(row: &Row) {
@@ -43,6 +46,17 @@ async fn _assert_executor<E: SqlExecutor>(e: &E) {
 async fn _assert_client<C: RdbmsClient>(c: &C) {
     let _: Result<Transaction, RdbmsError> = c.transaction().await;
     let _: Option<Duration> = c.replica_lag().await;
+}
+
+// 冒烟测试的职责就是钉住完整的公开签名，不抽 type alias。
+#[allow(clippy::type_complexity)]
+async fn _assert_wide_column<C: WideColumnClient>(c: &C) {
+    let cells: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let _: Result<(), Error> = c.put("t", "r", &cells).await;
+    let _: Result<Option<BTreeMap<String, serde_json::Value>>, Error> = c.get("t", "r").await;
+    let _: Result<Vec<(String, BTreeMap<String, serde_json::Value>)>, Error> =
+        c.scan("t", "prefix", 10).await;
+    let _: Result<(), Error> = c.delete("t", "r").await;
 }
 
 async fn _assert_cache<C: Cache>(c: &C) {

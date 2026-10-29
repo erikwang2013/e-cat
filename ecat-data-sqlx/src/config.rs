@@ -5,6 +5,24 @@ use ecat_tls::TlsClientConfig;
 use serde::Deserialize;
 use std::time::Duration;
 
+/// MySQL 协议兼容模式。
+///
+/// `Doris` / `StarRocks` 使用 MySQL wire protocol，但 sqlx 建连时默认会发
+/// `SET sql_mode=(SELECT CONCAT(@@sql_mode,...))`；StarRocks 不支持该子查询
+/// （sqlx issue #3205），必须在连接选项里关掉 `pipes_as_concat` 与
+/// `no_engine_substitution`。这两个开关无法通过 URL 参数设置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MysqlCompat {
+    /// 原生 MySQL / MariaDB / TiDB：保留 sqlx 的默认会话设置。
+    #[default]
+    Mysql,
+    /// Apache Doris：关闭 sqlx 的 sql_mode 子查询，显式 utf8mb4 通用排序规则。
+    Doris,
+    /// StarRocks：同 [`MysqlCompat::Doris`]。
+    StarRocks,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct SqlxConfig {
     pub url: String,
@@ -21,6 +39,12 @@ pub struct SqlxConfig {
     /// [`SqlxConfig::effective_session_init`]。
     #[serde(default)]
     pub session_init: Option<Vec<String>>,
+    /// MySQL 协议兼容模式。仅对 `mysql://` URL 生效；未配置 = [`MysqlCompat::Mysql`]。
+    ///
+    /// Doris / StarRocks 请显式设为 `"doris"` / `"starrocks"`，否则 sqlx 的默认
+    /// 建连 `SET sql_mode=(SELECT ...)` 可能在 StarRocks 上直接失败。
+    #[serde(default)]
+    pub mysql_compat: Option<MysqlCompat>,
 
     #[serde(default)]
     pub max_connections: Option<u32>,
@@ -192,6 +216,19 @@ mod tests {
         assert!(!p.test_before_acquire);
         assert!(cfg.session_init.is_none());
         assert_eq!(p.slow_query, Some(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn mysql_compat_is_parsed() {
+        let cfg: SqlxConfig =
+            serde_json::from_str(r#"{"url": "mysql://h:9030/db", "mysql_compat": "starrocks"}"#)
+                .unwrap();
+        assert_eq!(cfg.mysql_compat, Some(MysqlCompat::StarRocks));
+
+        let cfg: SqlxConfig =
+            serde_json::from_str(r#"{"url": "mysql://h:9030/db", "mysql_compat": "doris"}"#)
+                .unwrap();
+        assert_eq!(cfg.mysql_compat, Some(MysqlCompat::Doris));
     }
 
     #[test]

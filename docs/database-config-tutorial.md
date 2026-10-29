@@ -149,6 +149,7 @@ sql:
 | `slow_query_ms` | `u64` | `1000` | 慢查询告警阈值（毫秒）；未配置 = 1000，**0 = 不打**（仅 `tracing` feature） |
 | `test_before_acquire` | `bool` | `false` | 取连接时是否先 ping |
 | `session_init` | `string[]` | 按方言 | 每条新连接的会话初始化语句 |
+| `mysql_compat` | `"mysql"` / `"doris"` / `"starrocks"` | `"mysql"` | MySQL 协议兼容模式；仅 `mysql://` 生效 |
 
 #### `session_init`（会话初始化）
 
@@ -172,6 +173,23 @@ sql:
     - "SET time_zone = '+00:00'"
     - "SET NAMES utf8mb4"
 ```
+
+#### `mysql_compat`（Doris / StarRocks）
+
+Doris 与 StarRocks 使用 MySQL wire protocol，但 sqlx 建连时默认会发
+`SET sql_mode=(SELECT CONCAT(@@sql_mode,...))`；StarRocks 不支持该子查询，
+连接会直接失败。`mysql_compat` 会在连接选项里关掉 `pipes_as_concat` 与
+`no_engine_substitution`，并显式使用 `utf8mb4` / `utf8mb4_general_ci`：
+
+```yaml
+sql:
+  url: "mysql://fe-host:9030/dbname"   # Doris / StarRocks 的 FE query_port
+  mysql_compat: "starrocks"            # Doris 用 "doris"；原生 MySQL 保持默认
+```
+
+> 这两个开关无法通过 URL 参数设置，必须走配置字段或
+> `SqlxClient::connect_with_mysql_compat()`。StarRocks 的 prepared DML 兼容性
+> 依版本而异；如遇 1295，可在 URL 加 `?statement-cache-capacity=0` 并改用文本协议。
 
 #### `warm_up()` — 预热
 

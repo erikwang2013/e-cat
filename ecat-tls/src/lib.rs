@@ -45,60 +45,73 @@ impl TlsClientConfig {
     }
 
     pub fn build_reqwest_client(&self) -> Result<reqwest::Client, String> {
-        ensure_crypto_provider();
-        // S5：skip_verify 与 ca_cert 是矛盾配置（跳过校验却配置信任锚），
-        // 构建时拒绝，防止误配静默关闭证书校验。
-        if self.skip_verify == Some(true) && self.ca_cert.is_some() {
-            return Err(
-                "skip_verify=true cannot be combined with ca_cert: certificate verification \
-                 would be disabled while a trust anchor is configured"
-                    .into(),
-            );
-        }
-
-        let mut builder = reqwest::Client::builder().use_rustls_tls();
-
-        if self.skip_verify == Some(true) {
-            builder = builder.danger_accept_invalid_certs(true);
-        }
-
-        if let Some(ref ca_path) = self.ca_cert {
-            let ca_bytes = std::fs::read(ca_path).map_err(|e| format!("read ca {ca_path}: {e}"))?;
-            let ca = reqwest::tls::Certificate::from_pem(&ca_bytes)
-                .map_err(|e| format!("parse ca: {e}"))?;
-            builder = builder.add_root_certificate(ca);
-        }
-
-        if let (Some(cert_path), Some(key_path)) = (&self.client_cert, &self.client_key) {
-            let cert_bytes =
-                std::fs::read(cert_path).map_err(|e| format!("read cert {cert_path}: {e}"))?;
-            let key_bytes =
-                std::fs::read(key_path).map_err(|e| format!("read key {key_path}: {e}"))?;
-            let id = reqwest::tls::Identity::from_pem(&[cert_bytes, key_bytes].concat())
-                .map_err(|e| format!("parse identity: {e}"))?;
-            builder = builder.identity(id);
-        }
-
-        builder
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
+        reqwest_builder_for(self)?
             .build()
             .map_err(|e| format!("build tls client: {e}"))
+    }
+}
+
+/// 按 TLS 配置装配 builder（不 build）；供方法版与
+/// [`build_reqwest_client_builder`] 共用，避免两处配置漂移。
+fn reqwest_builder_for(cfg: &TlsClientConfig) -> Result<reqwest::ClientBuilder, String> {
+    ensure_crypto_provider();
+    // S5：skip_verify 与 ca_cert 是矛盾配置（跳过校验却配置信任锚），
+    // 构建时拒绝，防止误配静默关闭证书校验。
+    if cfg.skip_verify == Some(true) && cfg.ca_cert.is_some() {
+        return Err(
+            "skip_verify=true cannot be combined with ca_cert: certificate verification \
+             would be disabled while a trust anchor is configured"
+                .into(),
+        );
+    }
+
+    let mut builder = reqwest::Client::builder().use_rustls_tls();
+
+    if cfg.skip_verify == Some(true) {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    if let Some(ref ca_path) = cfg.ca_cert {
+        let ca_bytes = std::fs::read(ca_path).map_err(|e| format!("read ca {ca_path}: {e}"))?;
+        let ca =
+            reqwest::tls::Certificate::from_pem(&ca_bytes).map_err(|e| format!("parse ca: {e}"))?;
+        builder = builder.add_root_certificate(ca);
+    }
+
+    if let (Some(cert_path), Some(key_path)) = (&cfg.client_cert, &cfg.client_key) {
+        let cert_bytes =
+            std::fs::read(cert_path).map_err(|e| format!("read cert {cert_path}: {e}"))?;
+        let key_bytes = std::fs::read(key_path).map_err(|e| format!("read key {key_path}: {e}"))?;
+        let id = reqwest::tls::Identity::from_pem(&[cert_bytes, key_bytes].concat())
+            .map_err(|e| format!("parse identity: {e}"))?;
+        builder = builder.identity(id);
+    }
+
+    Ok(builder
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT))
+}
+
+/// 与 [`build_reqwest_client`] 相同的 TLS 装配，但返回 builder，
+/// 让调用方在 build 前追加自己的策略（如 `.redirect(Policy::none())`）。
+pub fn build_reqwest_client_builder(
+    tls: &Option<TlsClientConfig>,
+) -> Result<reqwest::ClientBuilder, String> {
+    ensure_crypto_provider();
+    match tls {
+        Some(cfg) if cfg.is_enabled() => reqwest_builder_for(cfg),
+        _ => Ok(reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)),
     }
 }
 
 /// Build a `reqwest::Client` with optional TLS configuration.
 /// Returns a default client when `tls` is `None` or not enabled.
 pub fn build_reqwest_client(tls: &Option<TlsClientConfig>) -> Result<reqwest::Client, String> {
-    ensure_crypto_provider();
-    match tls {
-        Some(cfg) if cfg.is_enabled() => cfg.build_reqwest_client(),
-        _ => reqwest::Client::builder()
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|e| format!("build client: {e}")),
-    }
+    build_reqwest_client_builder(tls)?
+        .build()
+        .map_err(|e| format!("build client: {e}"))
 }
 
 /// Apply basic auth to a request builder when both username and password are set.

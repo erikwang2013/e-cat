@@ -10,6 +10,7 @@ mod search;
 mod storage;
 mod timeout;
 mod tsdb;
+mod wide_column;
 mod worker;
 
 pub use breaker::{CircuitBreakerExecutor, breaker_error_to_backend_error, map_breaker_error};
@@ -26,4 +27,5 @@ pub use timeout::{
     BackendKind, TIMEOUTS, TRANSACTIONS_LEAKED, TimeoutError, run_with_timeout, timeout_counter,
 };
 pub use tsdb::{DataPoint, FieldValue, TsdbClient};
+pub use wide_column::WideColumnClient;
 pub use worker::{Shutdown, ShutdownHandle};
