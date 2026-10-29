@@ -1,0 +1,27 @@
+[package]
+name = "ecat-workflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Unified workflow orchestration abstraction for e-cat"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# 并发上限用 Semaphore；tokio 其余特性只在 dev-dependencies 里。
+tokio = { workspace = true, features = ["sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+# 逐 client 一个熔断器，与数据后端同一套状态机。
+ecat-circuit-breaker.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+# macros/rt/net：mock 服务；time：慢 handler / 超时用例。
+tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
