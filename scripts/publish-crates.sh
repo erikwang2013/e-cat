@@ -101,7 +101,9 @@ while (( remaining > 0 )); do
     # 白多花近 20% 时间。
     while :; do
       log "publish $name $version ..."
-      out="$(cargo publish -p "$name" 2>&1)"
+      # --no-verify：跳过对打包产物的二次编译。整仓 test/clippy/fmt 已是发布
+      # 门禁，逐个 crate 再编译一次会把 75 个包的发布时间拉长数小时。
+      out="$(cargo publish -p "$name" --no-verify 2>&1)"
       rc=$?
       (( rc == 0 )) && break
 
