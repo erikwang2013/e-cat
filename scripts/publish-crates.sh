@@ -23,17 +23,41 @@ mkdir -p "$(dirname "$LOG")"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG"; }
 
 declare -A ver done
+names=()
+# 按 workspace 依赖拓扑排序发布：先把被依赖的 crate 发出去，避免
+# `cargo publish` 为未发布的依赖反复解析索引而空转。
 while IFS=$'\t' read -r name version; do
-  [[ -n "$name" ]] && ver["$name"]="$version"
+  [[ -n "$name" ]] || continue
+  ver["$name"]="$version"
+  names+=("$name")
 done < <(cargo metadata --no-deps --format-version 1 | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
-for p in d["packages"]:
-    if p["publish"] != []:
-        print(p["name"] + "\t" + p["version"])
+pkgs = {p["name"]: p for p in d["packages"] if p["publish"] != []}
+deps = {n: set() for n in pkgs}
+for n, p in pkgs.items():
+    for dep in p.get("dependencies", []):
+        # 普通依赖 + build 依赖；dev-dependencies 不约束 crates.io 发布顺序。
+        if dep.get("kind") in (None, "build") and dep["name"] in pkgs:
+            deps[n].add(dep["name"])
+order = []
+ready = [n for n in pkgs if not deps[n]]
+while ready:
+    n = ready.pop(0)
+    order.append(n)
+    for m in pkgs:
+        if n in deps[m]:
+            deps[m].remove(n)
+            if not deps[m] and m not in order and m not in ready:
+                ready.append(m)
+for n in pkgs:
+    if n not in order:
+        order.append(n)
+for n in order:
+    print(n + "\t" + pkgs[n]["version"])
 ')
 
-total=${#ver[@]}
+total=${#names[@]}
 if (( total == 0 )); then log "没有待发布的 crate。"; exit 0; fi
 log "== 待发布 $total 个 crate | 日志 $LOG | 退避 ${INTERVAL}s"
 
@@ -63,7 +87,7 @@ wait_seconds=$INTERVAL
 while (( remaining > 0 )); do
   progressed=0
 
-  for name in "${!ver[@]}"; do
+  for name in "${names[@]}"; do
     [[ -n "${done[$name]:-}" ]] && continue
     version="${ver[$name]}"
 
@@ -122,7 +146,7 @@ while (( remaining > 0 )); do
     ((stalls++))
     if (( stalls >= MAX_STALLS )); then
       log "== 连续 $stalls 轮无进展，中止。剩余未发布："
-      for name in "${!ver[@]}"; do
+      for name in "${names[@]}"; do
         [[ -z "${done[$name]:-}" ]] && log "   - $name ${ver[$name]}"
       done
       exit 1
