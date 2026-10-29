@@ -10,9 +10,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-data = { version = "7.3.0", path = "../ecat-data" }
+ecat-data = { version = "8.0.0", path = "../ecat-data" }
 ecat-errors.workspace = true
-ecat-lock = { version = "7.3.0", path = "../ecat-lock" }
+ecat-lock = { version = "8.0.0", path = "../ecat-lock" }
 async-trait.workspace = true
 deadpool = { workspace = true, features = ["rt_tokio_1"] }
 serde.workspace = true
@@ -21,7 +21,7 @@ redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 # 锁命令超时用 `tokio::time::timeout`；redis 只是传递依赖，不能按名字引用。
 tokio = { workspace = true, features = ["time"] }
 uuid = { version = "1", features = ["v4"] }
-ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+ecat-tls = { version = "8.0.0", path = "../ecat-tls" }
 # 出站熔断：批次 4 已抽取的 Breaker，逐 client 一个。
 ecat-circuit-breaker.workspace = true
 # 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。

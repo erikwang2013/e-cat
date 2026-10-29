@@ -10,15 +10,15 @@ publish = false
 tonic-build.workspace = true
 
 [dependencies]
-ecat-bench = { version = "7.3.0", path = "../../ecat-bench" }
-ecat-data = { version = "7.3.0", path = "../../ecat-data" }
-ecat-data-sqlx = { version = "7.3.0", path = "../../ecat-data-sqlx" }
-ecat-transport = { version = "7.3.0", path = "../../ecat-transport" }
-ecat-data-redis = { version = "7.3.0", path = "../../ecat-data-redis" }
-ecat-transport-http = { version = "7.3.0", path = "../../ecat-transport-http" }
-ecat-transport-grpc = { version = "7.3.0", path = "../../ecat-transport-grpc" }
-ecat-middleware = { version = "7.3.0", path = "../../ecat-middleware" }
-ecat-metrics = { version = "7.3.0", path = "../../ecat-metrics" }
+ecat-bench = { version = "8.0.0", path = "../../ecat-bench" }
+ecat-data = { version = "8.0.0", path = "../../ecat-data" }
+ecat-data-sqlx = { version = "8.0.0", path = "../../ecat-data-sqlx" }
+ecat-transport = { version = "8.0.0", path = "../../ecat-transport" }
+ecat-data-redis = { version = "8.0.0", path = "../../ecat-data-redis" }
+ecat-transport-http = { version = "8.0.0", path = "../../ecat-transport-http" }
+ecat-transport-grpc = { version = "8.0.0", path = "../../ecat-transport-grpc" }
+ecat-middleware = { version = "8.0.0", path = "../../ecat-middleware" }
+ecat-metrics = { version = "8.0.0", path = "../../ecat-metrics" }
 axum.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 tonic.workspace = true

@@ -5,11 +5,11 @@
 
 Ecat の日本語名: 一匹の猫
 
-**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v7.3.0 · 75 crates）。
+**一匹の猫** は [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 に対抗する Rust マイクロサービスフレームワークです（v8.0.0 · 75 crates）。
 
 API-first の開発体験、プラグイン可能なコンポーネントアーキテクチャ、統一された HTTP/gRPC ミドルウェア抽象、そして充実した CLI ツールチェーンを提供します。Kratos に慣れた開発者がシームレスに使い始められる一方、Rust の型安全性、ゼロコスト抽象、極限のパフォーマンスを最大限に活用できます。
 
-> **データ層スケールアウト（7.3.0）**：シャーディング、ホット/コールド階層化、Saga/2PC、fencing、Redis 共有プール。 [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **データ層スケールアウト（8.0.0）**：シャーディング、ホット/コールド階層化、Saga/2PC、fencing、Redis 共有プール。 [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 > **パフォーマンス**：フルチェーン読み取りの最大は 5.9–9.2 ms（HTTP）/ 6.0–8.4 ms（gRPC）、0/100,000 サンプルが ≥10 ms。[パフォーマンスベンチマーク](../../performance.en.md)を参照。
 
@@ -598,7 +598,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### なぜ Cargo Workspace か
 
-Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 7.3.0）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
+Kratos のモジュール設計と一致しています。すべての `ecat-*` crate は workspace でロックステップのバージョン（現在 8.0.0）でリリースされ、それぞれ独立してコンパイルされ、ユーザーが必要に応じて導入します。コア crate は最小限の依存関係を維持し、contrib crate がオプションの統合を提供します。
 
 ### なぜ prost（protobuf-rs ではなく）か
 

@@ -17,7 +17,7 @@ thiserror.workspace = true
 # 并发上限用 Semaphore；tokio 其余特性只在 dev-dependencies 里。
 tokio = { workspace = true, features = ["sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+ecat-tls = { version = "8.0.0", path = "../ecat-tls" }
 # 逐 client 一个熔断器，与数据后端同一套状态机。
 ecat-circuit-breaker.workspace = true
 

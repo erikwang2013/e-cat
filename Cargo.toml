@@ -87,7 +87,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "7.3.0"
+version = "8.0.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erikwang2013/e-cat"
@@ -127,28 +127,28 @@ tiberius-ng = { version = "0.13", default-features = false, features = ["rustls"
 deadpool = "0.13"
 # compat 特性提供 compat_write()，tiberius 的 Client::connect 要求 AsyncRead + AsyncWrite。
 tokio-util = { version = "0.7", features = ["compat"] }
-ecat-protos={ version = "7.3.0", path = "ecat-protos" }
-ecat-transport = { version = "7.3.0", path = "ecat-transport" }
-ecat-transport-http = { version = "7.3.0", path = "ecat-transport-http" }
-ecat-transport-grpc = { version = "7.3.0", path = "ecat-transport-grpc" }
-ecat-logging = { version = "7.3.0", path = "ecat-logging" }
-ecat-errors = { version = "7.3.0", path = "ecat-errors" }
-ecat-middleware = { version = "7.3.0", path = "ecat-middleware" }
-ecat-auth = { version = "7.3.0", path = "ecat-auth" }
-ecat-client = { version = "7.3.0", path = "ecat-client" }
-ecat-events = { version = "7.3.0", path = "ecat-events" }
-ecat-metrics = { version = "7.3.0", path = "ecat-metrics" }
-ecat-health = { version = "7.3.0", path = "ecat-health" }
-ecat-tracing = { version = "7.3.0", path = "ecat-tracing" }
-ecat-circuit-breaker = { version = "7.3.0", path = "ecat-circuit-breaker" }
-ecat-registry-consul = { version = "7.3.0", path = "ecat-registry-consul" }
-ecat-config-remote = { version = "7.3.0", path = "ecat-config-remote" }
-ecat-data-redis = { version = "7.3.0", path = "ecat-data-redis" }
+ecat-protos={ version = "8.0.0", path = "ecat-protos" }
+ecat-transport = { version = "8.0.0", path = "ecat-transport" }
+ecat-transport-http = { version = "8.0.0", path = "ecat-transport-http" }
+ecat-transport-grpc = { version = "8.0.0", path = "ecat-transport-grpc" }
+ecat-logging = { version = "8.0.0", path = "ecat-logging" }
+ecat-errors = { version = "8.0.0", path = "ecat-errors" }
+ecat-middleware = { version = "8.0.0", path = "ecat-middleware" }
+ecat-auth = { version = "8.0.0", path = "ecat-auth" }
+ecat-client = { version = "8.0.0", path = "ecat-client" }
+ecat-events = { version = "8.0.0", path = "ecat-events" }
+ecat-metrics = { version = "8.0.0", path = "ecat-metrics" }
+ecat-health = { version = "8.0.0", path = "ecat-health" }
+ecat-tracing = { version = "8.0.0", path = "ecat-tracing" }
+ecat-circuit-breaker = { version = "8.0.0", path = "ecat-circuit-breaker" }
+ecat-registry-consul = { version = "8.0.0", path = "ecat-registry-consul" }
+ecat-config-remote = { version = "8.0.0", path = "ecat-config-remote" }
+ecat-data-redis = { version = "8.0.0", path = "ecat-data-redis" }
 # ecat-orm 走 workspace 引用：ecat-data-sqlx 只供它的 dev-dependencies 用。
-ecat-data = { version = "7.3.0", path = "ecat-data" }
-ecat-data-sqlx = { version = "7.3.0", path = "ecat-data-sqlx" }
-ecat-orm = { version = "7.3.0", path = "ecat-orm" }
-ecat-orm-derive = { version = "7.3.0", path = "ecat-orm-derive" }
+ecat-data = { version = "8.0.0", path = "ecat-data" }
+ecat-data-sqlx = { version = "8.0.0", path = "ecat-data-sqlx" }
+ecat-orm = { version = "8.0.0", path = "ecat-orm" }
+ecat-orm-derive = { version = "8.0.0", path = "ecat-orm-derive" }
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"

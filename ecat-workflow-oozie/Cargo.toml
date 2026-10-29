@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-workflow = { version = "7.3.0", path = "../ecat-workflow" }
+ecat-workflow = { version = "8.0.0", path = "../ecat-workflow" }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

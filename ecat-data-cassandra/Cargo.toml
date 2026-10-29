@@ -10,8 +10,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-data = { version = "7.3.0", path = "../ecat-data" }
-ecat-tls = { version = "7.3.0", path = "../ecat-tls" }
+ecat-data = { version = "8.0.0", path = "../ecat-data" }
+ecat-tls = { version = "8.0.0", path = "../ecat-tls" }
 ecat-circuit-breaker.workspace = true
 async-trait.workspace = true
 serde.workspace = true

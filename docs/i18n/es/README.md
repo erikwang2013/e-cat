@@ -5,11 +5,11 @@
 
 Nombre chino de Ecat: 一只猫 (literalmente "un gato")
 
-**一只猫** es un framework de microservicios en Rust inspirado en [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v7.3.0 · 75 crates).
+**一只猫** es un framework de microservicios en Rust inspirado en [go-kratos/kratos](https://github.com/go-kratos/kratos) v3 (v8.0.0 · 75 crates).
 
 Ofrece una experiencia de desarrollo API-first, una arquitectura de componentes enchufables, una abstracción unificada de middleware HTTP/gRPC y una cadena de herramientas CLI completa. Los desarrolladores familiarizados con Kratos pueden empezar sin fricciones, aprovechando al mismo tiempo la seguridad de tipos, las abstracciones de costo cero y el rendimiento extremo de Rust.
 
-> **Escalado de la capa de datos (7.3.0)**：Sharding, tiering caliente/frío, Saga/2PC, fencing, pool Redis compartido. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
+> **Escalado de la capa de datos (8.0.0)**：Sharding, tiering caliente/frío, Saga/2PC, fencing, pool Redis compartido. [English guide](../../data-layer-scaleout.en.md) · [中文指南](../../data-layer-scaleout.md)
 
 > **Rendimiento**: las lecturas de cadena completa alcanzan como máximo 5,9–9,2 ms (HTTP) / 6,0–8,4 ms (gRPC), con 0/100.000 muestras ≥10 ms; consulta el [benchmark de rendimiento](../../performance.en.md).
 
@@ -599,7 +599,7 @@ fn get_user(id: u64) -> Result<User, Error> {
 
 ### Por qué un Cargo Workspace
 
-De acuerdo con el diseño modular de Kratos. Todos los crates `ecat-*` se publican en versiones sincronizadas del workspace (actualmente 7.3.0), se compilan de forma independiente y el usuario los incorpora según necesidad. Los crates núcleo mantienen dependencias mínimas; los crates contrib ofrecen integraciones opcionales.
+De acuerdo con el diseño modular de Kratos. Todos los crates `ecat-*` se publican en versiones sincronizadas del workspace (actualmente 8.0.0), se compilan de forma independiente y el usuario los incorpora según necesidad. Los crates núcleo mantienen dependencias mínimas; los crates contrib ofrecen integraciones opcionales.
 
 ### Por qué prost (en lugar de protobuf-rs)
 

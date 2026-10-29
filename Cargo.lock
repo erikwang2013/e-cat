@@ -1157,7 +1157,7 @@ checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
 name = "databases"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1342,7 +1342,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "ecat"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-auth",
@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-auth"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-bench"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat-metrics",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-circuit-breaker"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1415,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-cli"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "clap",
  "libc",
@@ -1425,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-client"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -1436,7 +1436,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -1448,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-config-remote"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1462,7 +1462,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-circuit-breaker",
@@ -1476,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-2pc"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1494,7 +1494,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-arangodb"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-cassandra"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-circuit-breaker",
@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-clickhouse"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-delta-sharing"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat-circuit-breaker",
@@ -1561,7 +1561,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-druid"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1577,7 +1577,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-elasticsearch"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1594,7 +1594,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-flink"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-hadoop"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1627,7 +1627,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-hbase"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1645,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-iceberg"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat-circuit-breaker",
@@ -1660,7 +1660,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-influxdb"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1677,7 +1677,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-iotdb"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1694,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-kylin"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1710,7 +1710,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-memcached"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-mongodb"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-circuit-breaker",
@@ -1738,7 +1738,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-mssql"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-nebulagraph"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1778,7 +1778,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-neo4j"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1795,7 +1795,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-opensearch"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1812,7 +1812,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-questdb"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1828,7 +1828,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-redis"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "deadpool",
@@ -1847,7 +1847,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-s3"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-sharding"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-spark"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-sqlx"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1925,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-tdengine"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1942,7 +1942,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-tiering"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-data-trino"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-encoding"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "prost",
  "serde",
@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-errors"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "ecat-protos",
  "http",
@@ -2004,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-events"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2018,7 +2018,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-graphql"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-health"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2043,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-lock"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.19",
@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-logging"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "ecat-tracing",
  "tracing",
@@ -2061,7 +2061,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metadata"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "http",
  "tonic",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-metrics"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat-data-mssql",
@@ -2081,7 +2081,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-middleware"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2097,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2108,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-kafka"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2125,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-mqtt"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2139,7 +2139,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-nats"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -2156,7 +2156,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-mq-rabbitmq"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2170,7 +2170,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-openapi"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2178,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-orm"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -2193,7 +2193,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-orm-derive"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2202,7 +2202,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-protos"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "prost",
  "prost-types",
@@ -2212,7 +2212,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-consul"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2239,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-registry-etcd"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2254,7 +2254,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-saga"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-data",
@@ -2269,7 +2269,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-scheduler"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "tokio",
  "tracing",
@@ -2278,7 +2278,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-security"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -2292,7 +2292,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-tls"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "rcgen",
  "reqwest",
@@ -2303,7 +2303,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-tracing"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "ecat-metadata",
  "http",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2330,7 +2330,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-grpc"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "ecat-tls",
@@ -2344,7 +2344,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-http"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2361,7 +2361,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-transport-ws"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2374,7 +2374,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-versioning"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "http",
@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-workflow"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2400,7 +2400,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-workflow-airflow"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-workflow-azkaban"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-workflow-dolphinscheduler"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2441,7 +2441,7 @@ dependencies = [
 
 [[package]]
 name = "ecat-workflow-oozie"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2684,7 +2684,7 @@ dependencies = [
 
 [[package]]
 name = "fullchain-bench"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat-bench",
@@ -2962,7 +2962,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helloworld"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -3826,7 +3826,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "middleware"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "axum 0.8.9",
  "ecat",
@@ -6744,7 +6744,7 @@ dependencies = [
 
 [[package]]
 name = "websocket"
-version = "7.3.0"
+version = "8.0.0"
 dependencies = [
  "ecat",
  "ecat-transport-ws",
