@@ -10,4 +10,4 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-tracing = { version = "8.0.0", path = "../ecat-tracing" }
+ecat-tracing = { version = "9.0.0", path = "../ecat-tracing" }
