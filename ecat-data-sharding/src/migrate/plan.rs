@@ -53,10 +53,6 @@ impl ShardPlan {
         }
         Ok(Self { moves })
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.moves.is_empty()
-    }
 }
 
 fn same_shard_names(a: &ShardTable, b: &ShardTable) -> bool {

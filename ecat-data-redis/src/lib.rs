@@ -24,7 +24,6 @@ use ecat_lock::{DistributedLock, FenceGuard, FencedLock, LockError};
 use ecat_tls::TlsClientConfig;
 use redis::AsyncCommands;
 use redis::ConnectionInfo;
-use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -140,14 +139,6 @@ impl RedisCache {
             query_timeout: query_timeout(cfg.query_timeout_secs),
             breaker,
         })
-    }
-
-    pub fn from_connection(conn: MultiplexedConnection) -> Self {
-        Self {
-            backend: RedisBackend::Single(conn),
-            query_timeout: query_timeout(None),
-            breaker: Arc::new(Breaker::new(BreakerConfig::default())),
-        }
     }
 
     /// 共享池：与同一 `RedisPool` 派生的 lock 复用连接。
@@ -377,13 +368,6 @@ impl RedisLock {
         };
         lock.query_timeout = query_timeout(cfg.query_timeout_secs);
         Ok(lock)
-    }
-
-    pub fn from_connection(conn: MultiplexedConnection) -> Self {
-        Self {
-            backend: RedisBackend::Single(conn),
-            query_timeout: query_timeout(None),
-        }
     }
 
     /// 共享池：与同一 `RedisPool` 派生的 cache 复用连接。

@@ -22,13 +22,6 @@ impl StaticResolver {
         Self::default()
     }
 
-    pub fn add_service(self, name: impl Into<String>, endpoints: Vec<String>) -> Self {
-        self.endpoints
-            .blocking_write()
-            .insert(name.into(), endpoints);
-        self
-    }
-
     pub fn single(name: impl Into<String>, endpoint: impl Into<String>) -> Self {
         let mut map = HashMap::new();
         map.insert(name.into(), vec![endpoint.into()]);
@@ -151,22 +144,12 @@ impl HttpClient {
             .await
             .map_err(|e| format!("http request failed: {e}"))
     }
-
-    pub async fn health(&self, service: &str) -> Result<(), String> {
-        let resp = self.get(service, "/health").await?;
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            Err(format!("health check returned {}", resp.status()))
-        }
-    }
 }
 
 // ── Builder ──
 
 pub struct HttpClientBuilder {
     resolver: Option<Arc<dyn ServiceResolver>>,
-    balancer: Option<Arc<dyn LoadBalancer>>,
     timeout: Duration,
 }
 
@@ -174,7 +157,6 @@ impl Default for HttpClientBuilder {
     fn default() -> Self {
         Self {
             resolver: None,
-            balancer: None,
             timeout: Duration::from_secs(5),
         }
     }
@@ -183,11 +165,6 @@ impl Default for HttpClientBuilder {
 impl HttpClientBuilder {
     pub fn resolver(mut self, r: impl ServiceResolver + 'static) -> Self {
         self.resolver = Some(Arc::new(r));
-        self
-    }
-
-    pub fn balancer(mut self, b: impl LoadBalancer + 'static) -> Self {
-        self.balancer = Some(Arc::new(b));
         self
     }
 
@@ -200,7 +177,7 @@ impl HttpClientBuilder {
         let resolver = self
             .resolver
             .ok_or_else(|| "resolver is required".to_string())?;
-        let balancer = self.balancer.unwrap_or_else(|| Arc::new(RoundRobin::new()));
+        let balancer = Arc::new(RoundRobin::new());
         Ok(HttpClient {
             client: reqwest::Client::builder()
                 // 不跟随任何重定向：注册服务可能把内部地址暴露给客户端
@@ -255,7 +232,6 @@ impl GrpcClient {
 #[derive(Default)]
 pub struct GrpcClientBuilder {
     resolver: Option<Arc<dyn ServiceResolver>>,
-    balancer: Option<Arc<dyn LoadBalancer>>,
 }
 
 impl GrpcClientBuilder {
@@ -264,17 +240,12 @@ impl GrpcClientBuilder {
         self
     }
 
-    pub fn balancer(mut self, b: impl LoadBalancer + 'static) -> Self {
-        self.balancer = Some(Arc::new(b));
-        self
-    }
-
     pub fn build(self) -> Result<GrpcClient, String> {
         Ok(GrpcClient {
             resolver: self
                 .resolver
                 .ok_or_else(|| "resolver is required".to_string())?,
-            balancer: self.balancer.unwrap_or_else(|| Arc::new(RoundRobin::new())),
+            balancer: Arc::new(RoundRobin::new()),
         })
     }
 }

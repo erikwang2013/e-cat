@@ -66,20 +66,8 @@ impl GraphQLSchema {
         self
     }
 
-    pub fn query(mut self, name: impl Into<String>, r: Resolver) -> Self {
-        self.query_resolvers
-            .insert(name.into(), FieldHandler::Legacy(r));
-        self
-    }
-
-    pub fn mutation(mut self, name: impl Into<String>, r: Resolver) -> Self {
-        self.mutation_resolvers
-            .insert(name.into(), FieldHandler::Legacy(r));
-        self
-    }
-
     pub fn query_fn(
-        self,
+        mut self,
         name: impl Into<String>,
         f: impl Fn(
             serde_json::Value,
@@ -89,7 +77,9 @@ impl GraphQLSchema {
         + Sync
         + 'static,
     ) -> Self {
-        self.query(name, Arc::new(f))
+        self.query_resolvers
+            .insert(name.into(), FieldHandler::Legacy(Arc::new(f)));
+        self
     }
 
     /// 注册富 query resolver：接收 `FieldRequest`（参数 + 嵌套 selection）。

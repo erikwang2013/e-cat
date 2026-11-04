@@ -50,13 +50,6 @@ impl ConsulTopologySource {
         }
     }
 
-    /// Consul ACL token。
-    pub fn with_token(self, token: impl Into<String>) -> Self {
-        Self {
-            source: self.source.token(token),
-        }
-    }
-
     /// 启动 watch：首次加载失败即返回错误（fail-closed）；
     /// 后续刷新失败保留最后已知拓扑。
     pub async fn watch(&self) -> Result<watch::Receiver<ShardCatalog>, ShardError> {
@@ -112,13 +105,6 @@ impl EtcdTopologySource {
         Self {
             source: EtcdConfigSource::new(endpoints, prefix),
             watch_interval: DEFAULT_WATCH_INTERVAL,
-        }
-    }
-
-    pub fn with_auth(self, user: &str, password: &str) -> Self {
-        Self {
-            source: self.source.with_auth(user, password),
-            watch_interval: self.watch_interval,
         }
     }
 

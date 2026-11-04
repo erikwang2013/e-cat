@@ -86,23 +86,6 @@ impl MssqlClient {
         })
     }
 
-    /// 用已有池构造客户端。
-    ///
-    /// 拿的是**裸池**，没有 `MssqlConfig` 可读，因此查询超时与 [`Self::warm_up`]
-    /// 在这里都是关的（`query_timeout: None`、`min_connections: 0`）—— 与
-    /// `SqlxClient::from_pool` 同理，是 API 形状决定的，不是遗漏。需要两者请用
-    /// [`Self::connect`] 或 [`Self::from_config`]。
-    ///
-    /// 池自身的三个超时不受影响：它们在池被构建时就定下了。
-    pub fn from_pool(pool: Pool<MssqlManager>) -> Self {
-        Self {
-            pool,
-            query_timeout: None,
-            min_connections: 0,
-            slow_query: None,
-        }
-    }
-
     /// 池本身（`metrics` feature 的 `register_pool_metrics` 要它 ——
     /// deadpool 的 `Pool` 内部是 `Arc`，克隆很轻）。
     pub fn pool(&self) -> &Pool<MssqlManager> {

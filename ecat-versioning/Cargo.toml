@@ -11,9 +11,7 @@ categories.workspace = true
 
 [dependencies]
 axum.workspace = true
-http.workspace = true
 tower.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -383,7 +383,7 @@ pub struct RedisCache {
         })
 ```
 
-其余构造器（`connect` / `connect_with_password` / `from_connection` / `new` / `with_auth`）
+其余构造器（`connect` / `connect_with_password` / `new` / `with_auth`）
 一律 `Arc::new(Breaker::new(BreakerConfig::default()))` —— 保守默认。
 
 `metrics` feature 要读它的两个数据源，所以给一个访问器（`ecat-data-redis/src/lib.rs:141-144` 逐字；

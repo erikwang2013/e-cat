@@ -1,6 +1,6 @@
 # Ecat data-layer scale-out
 
-> Status: `8.0.0` (current). This page describes additive, default-off data-layer
+> Status: `9.0.0` (current). This page describes additive, default-off data-layer
 > capabilities introduced in 7.2.0 and hardened in 7.2.1. Existing `SqlExecutor` / `RdbmsClient` / `Cache` / `Entity` /
 > `Dialect` APIs and config fields are unchanged; new behavior ships in new crates and features.
 
@@ -269,7 +269,7 @@ let cache = pool.cache();   // shares Arc<Pool> with lock
 let lock = pool.lock();
 ```
 
-Old `connect` / `from_config` / `from_connection` constructors still use one multiplexed
+Old `connect` / `from_config` constructors still use one multiplexed
 connection. `ConsulTopologySource` / `EtcdTopologySource` provide `load/watch`; startup
 without topology fails closed, and later bad JSON keeps the last known topology.
 

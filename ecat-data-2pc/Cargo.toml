@@ -18,7 +18,6 @@ sqlx = ["dep:ecat-data-sqlx", "dep:sqlx"]
 async-trait.workspace = true
 ecat-data.workspace = true
 ecat-lock = { version = "8.0.0", path = "../ecat-lock" }
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true

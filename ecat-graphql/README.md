@@ -27,8 +27,7 @@ impl GraphQLField for UserField {
 
 | 方法 | resolver 签名 | 可见信息 |
 |------|---------------|----------|
-| `query` / `mutation` | `Fn(Value) -> Future<Value>` | 合并后的参数（与旧行为逐字节一致） |
-| `query_fn` / `mutation_fn` | 同上（闭包糖） | 同上 |
+| `query_fn` | `Fn(Value) -> Future<Value>` | 合并后的参数（与旧行为逐字节一致） |
 | `query_field` / `mutation_field` | `impl GraphQLField` | 原始 `args` + `variables` + 嵌套 `selection` |
 
 ## 限制 (Limitations)

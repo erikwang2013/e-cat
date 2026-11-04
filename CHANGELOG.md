@@ -1,5 +1,43 @@
 # Changelog
 
+## [9.0.0] — 2026-11-05
+
+### Breaking
+
+- 移除无调用方的公开 API（按仓库既有严格 semver 约定升 major）：
+  `ecat_metadata::{SERVICE_NAME, CLIENT_IP}`、`StaticResolver::add_service`、
+  `HttpClient::health`、`HttpClientBuilder::balancer`、
+  `GrpcClientBuilder::balancer`、`ConsulTopologySource::with_token`、
+  `EtcdTopologySource::with_auth`、`ShardPlan::is_empty`、
+  `RedisRateLimitStore::from_connection`、`DetailedBenchReport::summary`、
+  `RedisCache::from_connection`、`RedisLock::from_connection`、
+  `MssqlClient::from_pool`、`GraphQLSchema::{query, mutation}`
+  （`query_fn` 保留）、`WorkflowHttp::client`。
+  这些接口在仓库内没有任何调用方；依赖它们的下游代码需要改用等价路径。
+
+### Removed
+
+- 30 条未使用的直接依赖声明（`ecat-transport` 6 条，以及日志、错误、配置、示例等
+  18 个 crate），以及 workspace 表中的 `prost-types`、`ecat-protos`。
+- 169 个无引用文档：历史审计报告及 12 种语言翻译、引用链已断的
+  `docs/superpowers` 计划/规格；另移除 6 个 `.superpowers` 会话产物。
+- `ecat-data-mssql` / `ecat-data-sqlx` 的 optional `ecat-tracing`、`prometheus`
+  （feature 名保留，`metrics` / `tracing` 行为不变）。
+
+### Fixed
+
+- `libz-sys` 1.1.29 → 1.1.31（RUSTSEC-2026-0418，经 `rdkafka-sys` 传递引入）。
+- `async-executor` 1.14.0（yanked）→ 1.14.1（经 `lapin` 传递引入）。
+- `cargo audit` 清零：0 漏洞、0 警告（沿用既有已评估 ignore）。
+- `ASSETS-LICENSE.md` 补充站点字体许可例外（Space Grotesk / JetBrains Mono，
+  SIL Open Font License 1.1）。
+
+### Docs / Site
+
+- README、12 份 i18n 镜像、站点与社交预览同步到 9.0.0；移除对已删接口的过时引用。
+- `cargo machete` 仅剩两个已知误报：`tiberius-ng`（包名 ≠ lib 名）与
+  `fullchain-bench` 的 `prost`（build.rs 生成代码使用）。
+
 ## [8.0.0] — 2026-10-29
 
 ### Breaking

@@ -105,7 +105,6 @@ lto = "thin"
 tokio = "1"
 bytes = "1"
 prost = "0.13"
-prost-types = "0.13"
 tonic = "0.12"
 tonic-build = "0.12"
 tower = "0.5"
@@ -127,7 +126,6 @@ tiberius-ng = { version = "0.13", default-features = false, features = ["rustls"
 deadpool = "0.13"
 # compat 特性提供 compat_write()，tiberius 的 Client::connect 要求 AsyncRead + AsyncWrite。
 tokio-util = { version = "0.7", features = ["compat"] }
-ecat-protos={ version = "8.0.0", path = "ecat-protos" }
 ecat-transport = { version = "8.0.0", path = "ecat-transport" }
 ecat-transport-http = { version = "8.0.0", path = "ecat-transport-http" }
 ecat-transport-grpc = { version = "8.0.0", path = "ecat-transport-grpc" }

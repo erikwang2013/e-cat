@@ -11,8 +11,6 @@ categories.workspace = true
 
 [dependencies]
 ecat-protos = { version = "8.0.0", path = "../ecat-protos" }
-prost.workspace = true
 thiserror.workspace = true
-serde.workspace = true
 http.workspace = true
 tonic.workspace = true

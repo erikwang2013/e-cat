@@ -101,10 +101,6 @@ impl WorkflowHttp {
         })
     }
 
-    pub fn client(&self) -> &reqwest::Client {
-        &self.client
-    }
-
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

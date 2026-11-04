@@ -2,8 +2,6 @@
 use std::collections::HashMap;
 
 pub const TRACE_ID: &str = "x-ecat-trace-id";
-pub const SERVICE_NAME: &str = "x-ecat-service";
-pub const CLIENT_IP: &str = "x-ecat-client-ip";
 
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {

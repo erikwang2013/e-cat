@@ -38,20 +38,6 @@ impl DetailedBenchReport {
         println!("  max:        {:.0} µs", self.max_latency_us);
         println!("  >= {:.0} µs:  {}", self.threshold_us, self.over_threshold);
     }
-
-    /// 转成旧版摘要，便于复用已有打印/对比代码。
-    pub fn summary(&self) -> super::BenchResult {
-        super::BenchResult {
-            name: self.name.clone(),
-            total_requests: self.total_requests,
-            total_duration: self.total_duration,
-            avg_latency_us: self.avg_latency_us,
-            p50_latency_us: self.p50_latency_us,
-            p95_latency_us: self.p95_latency_us,
-            p99_latency_us: self.p99_latency_us,
-            throughput_rps: self.throughput_rps,
-        }
-    }
 }
 
 /// 与 [`super::run_bench_with_warmup`] 相同的并发/预热语义，但闭包返回

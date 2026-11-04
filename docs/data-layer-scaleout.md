@@ -1,6 +1,6 @@
 # Ecat 数据层横向扩展
 
-> 状态：`8.0.0`（当前版本）。本页描述 7.2.0 新增、7.2.1 加固、默认关闭的数据层能力。
+> 状态：`9.0.0`（当前版本）。本页描述 7.2.0 新增、7.2.1 加固、默认关闭的数据层能力。
 > 兼容性约束：既有 `SqlExecutor` / `RdbmsClient` / `Cache` / `Entity` / `Dialect` 与配置字段不变；
 > 新能力通过新 crate 和 feature 接入，不改变单机默认行为。
 
@@ -245,7 +245,7 @@ let cache = pool.cache();   // 与 lock 共享 Arc<Pool>
 let lock = pool.lock();
 ```
 
-旧 `connect` / `from_config` / `from_connection` 仍走单条多路复用连接。
+旧 `connect` / `from_config` 仍走单条多路复用连接。
 远程拓扑用 `ConsulTopologySource` / `EtcdTopologySource` 的 `load/watch`；启动无拓扑
 fail-closed，后续坏 JSON 保留最后已知拓扑。
 

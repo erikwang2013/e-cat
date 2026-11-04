@@ -17,10 +17,6 @@ impl RedisRateLimitStore {
             .map_err(|e| e.to_string())?;
         Ok(Self { conn })
     }
-
-    pub fn from_connection(conn: MultiplexedConnection) -> Self {
-        Self { conn }
-    }
 }
 
 /// Atomic fixed-window increment: INCR, and on the first request set the

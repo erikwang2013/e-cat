@@ -51,7 +51,6 @@ worker = ["dep:ecat-data"]
 [dependencies]
 ecat-transport = { workspace = true }
 ecat-logging = { workspace = true }
-ecat-errors = { workspace = true }
 ecat-transport-http = { workspace = true, optional = true }
 ecat-transport-grpc = { workspace = true, optional = true }
 ecat-middleware = { workspace = true, optional = true }

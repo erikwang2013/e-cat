@@ -10,6 +10,4 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 ecat-tracing = { version = "8.0.0", path = "../ecat-tracing" }
