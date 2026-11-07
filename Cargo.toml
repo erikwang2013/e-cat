@@ -91,7 +91,7 @@ version = "10.0.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erikwang2013/e-cat"
-homepage = "https://github.com/erikwang2013/e-cat"
+homepage = "https://e-cat.erik.xyz"
 keywords = ["web", "framework", "async", "http", "microservices"]
 categories = ["web-programming::http-server", "asynchronous"]
 # 不设 documentation：docs.rs 会按 crate 名自动生成 https://docs.rs/<crate>，
