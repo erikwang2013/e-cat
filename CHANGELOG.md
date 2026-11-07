@@ -1,6 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [10.0.0] — 2026-11-07
+
+### Breaking
+
+- `tonic` 0.12 → 0.14：公开 API 中的 gRPC 类型（`Routes`、`Channel`、
+  `Endpoint`、`ServerTlsConfig` 等）随之上移，下游需同步升级 `tonic`。
+- MQ / RabbitMQ 的 TLS 改走 native-tls（Linux 下为 OpenSSL）；MQTT mTLS
+  客户端私钥必须是 PKCS#8 PEM（原 rustls 实现支持 PKCS#1/SEC1）。
+- `ecat proto client/server` 生成的 Cargo.toml 改为 `tonic` 0.14 +
+  `tonic-prost` 0.14 + `prost` 0.14，build.rs 改用 `tonic-prost-build`。
 
 ### Changed
 
