@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ecat-protos = { version = "9.0.0", path = "../ecat-protos" }
+ecat-protos = { version = "10.0.0", path = "../ecat-protos" }
 thiserror.workspace = true
 http.workspace = true
 tonic.workspace = true
