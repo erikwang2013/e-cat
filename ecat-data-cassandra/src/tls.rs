@@ -9,7 +9,8 @@ use ecat_data::RdbmsError;
 use ecat_tls::TlsClientConfig;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::CryptoProvider;
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, RootCertStore, SignatureScheme};
 use std::sync::{Arc, OnceLock};
 
@@ -61,14 +62,13 @@ pub(crate) fn build_client_config(
         (Some(cert_path), Some(key_path)) => {
             let cert_pem = std::fs::read(cert_path)
                 .map_err(|e| config_error(format!("read client_cert {cert_path}: {e}")))?;
-            let certs = rustls_pemfile::certs(&mut cert_pem.as_slice())
+            let certs = CertificateDer::pem_slice_iter(&cert_pem)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| config_error(format!("parse client_cert: {e}")))?;
             let key_pem = std::fs::read(key_path)
                 .map_err(|e| config_error(format!("read client_key {key_path}: {e}")))?;
-            let key = rustls_pemfile::private_key(&mut key_pem.as_slice())
-                .map_err(|e| config_error(format!("parse client_key: {e}")))?
-                .ok_or_else(|| config_error("client_key contains no private key"))?;
+            let key = PrivateKeyDer::from_pem_slice(&key_pem)
+                .map_err(|e| config_error(format!("parse client_key: {e}")))?;
             builder
                 .with_client_auth_cert(certs, key)
                 .map_err(|e| config_error(format!("client auth: {e}")))?
@@ -84,7 +84,7 @@ fn root_store(tls: &TlsClientConfig) -> Result<RootCertStore, RdbmsError> {
         Some(path) => {
             let pem = std::fs::read(path)
                 .map_err(|e| config_error(format!("read ca_cert {path}: {e}")))?;
-            let certs = rustls_pemfile::certs(&mut pem.as_slice())
+            let certs = CertificateDer::pem_slice_iter(&pem)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| config_error(format!("parse ca_cert: {e}")))?;
             for cert in certs {

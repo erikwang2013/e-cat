@@ -89,7 +89,7 @@ It offers an API-first development experience, a pluggable component architectur
 
 ## Features
 
-- **API-first**: define APIs, error codes, and metadata in Protobuf; code generation via prost + tonic-build
+- **API-first**: define APIs, error codes, and metadata in Protobuf; code generation via prost + tonic-prost-build
 - **Dual protocol support**: HTTP (axum) and gRPC (tonic) share the same set of tower::Layer middleware
 - **Pluggable architecture**: Registry, Config, Logging, and Encoding are all abstracted through traits, with production-ready default implementations
 - **Middleware system**: built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (cors feature); composed via tower::ServiceBuilder
@@ -113,7 +113,7 @@ It offers an API-first development experience, a pluggable component architectur
 | `http.Handler` | `tower::Service` | Standard trait in the Rust ecosystem |
 | `http.Server` | `axum::Router` | Mainstream HTTP framework in the community |
 | `grpc.Server` | `tonic::transport::Server` | The most mature gRPC implementation |
-| `proto generate` | `prost + tonic-build` | Community-standard protobuf |
+| `proto generate` | `prost + tonic-prost-build` | Community-standard protobuf |
 | `registry.Discovery` | `Registry` trait | Pluggable registry and discovery |
 | `config.Source` | `ConfigSource` trait | Multi-source configuration loading |
 
@@ -124,7 +124,7 @@ It offers an API-first development experience, a pluggable component architectur
 | Async runtime | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | Middleware | **tower::Service / Layer** |
 | Logging/tracing | **tracing + trace_id propagation** |
 | Metrics | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

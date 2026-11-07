@@ -17,9 +17,8 @@ serde.workspace = true
 serde_json.workspace = true
 futures-core.workspace = true
 async-nats = "0.47"
-# TLS 组装用：本 crate 用 0.7 的 Result 版 API；async-nats 0.47 内部已升 0.8，二者可并存
-rustls-native-certs = "0.7"
-rustls-pemfile = "2"
+# TLS 组装用：0.8 改用 rustls-pki-types，不再依赖已停止维护的 rustls-pemfile。
+rustls-native-certs = "0.8"
 # 显式声明 ring 特性：确保 rustls::crypto::ring 在任何特性合并组合下都存在
 # （aws-lc-rs 由 tiberius 经 tokio-rustls 引入，两者并存时自动选 provider 会 panic）
 rustls = { version = "0.23", default-features = false, features = ["ring"] }

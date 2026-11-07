@@ -16,6 +16,10 @@ tokio = { workspace = true, features = ["sync", "rt", "time"] }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-rumqttc = { version = "0.25", default-features = false, features = ["use-rustls-no-provider"] }
-# rumqttc 以 no-provider 编译不安装 CryptoProvider，构造 TLS 前需自行安装 ring
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+# 走 native-tls：不再把 unmaintained 的 rustls-pemfile / 0.102 webpki 带进依赖树。
+rumqttc = { version = "0.25", default-features = false, features = ["use-native-tls"] }
+native-tls = "0.2"
+
+[dev-dependencies]
+# 生成合法 CA / 客户端证书，覆盖 native-tls 的 PEM 解析路径。
+ecat-tls = { path = "../ecat-tls" }

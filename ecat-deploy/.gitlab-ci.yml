@@ -1,4 +1,5 @@
-image: rust:1.80
+# tonic 0.14 / lapin 4 要求 Rust >= 1.88（edition 2024 另需 >= 1.85）。
+image: rust:1.88
 
 stages:
   - build
@@ -7,6 +8,9 @@ stages:
 
 variables:
   CARGO_TERM_COLOR: always
+
+before_script:
+  - apt-get update && apt-get install -y pkg-config libssl-dev protobuf-compiler
 
 cache:
   paths:
@@ -26,6 +30,7 @@ test:
 lint:
   stage: lint
   before_script:
+    - apt-get update && apt-get install -y pkg-config libssl-dev protobuf-compiler
     - rustup component add clippy rustfmt
   script:
     - cargo fmt --check

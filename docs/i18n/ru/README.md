@@ -89,7 +89,7 @@ API-first подход к разработке, плагинная архите�
 
 ## Возможности
 
-- **API-first**: Protobuf определяет API, коды ошибок и метаданные; генерация кода через prost + tonic-build
+- **API-first**: Protobuf определяет API, коды ошибок и метаданные; генерация кода через prost + tonic-prost-build
 - **Два протокола**: HTTP (axum) и gRPC (tonic) используют один и тот же набор middleware `tower::Layer`
 - **Плагинная архитектура**: Registry, Config, Logging, Encoding — всё абстрагировано через trait с готовыми продакшен-реализациями по умолчанию
 - **Система middleware**: встроенные Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (feature `cors`); комбинируются через `tower::ServiceBuilder`
@@ -113,7 +113,7 @@ API-first подход к разработке, плагинная архите�
 | `http.Handler` | `tower::Service` | Стандартный trait экосистемы Rust |
 | `http.Server` | `axum::Router` | Популярный HTTP-фреймворк сообщества |
 | `grpc.Server` | `tonic::transport::Server` | Наиболее зрелая gRPC-реализация |
-| `proto generate` | `prost + tonic-build` | Стандартный protobuf сообщества |
+| `proto generate` | `prost + tonic-prost-build` | Стандартный protobuf сообщества |
 | `registry.Discovery` | `Registry` trait | Плагинные регистрация и discovery |
 | `config.Source` | `ConfigSource` trait | Загрузка конфигурации из нескольких источников |
 
@@ -124,7 +124,7 @@ API-first подход к разработке, плагинная архите�
 | Асинхронный runtime | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | Middleware | **tower::Service / Layer** |
 | Логирование/трассировка | **tracing + trace_id propagation** |
 | Метрики | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

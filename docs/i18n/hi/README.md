@@ -89,7 +89,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 
 ## सुविधाएँ
 
-- **API-first**：Protobuf से API, त्रुटि कोड, मेटाडेटा परिभाषित करें; prost + tonic-build कोड जनरेशन
+- **API-first**：Protobuf से API, त्रुटि कोड, मेटाडेटा परिभाषित करें; prost + tonic-prost-build कोड जनरेशन
 - **दोहरा प्रोटोकॉल समर्थन**：HTTP (axum) और gRPC (tonic) समान tower::Layer मिडलवेयर सेट साझा करते हैं
 - **प्लग-योग्य आर्किटेक्चर**：Registry, Config, Logging, Encoding सभी trait के माध्यम से एब्स्ट्रैक्ट किए गए हैं, डिफ़ॉल्ट रूप से प्रोडक्शन-रेडी कार्यान्वयन उपलब्ध हैं
 - **मिडलवेयर प्रणाली**：अंतर्निहित Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (cors feature); tower::ServiceBuilder द्वारा संयोजित
@@ -113,7 +113,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 | `http.Handler` | `tower::Service` | Rust इकोसिस्टम मानक trait |
 | `http.Server` | `axum::Router` | समुदाय का मुख्यधारा HTTP फ्रेमवर्क |
 | `grpc.Server` | `tonic::transport::Server` | सबसे परिपक्व gRPC कार्यान्वयन |
-| `proto generate` | `prost + tonic-build` | समुदाय मानक protobuf |
+| `proto generate` | `prost + tonic-prost-build` | समुदाय मानक protobuf |
 | `registry.Discovery` | `Registry` trait | प्लग-योग्य रजिस्ट्री/डिस्कवरी |
 | `config.Source` | `ConfigSource` trait | बहु-स्रोत कॉन्फ़िगरेशन लोडिंग |
 
@@ -124,7 +124,7 @@ Ecat का चीनी नाम: एक बिल्ली (一只猫)
 | एसिंक रनटाइम | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | मिडलवेयर | **tower::Service / Layer** |
 | लॉग/ट्रेसिंग | **tracing + trace_id propagation** |
 | मेट्रिक्स | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # proto परिभाषा जोड़ें
 ecat proto add proto/service.proto
 
-# क्लाइंट और सर्वर कोड जनरेट करें (tonic-build build.rs, Cargo.toml निर्भरताएँ स्वतः पूरी होती हैं)
+# क्लाइंट और सर्वर कोड जनरेट करें (tonic-prost-build build.rs, Cargo.toml निर्भरताएँ स्वतः पूरी होती हैं)
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

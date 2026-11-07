@@ -85,7 +85,7 @@ Client Request
 
 ## Features
 
-- **API-first**: Protobuf-defined APIs, error codes, and metadata; prost + tonic-build code generation
+- **API-first**: Protobuf-defined APIs, error codes, and metadata; prost + tonic-prost-build code generation
 - **Dual protocol**: HTTP (axum) and gRPC (tonic) sharing one tower::Layer middleware chain
 - **Pluggable**: Registry, Config, Logging, Encoding via trait abstractions, production-ready defaults
 - **Middleware**: Built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, and CORS (cors feature) layers, composed with tower::ServiceBuilder
@@ -108,7 +108,7 @@ Client Request
 | `http.Handler` | `tower::Service` | Standard Rust ecosystem trait |
 | `http.Server` | `axum::Router` | Mainstream HTTP framework |
 | `grpc.Server` | `tonic::transport::Server` | Most mature gRPC impl |
-| `proto generate` | `prost + tonic-build` | Standard protobuf codegen |
+| `proto generate` | `prost + tonic-prost-build` | Standard protobuf codegen |
 | `registry.Discovery` | `Registry` trait | Pluggable discovery |
 | `config.Source` | `ConfigSource` trait | Multi-source config loading |
 
@@ -119,7 +119,7 @@ Client Request
 | Runtime | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | Middleware | **tower::Service / Layer** |
 | Logging/Tracing | **tracing + trace_id propagation** |
 | Metrics | **prometheus** |

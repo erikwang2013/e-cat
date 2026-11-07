@@ -16,7 +16,8 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 futures-core.workspace = true
-lapin = "2"
+# 4.x + native-tls：不再走 rustls 链路，彻底移除 unmaintained 的 rustls-pemfile。
+lapin = { version = "4", default-features = false, features = ["native-tls", "tokio"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

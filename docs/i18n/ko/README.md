@@ -89,7 +89,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 
 ## 기능
 
-- **API-first**: Protobuf로 API·오류 코드·메타데이터 정의; prost + tonic-build 코드 생성
+- **API-first**: Protobuf로 API·오류 코드·메타데이터 정의; prost + tonic-prost-build 코드 생성
 - **이중 프로토콜 지원**: HTTP(axum)와 gRPC(tonic)가 동일한 tower::Layer 미들웨어 공유
 - **플러그 가능한 아키텍처**: Registry, Config, Logging, Encoding 모두 trait으로 추상화, 기본 제공되는 프로덕션 준비 구현
 - **미들웨어 체계**: 내장 Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS(cors feature); tower::ServiceBuilder로 조합
@@ -113,7 +113,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 | `http.Handler` | `tower::Service` | Rust 생태계 표준 trait |
 | `http.Server` | `axum::Router` | 커뮤니티 주류 HTTP 프레임워크 |
 | `grpc.Server` | `tonic::transport::Server` | 가장 성숙한 gRPC 구현 |
-| `proto generate` | `prost + tonic-build` | 커뮤니티 표준 protobuf |
+| `proto generate` | `prost + tonic-prost-build` | 커뮤니티 표준 protobuf |
 | `registry.Discovery` | `Registry` trait | 플러그 가능한 등록·디스커버리 |
 | `config.Source` | `ConfigSource` trait | 다중 소스 설정 로딩 |
 
@@ -124,7 +124,7 @@ API-first 개발 경험, 플러그 가능한 컴포넌트 아키텍처, 통합�
 | 비동기 런타임 | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | 미들웨어 | **tower::Service / Layer** |
 | 로그/추적 | **tracing + trace_id propagation** |
 | 메트릭 | **prometheus** |
@@ -416,7 +416,7 @@ cd helloworld
 # proto 정의 추가
 ecat proto add proto/service.proto
 
-# 클라이언트·서버 코드 생성 (tonic-build build.rs, Cargo.toml 의존성 자동 보완)
+# 클라이언트·서버 코드 생성 (tonic-prost-build build.rs, Cargo.toml 의존성 자동 보완)
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

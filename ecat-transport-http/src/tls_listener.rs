@@ -1,4 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use tokio::net::{TcpListener, TcpStream};
@@ -22,17 +24,12 @@ pub(crate) fn build_server_config(
     tls: &ecat_transport::TlsConfig,
 ) -> Result<rustls::ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
     ensure_crypto_provider();
-    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-        &tls.cert_path,
-    )?))
-    .collect::<Result<Vec<_>, _>>()?;
+    let certs = CertificateDer::pem_slice_iter(&std::fs::read(&tls.cert_path)?)
+        .collect::<Result<Vec<_>, _>>()?;
     if certs.is_empty() {
         return Err(format!("no certificates found in {}", tls.cert_path.display()).into());
     }
-    let key = rustls_pemfile::private_key(&mut std::io::BufReader::new(std::fs::File::open(
-        &tls.key_path,
-    )?))?
-    .ok_or_else(|| format!("no private key found in {}", tls.key_path.display()))?;
+    let key = PrivateKeyDer::from_pem_slice(&std::fs::read(&tls.key_path)?)?;
 
     let builder = rustls::ServerConfig::builder();
     let config = if tls.require_client_auth {
@@ -40,9 +37,8 @@ pub(crate) fn build_server_config(
             .ca_cert_path
             .as_ref()
             .ok_or("require_client_auth requires ca_cert_path")?;
-        let ca_certs =
-            rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(ca_path)?))
-                .collect::<Result<Vec<_>, _>>()?;
+        let ca_certs = CertificateDer::pem_slice_iter(&std::fs::read(ca_path)?)
+            .collect::<Result<Vec<_>, _>>()?;
         if ca_certs.is_empty() {
             return Err(format!("no CA certificates found in {}", ca_path.display()).into());
         }
@@ -409,7 +405,7 @@ mod tests {
     fn test_client_config(root_pem: &str) -> rustls::ClientConfig {
         ensure_crypto_provider();
         let mut roots = rustls::RootCertStore::empty();
-        for cert in rustls_pemfile::certs(&mut std::io::BufReader::new(root_pem.as_bytes()))
+        for cert in CertificateDer::pem_slice_iter(root_pem.as_bytes())
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
         {

@@ -1,5 +1,35 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- `tonic` 0.12 → 0.14（`prost` 0.14 + `tonic-prost`/`tonic-prost-build`；TLS feature
+  改为 `tls-ring` + `tls-native-roots`）。`ecat proto client/server` 同步改为生成
+  `tonic-prost-build` 的 build.rs，并在 Cargo.toml 补 `tonic-prost`。
+- `lapin` 2.5.5 → 4.12.3；`basic_publish`/`queue_declare`/`basic_consume` 的
+  队列/交换机参数改用 `ShortString`（公开 API 不变）。
+- `prometheus` 0.13 → 0.14（`protobuf` 2.28 → 3.7.2），`ecat-metrics` 去掉 6 处
+  proto 结构体拼装的冗余 `.into()`。
+- MQ / RabbitMQ 的 TLS 改走 native-tls（Linux 下为 OpenSSL）；MQTT mTLS 客户端
+  私钥要求 PKCS#8 PEM，自定义 CA 仍替换系统根证书。
+- 本仓库 4 处直接 PEM 解析改用 `rustls::pki_types::pem::PemObject`；
+  `rustls-native-certs` 0.7 → 0.8。
+
+### Removed
+
+- 彻底移除不维护依赖：`rustls-pemfile`、`rustls-webpki 0.102.8`、`instant`
+  已不在 `Cargo.lock`，对应 cargo-audit ignore 同步删除。
+- 删除 39 个无引用的过期审计/测试报告（根目录 3 个 + 12 种 i18n 副本）。
+- 修正 rsa 0.9.10 的暴露评估：仅经 `sqlx-mysql` 做公钥加密，不涉及私钥时序面。
+
+### Build
+
+- Docker builder 增加 `pkg-config libssl-dev protobuf-compiler`（native-tls /
+  tonic-prost-build 构建需要）；CI 的 ubuntu-latest 自带 OpenSSL 开发包。
+- `cargo machete` 为零误报：为 `tiberius-ng`（包名 ≠ lib 名）与生成代码所需的
+  `prost` / `tonic-prost` 补 `[package.metadata.cargo-machete]` ignore。
+
 ## [9.0.0] — 2026-11-05
 
 ### Breaking
@@ -623,7 +653,7 @@
 - `ecat-events` dev-dependencies 补 tokio features（macros/rt/time）：此前单独编译该 crate 测试目标必失败，被 workspace feature 并集掩盖
 
 ### Tests
-- 全面单元测试补写：51 个 crate 全覆盖，+206 测试（核心 40 / data 66 / mq-transport 54 / app 46），workspace 总计 675 测试全绿；测试团队报告见 docs/test-report-2026-08-26.md
+- 全面单元测试补写：51 个 crate 全覆盖，+206 测试（核心 40 / data 66 / mq-transport 54 / app 46），workspace 总计 675 测试全绿
 
 ## [3.0.1] — 2026-08-17
 

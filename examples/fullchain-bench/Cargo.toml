@@ -7,7 +7,11 @@ description = "Full-chain HTTP/gRPC + MySQL + Redis latency benchmark"
 publish = false
 
 [build-dependencies]
-tonic-build.workspace = true
+tonic-prost-build.workspace = true
+
+[package.metadata.cargo-machete]
+# tonic::include_proto! 生成的代码用 ::prost 与 tonic_prost::ProstCodec。
+ignored = ["prost", "tonic-prost"]
 
 [dependencies]
 ecat-bench = { version = "9.0.0", path = "../../ecat-bench" }
@@ -22,6 +26,7 @@ ecat-metrics = { version = "9.0.0", path = "../../ecat-metrics" }
 axum.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 tonic.workspace = true
+tonic-prost.workspace = true
 prost.workspace = true
 tower.workspace = true
 tracing.workspace = true

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
 use axum::{response::IntoResponse, routing::get};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tls_listener::ensure_crypto_provider;
 use tokio::net::TcpStream;
 
@@ -87,7 +89,7 @@ fn client_config(
 ) -> Result<rustls::ClientConfig, String> {
     ensure_crypto_provider();
     let mut roots = rustls::RootCertStore::empty();
-    for cert in rustls_pemfile::certs(&mut std::io::BufReader::new(root_pem.as_bytes()))
+    for cert in CertificateDer::pem_slice_iter(root_pem.as_bytes())
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?
     {
@@ -96,14 +98,11 @@ fn client_config(
     let builder = rustls::ClientConfig::builder().with_root_certificates(roots);
     match client_pair {
         Some(pair) => {
-            let mut pem = std::io::BufReader::new(pair.cert_pem.as_bytes());
-            let certs = rustls_pemfile::certs(&mut pem)
+            let certs = CertificateDer::pem_slice_iter(pair.cert_pem.as_bytes())
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| format!("parse client cert: {e}"))?;
-            let key =
-                rustls_pemfile::private_key(&mut std::io::BufReader::new(pair.key_pem.as_bytes()))
-                    .map_err(|e| format!("parse client key: {e}"))?
-                    .ok_or_else(|| "no client private key".to_string())?;
+            let key = PrivateKeyDer::from_pem_slice(pair.key_pem.as_bytes())
+                .map_err(|e| format!("parse client key: {e}"))?;
             builder
                 .with_client_auth_cert(certs, key)
                 .map_err(|e| e.to_string())

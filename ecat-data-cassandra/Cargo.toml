@@ -22,7 +22,6 @@ tokio = { workspace = true, features = ["sync"] }
 scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 # scylla 只接受 Arc<rustls::ClientConfig>，rustls 未 re-export，只能直接依赖。
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-rustls-pemfile = "2"
 rustls-native-certs = "0.8"
 # 指标依赖 optional：默认不把 axum（ecat-metrics 的依赖）拖进核心依赖树。
 ecat-metrics = { workspace = true, optional = true }

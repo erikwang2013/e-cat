@@ -89,7 +89,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 
 ## বৈশিষ্ট্য
 
-- **API-first**：Protobuf দিয়ে API, এরর কোড, মেটাডেটা সংজ্ঞায়িত; prost + tonic-build কোড জেনারেশন
+- **API-first**：Protobuf দিয়ে API, এরর কোড, মেটাডেটা সংজ্ঞায়িত; prost + tonic-prost-build কোড জেনারেশন
 - **ডুয়াল-প্রোটোকল সাপোর্ট**：HTTP (axum) এবং gRPC (tonic) একই tower::Layer মিডলওয়্যার সেট শেয়ার করে
 - **প্লাগেবল আর্কিটেকচার**：Registry, Config, Logging, Encoding সব trait অ্যাবস্ট্রাকশনের মাধ্যমে; ডিফল্টে প্রোডাকশন-রেডি ইমপ্লিমেন্টেশন
 - **মিডলওয়্যার সিস্টেম**：বিল্ট-ইন Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (cors feature); tower::ServiceBuilder দিয়ে কম্পোজিশন
@@ -113,7 +113,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | `http.Handler` | `tower::Service` | Rust ইকোসিস্টেমের স্ট্যান্ডার্ড trait |
 | `http.Server` | `axum::Router` | কমিউনিটির মূলধারার HTTP ফ্রেমওয়ার্ক |
 | `grpc.Server` | `tonic::transport::Server` | সবচেয়ে পরিণত gRPC ইমপ্লিমেন্টেশন |
-| `proto generate` | `prost + tonic-build` | কমিউনিটি স্ট্যান্ডার্ড protobuf |
+| `proto generate` | `prost + tonic-prost-build` | কমিউনিটি স্ট্যান্ডার্ড protobuf |
 | `registry.Discovery` | `Registry` trait | প্লাগেবল রেজিস্ট্রি ও ডিসকভারি |
 | `config.Source` | `ConfigSource` trait | মাল্টি-সোর্স কনফিগ লোডিং |
 
@@ -124,7 +124,7 @@ API-first উন্নয়ন অভিজ্ঞতা, প্লাগেব�
 | অ্যাসিংক রানটাইম | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | মিডলওয়্যার | **tower::Service / Layer** |
 | লগ/ট্রেসিং | **tracing + trace_id propagation** |
 | মেট্রিক | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # proto সংজ্ঞা যোগ করুন
 ecat proto add proto/service.proto
 
-# ক্লায়েন্ট ও সার্ভার কোড জেনারেট (tonic-build build.rs, Cargo.toml ডিপেন্ডেন্সি অটো-সম্পূর্ণ)
+# ক্লায়েন্ট ও সার্ভার কোড জেনারেট (tonic-prost-build build.rs, Cargo.toml ডিপেন্ডেন্সি অটো-সম্পূর্ণ)
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

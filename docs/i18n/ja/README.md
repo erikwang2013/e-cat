@@ -89,7 +89,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 
 ## 機能
 
-- **API-first**：Protobuf で API・エラーコード・メタデータを定義；prost + tonic-build によるコード生成
+- **API-first**：Protobuf で API・エラーコード・メタデータを定義；prost + tonic-prost-build によるコード生成
 - **デュアルプロトコル対応**：HTTP（axum）と gRPC（tonic）が同一の tower::Layer ミドルウェアを共有
 - **プラグイン可能なアーキテクチャ**：Registry、Config、Logging、Encoding をすべて trait で抽象化し、デフォルトで本番利用可能な実装を提供
 - **ミドルウェア体系**：Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、MetricsLayer、RetryLayer、ValidateLayer、CORS（cors feature）を内蔵；tower::ServiceBuilder で組み合わせ
@@ -113,7 +113,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | `http.Handler` | `tower::Service` | Rust エコシステム標準の trait |
 | `http.Server` | `axum::Router` | コミュニティ主流の HTTP フレームワーク |
 | `grpc.Server` | `tonic::transport::Server` | 最も成熟した gRPC 実装 |
-| `proto generate` | `prost + tonic-build` | コミュニティ標準の protobuf |
+| `proto generate` | `prost + tonic-prost-build` | コミュニティ標準の protobuf |
 | `registry.Discovery` | `Registry` trait | プラグイン可能な登録・ディスカバリ |
 | `config.Source` | `ConfigSource` trait | マルチソース設定ロード |
 
@@ -124,7 +124,7 @@ API-first の開発体験、プラグイン可能なコンポーネントアー�
 | 非同期ランタイム | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | ミドルウェア | **tower::Service / Layer** |
 | ログ/トレーシング | **tracing + trace_id propagation** |
 | メトリクス | **prometheus** |
@@ -417,7 +417,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

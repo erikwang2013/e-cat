@@ -89,7 +89,7 @@
 
 ## الميزات
 
-- **API-first**: تعريف API وأكواد الأخطاء والبيانات الوصفية في Protobuf؛ توليد الكود عبر prost + tonic-build
+- **API-first**: تعريف API وأكواد الأخطاء والبيانات الوصفية في Protobuf؛ توليد الكود عبر prost + tonic-prost-build
 - **دعم بروتوكول مزدوج**: HTTP (axum) وgRPC (tonic) يتشاركان نفس مجموعة وسائط tower::Layer
 - **بنية قابلة للتركيب**: Registry وConfig وLogging وEncoding جميعها مُجرّدة عبر traits، مع تنفيذات افتراضية جاهزة للإنتاج
 - **نظام الوسائط**: Recovery وTracing وLogging وTimeout وRateLimit وSecurity وCircuitBreaker وMetricsLayer وRetryLayer وValidateLayer وCORS (ميزة cors) مدمجة؛ وتُركَّب عبر tower::ServiceBuilder
@@ -113,7 +113,7 @@
 | `http.Handler` | `tower::Service` | trait قياسي في نظام Rust البيئي |
 | `http.Server` | `axum::Router` | إطار HTTP السائد في المجتمع |
 | `grpc.Server` | `tonic::transport::Server` | أنضج تنفيذ gRPC |
-| `proto generate` | `prost + tonic-build` | protobuf القياسي في المجتمع |
+| `proto generate` | `prost + tonic-prost-build` | protobuf القياسي في المجتمع |
 | `registry.Discovery` | `Registry` trait | تسجيل واكتشاف قابل للتركيب |
 | `config.Source` | `ConfigSource` trait | تحميل إعدادات متعدد المصادر |
 
@@ -124,7 +124,7 @@
 | وقت تشغيل غير متزامن | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | الوسائط | **tower::Service / Layer** |
 | التسجيل/التتبع | **tracing + trace_id propagation** |
 | المقاييس | **prometheus** |
@@ -417,7 +417,7 @@ cd helloworld
 # إضافة تعريف proto
 ecat proto add proto/service.proto
 
-# توليد كود العميل والخادم (tonic-build build.rs، إكمال تبعيات Cargo.toml تلقائيًا)
+# توليد كود العميل والخادم (tonic-prost-build build.rs، إكمال تبعيات Cargo.toml تلقائيًا)
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

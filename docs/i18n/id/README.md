@@ -89,7 +89,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 
 ## Fitur
 
-- **API-first**: Mendefinisikan API, kode error, dan metadata dengan Protobuf; pembuatan kode melalui prost + tonic-build
+- **API-first**: Mendefinisikan API, kode error, dan metadata dengan Protobuf; pembuatan kode melalui prost + tonic-prost-build
 - **Dukungan protokol ganda**: HTTP (axum) dan gRPC (tonic) berbagi set middleware `tower::Layer` yang sama
 - **Arsitektur pluggable**: Registry, Config, Logging, Encoding semuanya diabstraksikan melalui trait, dengan implementasi siap-produksi disediakan secara default
 - **Sistem middleware**: Built-in Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (fitur `cors`); dikombinasikan melalui `tower::ServiceBuilder`
@@ -113,7 +113,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | `http.Handler` | `tower::Service` | Trait standar ekosistem Rust |
 | `http.Server` | `axum::Router` | Framework HTTP mainstream komunitas |
 | `grpc.Server` | `tonic::transport::Server` | Implementasi gRPC paling matang |
-| `proto generate` | `prost + tonic-build` | Protobuf standar komunitas |
+| `proto generate` | `prost + tonic-prost-build` | Protobuf standar komunitas |
 | `registry.Discovery` | `Registry` trait | Registri & discovery pluggable |
 | `config.Source` | `ConfigSource` trait | Pemuatan konfigurasi multi-sumber |
 
@@ -124,7 +124,7 @@ Menawarkan pengalaman pengembangan API-first, arsitektur komponen yang dapat dip
 | Runtime asinkron | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | Middleware | **tower::Service / Layer** |
 | Logging/tracing | **tracing + trace_id propagation** |
 | Metrik | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       # ecat-data-sqlx -> ecat-data -> ecat-errors -> ecat-protos，后者的
-      # build.rs 走 tonic_build，stock runner 没有 protoc 会直接编译失败。
+      # build.rs 走 tonic_prost_build，stock runner 没有 protoc 会直接编译失败。
       - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Start MySQL ${{ matrix.mysql-version }}
         run: |

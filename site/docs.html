@@ -133,7 +133,7 @@ ecat --version</code></pre>
           </div>
           <div class="step reveal">
             <div class="step-head"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-git-branch"></use></svg><h3 data-i18n="docs.step3Title">创建服务</h3></div>
-            <p data-i18n="docs.step3Desc">创建项目，添加 proto 文件，再生成客户端与服务端代码。生成的 build.rs 已接好 tonic-build。</p>
+            <p data-i18n="docs.step3Desc">创建项目，添加 proto 文件，再生成客户端与服务端代码。生成的 build.rs 已接好 tonic-prost-build。</p>
             <div class="code-block">
               <div class="code-head"><span>terminal</span><button class="copy-btn" data-copy="#code-scaffold" aria-label="复制代码" data-i18n-aria="a11y.copy"><svg class="icon" aria-hidden="true"><use href="assets/icons/sprite.svg#i-copy"></use></svg><span class="copy-label" data-i18n="a11y.copyShort">复制</span></button></div>
               <pre><code id="code-scaffold">ecat new helloworld
@@ -419,7 +419,7 @@ User::update(&amp;db, &amp;got).<span class="k">await</span>?;
             </div>
             <div class="ref-block">
               <h3 data-i18n="ref.stackTitle">技术栈</h3>
-              <p class="ref-stack" data-i18n-html="ref.stackBody"><b>运行时</b> tokio · <b>HTTP</b> axum · <b>gRPC</b> tonic · <b>Protobuf</b> prost + tonic-build · <b>中间件</b> tower::Service / Layer · <b>日志/追踪</b> tracing · <b>指标</b> prometheus · <b>序列化</b> serde + prost · <b>攻击检测</b> security-rust · <b>RDBMS</b> sqlx · <b>Redis</b> redis-rs · <b>Redis pool</b> deadpool · <b>JWT</b> jsonwebtoken · <b>HTTP Client</b> reqwest · <b>CLI</b> clap</p>
+              <p class="ref-stack" data-i18n-html="ref.stackBody"><b>运行时</b> tokio · <b>HTTP</b> axum · <b>gRPC</b> tonic · <b>Protobuf</b> prost + tonic-prost-build · <b>中间件</b> tower::Service / Layer · <b>日志/追踪</b> tracing · <b>指标</b> prometheus · <b>序列化</b> serde + prost · <b>攻击检测</b> security-rust · <b>RDBMS</b> sqlx · <b>Redis</b> redis-rs · <b>Redis pool</b> deadpool · <b>JWT</b> jsonwebtoken · <b>HTTP Client</b> reqwest · <b>CLI</b> clap</p>
             </div>
             <div class="ref-block">
               <h3 data-i18n="ref.kratosTitle">Kratos 概念映射</h3>
@@ -428,7 +428,7 @@ User::update(&amp;db, &amp;got).<span class="k">await</span>?;
                 <li><code>http.Handler</code><span><code>tower::Service</code></span><em data-i18n="ref.kratos2">Rust 生态标准 trait</em></li>
                 <li><code>http.Server</code><span><code>axum::Router</code></span><em data-i18n="ref.kratos3">社区主流 HTTP 框架</em></li>
                 <li><code>grpc.Server</code><span><code>tonic::transport::Server</code></span><em data-i18n="ref.kratos4">成熟的 gRPC 实现</em></li>
-                <li><code>proto generate</code><span><code>prost + tonic-build</code></span><em data-i18n="ref.kratos5">社区标准 protobuf</em></li>
+                <li><code>proto generate</code><span><code>prost + tonic-prost-build</code></span><em data-i18n="ref.kratos5">社区标准 protobuf</em></li>
                 <li><code>registry.Discovery</code><span><code>Registry</code> trait</span><em data-i18n="ref.kratos6">可插拔注册发现</em></li>
                 <li><code>config.Source</code><span><code>ConfigSource</code> trait</span><em data-i18n="ref.kratos7">多源配置加载</em></li>
               </ul>

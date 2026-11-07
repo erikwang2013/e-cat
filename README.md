@@ -88,7 +88,7 @@ Ecat中文名：一只猫
 
 ## 功能
 
-- **API-first**：Protobuf 定义 API、错误码、元数据；prost + tonic-build 代码生成
+- **API-first**：Protobuf 定义 API、错误码、元数据；prost + tonic-prost-build 代码生成
 - **双协议支持**：HTTP（axum）和 gRPC（tonic）共用同一套 tower::Layer 中间件
 - **可插拔架构**：Registry、Config、Logging、Encoding 全部通过 trait 抽象，默认提供生产可用实现
 - **中间件体系**：内置 Recovery、Tracing、Logging、Timeout、RateLimit、Security、CircuitBreaker、MetricsLayer、RetryLayer、ValidateLayer、CORS（cors feature）；通过 tower::ServiceBuilder 组合
@@ -113,7 +113,7 @@ Ecat中文名：一只猫
 | `http.Handler` | `tower::Service` | Rust 生态标准 trait |
 | `http.Server` | `axum::Router` | 社区主流 HTTP 框架 |
 | `grpc.Server` | `tonic::transport::Server` | 最成熟的 gRPC 实现 |
-| `proto generate` | `prost + tonic-build` | 社区标准 protobuf |
+| `proto generate` | `prost + tonic-prost-build` | 社区标准 protobuf |
 | `registry.Discovery` | `Registry` trait | 可插拔注册发现 |
 | `config.Source` | `ConfigSource` trait | 多源配置加载 |
 
@@ -124,7 +124,7 @@ Ecat中文名：一只猫
 | 异步运行时 | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | 中间件 | **tower::Service / Layer** |
 | 日志/追踪 | **tracing + trace_id propagation** |
 | 指标 | **prometheus** |
@@ -446,7 +446,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

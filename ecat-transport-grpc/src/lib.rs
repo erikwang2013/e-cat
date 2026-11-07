@@ -108,6 +108,8 @@ impl TransportServer for GrpcServer {
 mod tests {
     use super::*;
     use ecat_tls::{generate_client_cert, generate_server_cert};
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
     use std::path::Path;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -161,8 +163,7 @@ mod tests {
         pair: Option<&ecat_tls::CertPair>,
     ) -> Result<rustls::ClientConfig, String> {
         let mut roots = rustls::RootCertStore::empty();
-        let mut cursor = std::io::Cursor::new(root_pem.as_bytes());
-        for cert in rustls_pemfile::certs(&mut cursor)
+        for cert in CertificateDer::pem_slice_iter(root_pem.as_bytes())
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("parse root: {e}"))?
         {
@@ -172,13 +173,11 @@ mod tests {
         match pair {
             None => Ok(builder.with_no_client_auth()),
             Some(p) => {
-                let certs = rustls_pemfile::certs(&mut std::io::Cursor::new(p.cert_pem.as_bytes()))
+                let certs = CertificateDer::pem_slice_iter(p.cert_pem.as_bytes())
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(|e| format!("parse cert: {e}"))?;
-                let key =
-                    rustls_pemfile::private_key(&mut std::io::Cursor::new(p.key_pem.as_bytes()))
-                        .map_err(|e| format!("parse key: {e}"))?
-                        .ok_or_else(|| "no private key".to_string())?;
+                let key = PrivateKeyDer::from_pem_slice(p.key_pem.as_bytes())
+                    .map_err(|e| format!("parse key: {e}"))?;
                 builder
                     .with_client_auth_cert(certs, key)
                     .map_err(|e| format!("client auth: {e}"))

@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-prometheus = "0.13"
+prometheus = "0.14"
 axum.workspace = true
 tower.workspace = true
 

@@ -9,6 +9,10 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[package.metadata.cargo-machete]
+# 依赖名是 tiberius-ng，库名是 tiberius；源码里只有 `use tiberius::...`。
+ignored = ["tiberius-ng"]
+
 [dependencies]
 ecat-data = { version = "9.0.0", path = "../ecat-data" }
 ecat-tls = { version = "9.0.0", path = "../ecat-tls" }

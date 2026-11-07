@@ -89,7 +89,7 @@ Il offre une expérience de développement API-first, une architecture de compos
 
 ## Fonctionnalités
 
-- **API-first** : définition des API, codes d'erreur et métadonnées via Protobuf ; génération de code avec prost + tonic-build
+- **API-first** : définition des API, codes d'erreur et métadonnées via Protobuf ; génération de code avec prost + tonic-prost-build
 - **Double protocole** : HTTP (axum) et gRPC (tonic) partagent le même ensemble de middleware `tower::Layer`
 - **Architecture enfichable** : Registry, Config, Logging et Encoding sont tous abstraits par des traits, avec des implémentations prêtes pour la production par défaut
 - **Système de middleware** : Recovery, Tracing, Logging, Timeout, RateLimit, Security, CircuitBreaker, MetricsLayer, RetryLayer, ValidateLayer, CORS (feature « cors ») intégrés ; composition via `tower::ServiceBuilder`
@@ -113,7 +113,7 @@ Il offre une expérience de développement API-first, une architecture de compos
 | `http.Handler` | `tower::Service` | Trait standard de l'écosystème Rust |
 | `http.Server` | `axum::Router` | Framework HTTP dominant de la communauté |
 | `grpc.Server` | `tonic::transport::Server` | Implémentation gRPC la plus mature |
-| `proto generate` | `prost + tonic-build` | Protobuf standard de la communauté |
+| `proto generate` | `prost + tonic-prost-build` | Protobuf standard de la communauté |
 | `registry.Discovery` | `Registry` trait | Découverte et enregistrement enfichables |
 | `config.Source` | `ConfigSource` trait | Chargement de configuration multi-sources |
 
@@ -124,7 +124,7 @@ Il offre une expérience de développement API-first, une architecture de compos
 | Runtime asynchrone | **tokio** |
 | HTTP | **axum** |
 | gRPC | **tonic** |
-| Protobuf | **prost + tonic-build** |
+| Protobuf | **prost + tonic-prost-build** |
 | Middleware | **tower::Service / Layer** |
 | Journalisation/traçage | **tracing + trace_id propagation** |
 | Métriques | **prometheus** |
@@ -418,7 +418,7 @@ cd helloworld
 # 添加 proto 定义
 ecat proto add proto/service.proto
 
-# 生成客户端和服务端代码（tonic-build build.rs，自动补齐 Cargo.toml 依赖）
+# 生成客户端和服务端代码（tonic-prost-build build.rs，自动补齐 Cargo.toml 依赖）
 ecat proto client proto/service.proto
 ecat proto server proto/service.proto -t internal/service
 

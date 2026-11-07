@@ -225,7 +225,7 @@ fn labels(pairs: &[(&str, &str)]) -> Vec<LabelPair> {
 
 fn gauge(labels: Vec<LabelPair>, value: f64) -> Metric {
     let mut m = Metric::default();
-    m.set_label(labels.into());
+    m.set_label(labels);
     let mut g = Gauge::default();
     g.set_value(value);
     m.set_gauge(g);
@@ -234,7 +234,7 @@ fn gauge(labels: Vec<LabelPair>, value: f64) -> Metric {
 
 fn counter(labels: Vec<LabelPair>, value: f64) -> Metric {
     let mut m = Metric::default();
-    m.set_label(labels.into());
+    m.set_label(labels);
     let mut c = Counter::default();
     c.set_value(value);
     m.set_counter(c);
@@ -246,7 +246,7 @@ fn family(name: &str, help: &str, kind: MetricType, metrics: Vec<Metric>) -> Met
     f.set_name(name.to_string());
     f.set_help(help.to_string());
     f.set_field_type(kind);
-    f.set_metric(metrics.into());
+    f.set_metric(metrics);
     f
 }
 

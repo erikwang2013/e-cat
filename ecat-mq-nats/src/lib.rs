@@ -5,6 +5,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
 use futures_core::Stream;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use serde::Deserialize;
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -91,15 +93,20 @@ fn build_connect_options(cfg: &NatsConfig) -> Result<async_nats::ConnectOptions,
         Some(ca) => {
             let pem = std::fs::read(ca)
                 .map_err(|e| MqError::Other(format!("nats tls: read ca {ca}: {e}")))?;
-            let certs = rustls_pemfile::certs(&mut pem.as_slice())
+            let certs = CertificateDer::pem_slice_iter(&pem)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| MqError::Other(format!("nats tls: parse ca: {e}")))?;
             roots.add_parsable_certificates(certs);
         }
         None => {
-            let certs = rustls_native_certs::load_native_certs()
-                .map_err(|e| MqError::Other(format!("nats tls: load system certs: {e}")))?;
-            for cert in certs {
+            let loaded = rustls_native_certs::load_native_certs();
+            if loaded.certs.is_empty() && !loaded.errors.is_empty() {
+                return Err(MqError::Other(format!(
+                    "nats tls: load system certs: {}",
+                    loaded.errors[0]
+                )));
+            }
+            for cert in loaded.certs {
                 let _ = roots.add(cert);
             }
         }
@@ -113,12 +120,11 @@ fn build_connect_options(cfg: &NatsConfig) -> Result<async_nats::ConnectOptions,
                 .map_err(|e| MqError::Other(format!("nats tls: read cert {cert}: {e}")))?;
             let key_pem = std::fs::read(key)
                 .map_err(|e| MqError::Other(format!("nats tls: read key {key}: {e}")))?;
-            let certs = rustls_pemfile::certs(&mut cert_pem.as_slice())
+            let certs = CertificateDer::pem_slice_iter(&cert_pem)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| MqError::Other(format!("nats tls: parse cert: {e}")))?;
-            let key = rustls_pemfile::private_key(&mut key_pem.as_slice())
-                .map_err(|e| MqError::Other(format!("nats tls: parse key: {e}")))?
-                .ok_or_else(|| MqError::Other("nats tls: no private key found".into()))?;
+            let key = PrivateKeyDer::from_pem_slice(&key_pem)
+                .map_err(|e| MqError::Other(format!("nats tls: parse key: {e}")))?;
             builder
                 .with_client_auth_cert(certs, key)
                 .map_err(|e| MqError::Other(format!("nats tls: client auth: {e}")))?

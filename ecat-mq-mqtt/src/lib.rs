@@ -2,24 +2,14 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use ecat_mq::{MessageQueue, MessageStream, MqError};
-use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, Transport};
+use rumqttc::{
+    AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS, TlsConfiguration, Transport,
+};
 use serde::Deserialize;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::mpsc;
-
-/// rumqttc 以 use-rustls-no-provider 编译时不自带 CryptoProvider；与
-/// ecat-tls / ecat-transport-* 一致，构造 TLS 前安装 ring（首装生效）。
-fn ensure_crypto_provider() {
-    static ONCE: OnceLock<()> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let _ = rustls::crypto::CryptoProvider::install_default(
-            rustls::crypto::ring::default_provider(),
-        );
-    });
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MqttConfig {
@@ -30,9 +20,9 @@ pub struct MqttConfig {
     pub username: Option<String>,
     #[serde(default)]
     pub password: Option<String>,
-    /// 启用 TLS（rustls）。url 缺省端口时 TLS 下默认 8883（明文为 1883）。
+    /// 启用 TLS（native-tls / OpenSSL）。url 缺省端口时 TLS 下默认 8883（明文为 1883）。
     /// 仅设 tls=true 用系统信任根；配 ca_file 用自定义 CA，可选
-    /// cert_file/key_file 做 mTLS。
+    /// cert_file/key_file 做 mTLS（私钥须为 PKCS#8 PEM）。
     #[serde(default)]
     pub tls: bool,
     /// 自定义 CA 证书 PEM 路径；缺省用系统信任根。
@@ -92,32 +82,46 @@ fn client_options(
         opts.set_credentials(u, p);
     }
     if cfg.tls || cfg.ca_file.is_some() || cfg.cert_file.is_some() || cfg.key_file.is_some() {
-        ensure_crypto_provider();
-        let transport = if let Some(ca) = &cfg.ca_file {
-            let ca = std::fs::read(ca)
-                .map_err(|e| MqError::Other(format!("mqtt tls: read ca {ca}: {e}")))?;
-            let client_auth = match (&cfg.cert_file, &cfg.key_file) {
-                (Some(c), Some(k)) => {
-                    let cert = std::fs::read(c)
-                        .map_err(|e| MqError::Other(format!("mqtt tls: read cert {c}: {e}")))?;
-                    let key = std::fs::read(k)
-                        .map_err(|e| MqError::Other(format!("mqtt tls: read key {k}: {e}")))?;
-                    Some((cert, key))
-                }
-                (None, None) => None,
-                _ => {
-                    return Err(MqError::Other(
-                        "mqtt tls: cert_file and key_file must be set together".into(),
-                    ));
-                }
-            };
-            Transport::tls(ca, client_auth, None)
-        } else {
-            Transport::tls_with_default_config()
-        };
-        opts.set_transport(transport);
+        opts.set_transport(build_transport(cfg)?);
     }
     Ok(opts)
+}
+
+/// native-tls（Linux 下为 OpenSSL）。自定义 `ca_file` 时替换系统根证书，
+/// 与旧 rustls 实现一致；客户端证书链为 PEM，私钥须为 PKCS#8。
+fn build_transport(cfg: &MqttConfig) -> Result<Transport, MqError> {
+    let mut builder = native_tls::TlsConnector::builder();
+    if let Some(ca) = &cfg.ca_file {
+        let ca_pem = std::fs::read(ca)
+            .map_err(|e| MqError::Other(format!("mqtt tls: read ca {ca}: {e}")))?;
+        let cert = native_tls::Certificate::from_pem(&ca_pem)
+            .map_err(|e| MqError::Other(format!("mqtt tls: parse ca {ca}: {e}")))?;
+        builder.add_root_certificate(cert);
+        builder.disable_built_in_roots(true);
+    }
+    match (&cfg.cert_file, &cfg.key_file) {
+        (Some(c), Some(k)) => {
+            let cert = std::fs::read(c)
+                .map_err(|e| MqError::Other(format!("mqtt tls: read cert {c}: {e}")))?;
+            let key = std::fs::read(k)
+                .map_err(|e| MqError::Other(format!("mqtt tls: read key {k}: {e}")))?;
+            let identity = native_tls::Identity::from_pkcs8(&cert, &key)
+                .map_err(|e| MqError::Other(format!("mqtt tls: client identity: {e}")))?;
+            builder.identity(identity);
+        }
+        (None, None) => {}
+        _ => {
+            return Err(MqError::Other(
+                "mqtt tls: cert_file and key_file must be set together".into(),
+            ));
+        }
+    }
+    let connector = builder
+        .build()
+        .map_err(|e| MqError::Other(format!("mqtt tls: build connector: {e}")))?;
+    Ok(Transport::tls_with_config(
+        TlsConfiguration::NativeConnector(connector),
+    ))
 }
 
 /// Keeps the publisher connection alive; retries after transient errors.
@@ -307,24 +311,57 @@ mod tests {
         assert!(err.to_string().contains("read ca"), "got: {err}");
     }
 
+    fn temp_pem(tag: &str, name: &str, pem: &[u8]) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("ecat-mqtt-{tag}-{name}-{}", std::process::id()));
+        std::fs::write(&path, pem).unwrap();
+        path
+    }
+
     #[test]
     fn client_options_errors_when_client_cert_files_missing() {
-        // CA 先于 cert 读取，先落地一个存在的 ca 文件让错误落在 cert 读取上
-        let ca = std::env::temp_dir().join(format!("ecat-mqtt-ca-{}", std::process::id()));
-        std::fs::write(&ca, b"dummy").unwrap();
+        // CA 先于 cert 读取，先落地一个合法的 CA 让错误落在 cert 读取上
+        let ca = ecat_tls::generate_ca("ecat-mqtt-test").unwrap();
+        let ca_path = temp_pem("ca", "ok", ca.cert_pem.as_bytes());
         let cfg = MqttConfig {
             url: "mqtt://broker".into(),
             client_id: None,
             username: None,
             password: None,
             tls: true,
-            ca_file: Some(ca.to_str().unwrap().into()),
+            ca_file: Some(ca_path.to_str().unwrap().into()),
             cert_file: Some("/no-such-cert.pem".into()),
             key_file: Some("/no-such-key.pem".into()),
         };
         let err = client_options(&cfg, "broker".into(), 8883, "id".into()).unwrap_err();
         assert!(err.to_string().contains("read cert"), "got: {err}");
-        let _ = std::fs::remove_file(&ca);
+        let _ = std::fs::remove_file(&ca_path);
+    }
+
+    #[test]
+    fn client_options_accepts_valid_ca_and_client_cert() {
+        let ca = ecat_tls::generate_ca("ecat-mqtt-test").unwrap();
+        let client = ecat_tls::generate_client_cert("mqtt-client").unwrap();
+        let ca_path = temp_pem("ca", "valid", ca.cert_pem.as_bytes());
+        let cert_path = temp_pem("cert", "valid", client.cert_pem.as_bytes());
+        let key_path = temp_pem("key", "valid", client.key_pem.as_bytes());
+        let cfg = MqttConfig {
+            url: "mqtt://broker".into(),
+            client_id: None,
+            username: None,
+            password: None,
+            tls: true,
+            ca_file: Some(ca_path.to_str().unwrap().into()),
+            cert_file: Some(cert_path.to_str().unwrap().into()),
+            key_file: Some(key_path.to_str().unwrap().into()),
+        };
+        assert!(
+            client_options(&cfg, "broker".into(), 8883, "id".into()).is_ok(),
+            "valid CA + PKCS#8 client identity must build a native-tls connector"
+        );
+        for p in [ca_path, cert_path, key_path] {
+            let _ = std::fs::remove_file(p);
+        }
     }
 
     #[test]

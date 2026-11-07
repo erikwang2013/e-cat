@@ -6,7 +6,7 @@ check:
   stage: check
   image: rust:latest
   before_script:
-    - apt-get update && apt-get install -y protobuf-compiler cmake
+    - apt-get update && apt-get install -y protobuf-compiler cmake pkg-config libssl-dev
     - rustup component add clippy rustfmt
   script:
     - cargo check --workspace

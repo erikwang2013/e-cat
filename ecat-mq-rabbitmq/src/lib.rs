@@ -12,7 +12,7 @@ use std::task::{Context, Poll};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RabbitmqConfig {
-    /// `amqp://` 或 `amqps://`。amqps 由 lapin 默认特性（rustls）原生支持，
+    /// `amqp://` 或 `amqps://`。amqps 由 lapin 的 native-tls（OpenSSL）支持，
     /// 使用系统信任根；自定义 CA 暂不支持（如需请改用服务端签发系统信任的证书）。
     pub url: String,
     #[serde(default)]
@@ -54,8 +54,8 @@ impl MessageQueue for RabbitmqMq {
         let exchange = self.exchange.as_deref().unwrap_or("");
         self.channel
             .basic_publish(
-                exchange,
-                topic,
+                exchange.into(),
+                topic.into(),
                 BasicPublishOptions::default(),
                 payload,
                 BasicProperties::default(),
@@ -70,14 +70,18 @@ impl MessageQueue for RabbitmqMq {
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn MessageStream>, MqError> {
         let queue = self
             .channel
-            .queue_declare(topic, QueueDeclareOptions::default(), FieldTable::default())
+            .queue_declare(
+                topic.into(),
+                QueueDeclareOptions::default(),
+                FieldTable::default(),
+            )
             .await
             .map_err(|e| MqError::Other(format!("rabbitmq queue_declare: {e}")))?;
         let consumer = self
             .channel
             .basic_consume(
-                queue.name().as_str(),
-                "ecat",
+                queue.name().as_str().into(),
+                "ecat".into(),
                 BasicConsumeOptions {
                     no_ack: true,
                     ..Default::default()
